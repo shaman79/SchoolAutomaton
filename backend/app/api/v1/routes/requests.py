@@ -6,6 +6,7 @@ the sanitizer and never persisted on the request row (SPEC §3/§5)."""
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
@@ -24,6 +25,7 @@ from ....schemas.intent import CreateRequestIn, Decision, ProceedDecision
 from ...deps import RequestContext, get_optional_profile, get_request_context
 
 router = APIRouter(prefix="/requests", tags=["requests"])
+logger = logging.getLogger("schoolautomaton.generation")
 
 
 @router.post("", response_model=Decision)
@@ -63,11 +65,27 @@ async def create_request(
     return decision
 
 
+def _failure_reason(exc: Exception) -> str:
+    """A short, operator-actionable reason for the loading screen (full traceback goes to the log)."""
+    msg = str(exc)
+    low = msg.lower()
+    if "anthropic_api_key" in low or "not configured" in low:
+        return "The AI service isn't configured yet (ANTHROPIC_API_KEY). Add it and redeploy."
+    if "authenticationerror" in low or "401" in low or "invalid x-api-key" in low:
+        return "The AI provider rejected the API key (check ANTHROPIC_API_KEY)."
+    if "rate" in low and "limit" in low or "429" in low:
+        return "The AI provider is rate-limiting requests — please try again shortly."
+    return f"Generation failed: {msg[:180]}" if msg else "Generation failed. Please try again."
+
+
 async def _safe_generate(request_id: str) -> None:
-    """Background wrapper: run generation, and on any failure mark the request errored + emit SSE."""
+    """Background wrapper: run generation; on failure LOG the full error, mark the request errored,
+    and emit a 'failed' SSE with an actionable reason."""
     try:
         await run_generation(request_id)
     except Exception as exc:  # noqa: BLE001 — degrade gracefully, surface to the loading screen
+        logger.exception("Generation failed for request %s", request_id)
+        reason = _failure_reason(exc)
         async with SessionLocal() as db:
             lr = await db.scalar(
                 select(LearningRequest).where(LearningRequest.request_id == request_id)
@@ -76,9 +94,7 @@ async def _safe_generate(request_id: str) -> None:
                 lr.status = "error"
                 lr.error_message = str(exc)[:500]
                 await db.commit()
-        await task_registry.publish(
-            request_id, "failed", {"message": "Generation failed. Please try again."}
-        )
+        await task_registry.publish(request_id, "failed", {"message": reason})
 
 
 @router.post("/{request_id}/generate", status_code=status.HTTP_202_ACCEPTED)

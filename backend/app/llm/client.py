@@ -208,6 +208,13 @@ async def generate_structured[OutputT: BaseModel](
     instruction that restates the bounds (since 4.8 strips schema min/max). Returns the validated
     model and normalized :class:`Usage`. Caching is asserted observable and logged.
     """
+    # Fail fast with a clear, actionable error only when there is genuinely no client available:
+    # no explicit client arg, no injected singleton (tests use set_client), and no API key.
+    if client is None and _client is None and not settings.anthropic_api_key:
+        raise GenerationError(
+            "The AI service is not configured: ANTHROPIC_API_KEY is missing on the server. "
+            "Set it in .env (and REPLICATE_API_TOKEN for images), then redeploy."
+        )
     cli = client or get_client()
     model = model or settings.model_id
     system = _system_blocks(system_blocks)

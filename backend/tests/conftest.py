@@ -9,6 +9,10 @@ os.environ.setdefault("APP_SECRET", "test-secret-please-ignore")
 os.environ.setdefault("ADMIN_USERNAME", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "admin12345")
 os.environ.setdefault("SA_ENV", "test")
+# Hermetic: never let a real key (env or a stray .env loaded by Settings) reach a unit test —
+# tests mock the LLM. Forced (not setdefault) so it wins over any ../.env ANTHROPIC_API_KEY.
+os.environ["ANTHROPIC_API_KEY"] = ""
+os.environ["REPLICATE_API_TOKEN"] = ""
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

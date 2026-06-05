@@ -32,19 +32,28 @@ from .preprocess import preprocess
 
 CONFIDENCE_CLARIFY_THRESHOLD = 0.5
 
-_REFUSAL_REASON = (
-    "I can only help with school and learning topics, and I keep things safe for everyone. "
-    "Let's find a great subject to study instead!"
-)
-_CLARIFY_QUESTION = (
-    "I want to help! Could you tell me a bit more about what you'd like to learn, and roughly what "
-    "grade or age level?"
-)
-_CLARIFY_SUGGESTIONS = (
-    "Photosynthesis for 5th grade",
-    "Quiz me on fractions",
-    "Explain the water cycle",
-)
+# Localized by the DETECTED prompt language (falls back to English). Keep generic + friendly.
+_REFUSAL_REASON: dict[str, str] = {
+    "en": "I can only help with school and learning topics, and I keep things safe for everyone. "
+    "Let's find a great subject to study instead!",
+    "cs": "Pomáhám jen se školními a vzdělávacími tématy a dbám na to, aby bylo všechno bezpečné. "
+    "Pojďme najít skvělé téma ke studiu!",
+}
+_CLARIFY_QUESTION: dict[str, str] = {
+    "en": "I want to help! Could you tell me a bit more about what you'd like to learn, and roughly "
+    "what grade or age level?",
+    "cs": "Rád/a pomůžu! Můžeš mi prozradit trochu víc o tom, co se chceš naučit, a přibližně pro "
+    "jakou třídu nebo věk?",
+}
+_CLARIFY_SUGGESTIONS: dict[str, tuple[str, ...]] = {
+    "en": ("The water cycle for 5th grade", "Quiz me on fractions", "Basics of optics for 6th grade"),
+    "cs": ("Koloběh vody pro 5. třídu", "Vyzkoušej mě ze zlomků", "Základy optiky pro 6. třídu"),
+}
+
+
+def _loc(table: dict, language: str | None):
+    """Pick a localized string/tuple by language (2-letter), falling back to English."""
+    return table.get((language or "en")[:2].lower(), table["en"])
 
 
 # Instruction / injection lead-ins to strip from the *topic* so no imperative ever survives into a
@@ -172,11 +181,13 @@ def build_decision(
     # Apply age/grade context to avoid over-blocking legitimate older-student topics.
     effective_flags = safety.filter_safety_flags(clean)
 
+    lang = clean.language
+
     # 2) Other safety flags -> refuse + redirect.
     if effective_flags:
         return RefuseDecision(
             request_id=request_id,
-            reason=_REFUSAL_REASON,
+            reason=_loc(_REFUSAL_REASON, lang),
             redirect_suggestions=safety.refusal_redirect_suggestions(clean),
         )
 
@@ -184,7 +195,7 @@ def build_decision(
     if (not clean.is_educational) or clean.off_task:
         return RefuseDecision(
             request_id=request_id,
-            reason=_REFUSAL_REASON,
+            reason=_loc(_REFUSAL_REASON, lang),
             redirect_suggestions=safety.refusal_redirect_suggestions(clean),
         )
 
@@ -192,8 +203,8 @@ def build_decision(
     if clean.classifier_confidence < CONFIDENCE_CLARIFY_THRESHOLD:
         return ClarifyDecision(
             request_id=request_id,
-            question=_CLARIFY_QUESTION,
-            suggestions=list(_CLARIFY_SUGGESTIONS),
+            question=_loc(_CLARIFY_QUESTION, lang),
+            suggestions=list(_loc(_CLARIFY_SUGGESTIONS, lang)),
         )
 
     # 5) Proceed — with CLEAN fields only. If injection was detected we proceed anyway, but the

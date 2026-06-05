@@ -77,6 +77,19 @@ def intent(**kw) -> StructuredIntent:
     return StructuredIntent(**base)
 
 
+def install_llm(monkeypatch, return_intent: StructuredIntent):
+    """Point the LLM classifier at a fake B2 client.classify (with an API key set). The LLM is
+    authoritative for intent now, so pipeline tests that need a classification mock it here."""
+    monkeypatch.setattr("app.core.config.settings.anthropic_api_key", "test-key")
+
+    async def fake_classify(*, system_blocks, user, output_model):
+        return (return_intent, None)
+
+    import app.llm.client as cl
+
+    monkeypatch.setattr(cl, "classify", fake_classify, raising=False)
+
+
 # --------------------------------------------------------------------------- Layer 1: preprocess
 class TestPreprocess:
     def test_nfkc_folds_fullwidth(self):
@@ -286,7 +299,8 @@ class TestRateLimit:
 
 # --------------------------------------------------------------------------- Layer 5: audit
 class TestAudit:
-    async def test_audit_row_written_no_raw_topic(self, db, ctx):
+    async def test_audit_row_written_no_raw_topic(self, db, ctx, monkeypatch):
+        install_llm(monkeypatch, intent(subject=Subject.SCIENCE, topic="photosynthesis"))
         d = await sanitize_request(db, "Teach me photosynthesis for 5th grade", ctx, "aud-1")
         await db.commit()
         assert d.type == DecisionType.PROCEED
@@ -323,7 +337,9 @@ class TestAudit:
 
 # --------------------------------------------------------------------------- end-to-end orchestration
 class TestSanitizeRequest:
-    async def test_benign_proceeds(self, db, ctx):
+    async def test_benign_proceeds(self, db, ctx, monkeypatch):
+        install_llm(monkeypatch, intent(subject=Subject.MATH, topic="fractions",
+                                        grade_band=GradeBand.G3_5))
         d = await sanitize_request(db, "I want to learn fractions for grade 4", ctx, "e2e-1")
         assert isinstance(d, ProceedDecision)
         assert d.intent.subject == Subject.MATH
@@ -334,6 +350,7 @@ class TestSanitizeRequest:
         assert d.resources
 
     async def test_rate_limit_enforced_in_pipeline(self, db, monkeypatch):
+        install_llm(monkeypatch, intent(subject=Subject.GEOGRAPHY, topic="rivers"))
         small = ratelimit.TokenBucketLimiter(per_min=1, per_day=100)
         monkeypatch.setattr(ratelimit, "limiter", small)
         c = RequestContext(ip_hash="rl-pipe", user_agent="x", profile_id=None)
@@ -343,38 +360,34 @@ class TestSanitizeRequest:
         assert getattr(exc.value, "status_code", None) == 429
 
     async def test_llm_classifier_path_is_used_when_available(self, db, ctx, monkeypatch):
-        """If B2's client exposes classify_intent, classifier.classify must use it (mocked here)."""
+        """classifier.classify must call B2's client.classify(system_blocks, user, output_model)
+        with the cleaned text nonce-wrapped (spotlighting)."""
         called = {}
 
-        async def fake_classify_intent(*, system, content, nonce, model, output_format):
-            called["nonce"] = nonce
-            called["content"] = content
-            return StructuredIntent(
-                subject=Subject.GEOGRAPHY,
-                topic="rivers of europe",
-                mode=Mode.STUDY,
-                grade_band=GradeBand.G6_8,
-                language="en",
-                is_educational=True,
-                classifier_confidence=0.95,
+        async def fake_classify(*, system_blocks, user, output_model):
+            called["user"] = user
+            return (
+                StructuredIntent(
+                    subject=Subject.GEOGRAPHY, topic="rivers of europe", mode=Mode.STUDY,
+                    grade_band=GradeBand.G6_8, language="en", is_educational=True,
+                    classifier_confidence=0.95,
+                ),
+                None,
             )
 
-        # Provide a fake llm.client module attribute resolution.
-        import types
+        monkeypatch.setattr("app.core.config.settings.anthropic_api_key", "test-key")
+        import app.llm.client as cl
 
-        import app.sanitization.classifier as clf
-        fake_mod = types.SimpleNamespace(classify_intent=fake_classify_intent)
-        monkeypatch.setattr(clf, "_classify_via_llm", clf._classify_via_llm)
-
-        # Patch the lazy import target.
-        import app.llm as llm_pkg
-        monkeypatch.setattr(llm_pkg, "client", fake_mod, raising=False)
-        import sys
-        monkeypatch.setitem(sys.modules, "app.llm.client", fake_mod)
+        monkeypatch.setattr(cl, "classify", fake_classify, raising=False)
 
         d = await sanitize_request(db, "Teach me the rivers of Europe", ctx, "llm-1")
         assert isinstance(d, ProceedDecision)
         assert d.intent.subject == Subject.GEOGRAPHY
-        # nonce wrapping happened and the cleaned text was wrapped in the delimiter block.
-        assert called.get("nonce")
-        assert "student_input::" in called.get("content", "")
+        assert "student_input::" in called.get("user", "")
+
+    async def test_unavailable_classifier_fails_closed(self, db, ctx, monkeypatch):
+        """No API key → the pipeline fails closed with HTTP 503 (no keyword guessing)."""
+        monkeypatch.setattr("app.core.config.settings.anthropic_api_key", "")
+        with pytest.raises(HTTPException) as exc:
+            await sanitize_request(db, "teach me about the moon", ctx, "down-1")
+        assert exc.value.status_code == 503

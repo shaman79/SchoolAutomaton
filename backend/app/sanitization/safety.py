@@ -65,6 +65,25 @@ def _lang_key(language: str, mapping: dict) -> str:
     return "en"
 
 
+# Minimal, deterministic self-harm safety net — a tiny set of unambiguous phrases (en + cs). This is
+# defense-in-depth: it forces crisis routing even if the LLM classifier is unavailable or misses it.
+# Intentionally small and high-precision (not a general classifier) to avoid false positives.
+_SELF_HARM_PHRASES: tuple[str, ...] = (
+    "kill myself", "killing myself", "want to die", "wanna die", "end my life", "suicide",
+    "suicidal", "self harm", "self-harm", "hurt myself", "cut myself", "no reason to live",
+    "don't want to live", "want to disappear",
+    # Czech
+    "zabít se", "zabiju se", "chci umřít", "nechci žít", "ukončit život", "sebevražda",
+    "ublížit si", "ublížím si", "nemá cenu žít",
+)
+
+
+def looks_like_crisis(text: str) -> bool:
+    """True if the cleaned text contains an unambiguous self-harm phrase (deterministic net)."""
+    low = (text or "").lower()
+    return any(p in low for p in _SELF_HARM_PHRASES)
+
+
 def is_crisis(safety_flags: list[SafetyFlag]) -> bool:
     """Self-harm is the only crisis route (localized resources, never LLM counseling)."""
     return SafetyFlag.SELF_HARM in safety_flags

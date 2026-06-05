@@ -78,14 +78,35 @@ async def test_request_prompt_too_long_is_413(client):
 
 
 @pytest.mark.asyncio
-async def test_request_returns_a_decision(client):
-    # B1's sanitizer is implemented; with no LLM key it falls back to a heuristic classifier and
-    # still returns a valid routing Decision (never a crash, never echoing the raw prompt).
-    prompt = "teach me photosynthesis, grade 5"
+async def test_request_without_ai_fails_closed(client):
+    # The LLM is authoritative for intent. With no configured key the pipeline FAILS CLOSED
+    # (HTTP 503) — it never falls back to keyword-guessing the intent.
+    r = await client.post("/api/v1/requests", json={"prompt": "teach me photosynthesis, grade 5"})
+    assert r.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_request_proceeds_with_ai(client, monkeypatch):
+    # With the LLM available (mocked), a clear prompt proceeds; the raw prompt is never echoed.
+    from app.schemas.intent import StructuredIntent
+
+    monkeypatch.setattr("app.core.config.settings.anthropic_api_key", "test-key")
+
+    async def fake_classify(*, system_blocks, user, output_model):
+        return (
+            StructuredIntent(subject="science", topic="photosynthesis", grade_band="G3-5",
+                             language="en", classifier_confidence=0.95),
+            None,
+        )
+
+    import app.llm.client as cl
+
+    monkeypatch.setattr(cl, "classify", fake_classify, raising=False)
+
+    prompt = "teach me about photosynthesis, grade 5"
     r = await client.post("/api/v1/requests", json={"prompt": prompt})
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["type"] in {"proceed", "clarify", "refuse", "crisis"}
+    assert body["type"] == "proceed"
     assert "request_id" in body
-    # The raw prompt must never be echoed back verbatim in the decision payload.
-    assert prompt not in r.text
+    assert prompt not in r.text  # raw prompt never echoed back
