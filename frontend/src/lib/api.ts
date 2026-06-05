@@ -15,6 +15,7 @@ import type {
   ProfileEnvelope,
   ProfileSettings,
   Quiz,
+  QuizReview,
   RequestStatus,
 } from '@/types/session'
 
@@ -96,6 +97,17 @@ export const api = {
 
   getMyRequests: () => request<LearningSessionSummary[]>('/profiles/me/requests'),
 
+  /** Ready lessons/quizzes to revisit or explore next. Seed with `requestId` (a just-finished
+   *  session) for "more like this"; omit it on the home screen for the learner's recent sessions. */
+  getRecommendations: (params: { requestId?: string; subject?: string; limit?: number } = {}) => {
+    const qs = new URLSearchParams()
+    if (params.requestId) qs.set('request_id', params.requestId)
+    if (params.subject) qs.set('subject', params.subject)
+    if (params.limit) qs.set('limit', String(params.limit))
+    const q = qs.toString()
+    return request<LearningSessionSummary[]>(`/profiles/me/recommendations${q ? `?${q}` : ''}`)
+  },
+
   getTree: (subject?: string) =>
     request<unknown>(`/profiles/me/tree${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),
 
@@ -142,6 +154,9 @@ export const api = {
 
   completeAttempt: (attemptId: number) =>
     request<unknown>(`/attempts/${attemptId}/complete`, { method: 'POST', body: {} }),
+
+  /** Reveal the learner's most recent attempt at a quiz for review (answers + explanations). */
+  getQuizReview: (quizId: number) => request<QuizReview>(`/quizzes/${quizId}/review`),
 
   // ------------------------------------------------------------------------- review
   getDue: (limit?: number, subject?: string) => {

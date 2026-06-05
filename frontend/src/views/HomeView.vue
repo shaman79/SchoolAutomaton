@@ -9,7 +9,7 @@
  *   crisis   -> dedicated, non-dismissable CrisisCard (resources + AI disclosure)
  * Mobile-first, WCAG 2.2 AA (>=44px targets, aria-live status, visible focus, never color-only).
  */
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -17,10 +17,12 @@ import CrisisCard from '@/components/CrisisCard.vue'
 import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
+import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
+import { api } from '@/lib/api'
 import { usePromptStore } from '@/stores/prompt'
 import { useSessionStore } from '@/stores/session'
-import type { Decision } from '@/types/session'
+import type { Decision, LearningSessionSummary } from '@/types/session'
 
 const { t, tm } = useI18n()
 const router = useRouter()
@@ -33,6 +35,18 @@ const busy = ref(false)
 const errorMsg = ref<string | null>(null)
 const decision = ref<Decision | null>(null)
 const promptEl = ref<HTMLTextAreaElement | null>(null)
+const suggestions = ref<LearningSessionSummary[]>([])
+
+// Returning learners (a saved resume code) get a "pick up where you left off" strip of their own
+// recent lessons/quizzes — reuse over regenerating the same topic. Best-effort; silent on failure.
+onMounted(async () => {
+  if (!session.resumeCode) return
+  try {
+    suggestions.value = await api.getRecommendations({ limit: 4 })
+  } catch {
+    /* optional */
+  }
+})
 
 // Example prompts are localized (array). Fall back gracefully if a locale lacks them.
 const examples = computed<string[]>(() => {
@@ -206,6 +220,9 @@ function applyRedirect(suggestion: string) {
           </SaChip>
         </div>
       </div>
+
+      <!-- Pick up where you left off (returning learners). -->
+      <SuggestionsStrip :items="suggestions" :title="t('home.continue_title')" />
 
       <!-- Once a profile exists, show the learner THEIR code to save; otherwise offer to enter one. -->
       <ResumeCodeCard v-if="session.resumeCode" />

@@ -15,6 +15,7 @@
     "generic_error": "Něco se pokazilo. Zkus to prosím znovu.",
     "refuse_try": "Co takhle místo toho jeden z těchto?",
     "have_code": "Máš kód pro pokračování? Pokračuj v učení",
+    "continue_title": "Pokračuj, kde jsi přestal/a",
     "example_list": [
       "Nauč mě o koloběhu vody pro 3. třídu",
       "Vyzkoušej mě z Velké francouzské revoluce, střední škola",
@@ -55,9 +56,30 @@
   "results": {
     "title": "Skvělá práce!",
     "score": "Skóre",
+    "accuracy": "Úspěšnost",
     "xp_earned": "Získané XP",
     "review": "Projít odpovědi",
-    "again": "Naučit se něco dalšího"
+    "again": "Naučit se něco dalšího",
+    "view_progress": "Můj pokrok",
+    "new_badges": "Nové odznaky",
+    "growth": "Co vyrostlo",
+    "similar": "Něco podobného",
+    "subpar": "Chceš to zkusit znovu? Tahle témata jsou podobná."
+  },
+  "stats": {
+    "title": "Můj pokrok",
+    "no_profile": "Začni se učit a tvůj pokrok se objeví tady.",
+    "badges_title": "Odznaky",
+    "tree_title": "Tvoje zahrada vědomostí"
+  },
+  "review": {
+    "question_n": "Otázka {n}",
+    "correct_of": "{correct} z {total} správně",
+    "your_answer": "Tvoje odpověď",
+    "correct_answer": "Správná odpověď",
+    "not_answered": "Bez odpovědi",
+    "empty_title": "Zatím není co procházet",
+    "empty_body": "Vyplň tento kvíz a tady si pak budeš moct projít své odpovědi."
   },
   "resume": {
     "title": "Pokračovat v učení",
@@ -68,6 +90,9 @@
     "not_found": "Tento kód se nám nepodařilo najít. Zkontroluj ho prosím a zkus to znovu.",
     "copy": "Kopírovat kód",
     "copied": "Kód zkopírován!",
+    "share": "Sdílet odkaz",
+    "link_copied": "Odkaz zkopírován!",
+    "share_text": "Pokračuj v učení na SchoolAutomaton — klepnutím navážeš tam, kde jsme skončili.",
     "created_toast": "Postup uložen! Tvůj kód pro pokračování je {code} — ulož si ho (najdeš ho v ⚙ Nastavení).",
     "copy_failed": "Nepodařilo se zkopírovat — kód vyber podržením a zkopíruj."
   },

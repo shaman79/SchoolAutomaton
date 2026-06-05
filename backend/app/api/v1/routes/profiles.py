@@ -18,7 +18,7 @@ from ....schemas.profile import (
     ProfileSettingsUpdate,
     ResumeIn,
 )
-from ....services import profile_service, tree_service
+from ....services import profile_service, recommendation_service, tree_service
 from ...deps import get_db, get_profile
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
@@ -89,6 +89,24 @@ async def list_my_requests(
         )
         for lr, lesson, quiz in rows
     ]
+
+
+@router.get("/me/recommendations", response_model=list[LearningSessionSummary])
+async def list_recommendations(
+    profile: Profile = Depends(get_profile),
+    db: AsyncSession = Depends(get_db),
+    request_id: str | None = Query(default=None),
+    subject: str | None = Query(default=None),
+    limit: int = Query(default=6, ge=1, le=20),
+):
+    """Ready lessons/quizzes to revisit or explore next.
+
+    With ``request_id`` (a just-finished session) the picks are seeded by that session's subject +
+    topic for "more like this" reuse; without it they are the learner's own recent sessions for the
+    home screen. Only ready, content-bearing requests are returned."""
+    return await recommendation_service.suggest(
+        db, profile, request_id=request_id, subject=subject, limit=limit
+    )
 
 
 @router.patch("/me/settings", response_model=ProfileSettingsPublic)

@@ -20,6 +20,7 @@ import SafeContent from '@/components/content/SafeContent.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SaButton from '@/components/common/SaButton.vue'
+import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -28,7 +29,7 @@ import { useLessonStore } from '@/stores/lesson'
 import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore } from '@/stores/session'
 import type { AnswerEvent } from '@/types/question'
-import type { GradeResult, LessonSection } from '@/types/session'
+import type { GradeResult, LearningSessionSummary, LessonSection } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
 const { t } = useI18n()
@@ -39,6 +40,7 @@ const session = useSessionStore()
 const { celebrateCorrect } = useCelebration()
 
 const failed = ref(false)
+const suggestions = ref<LearningSessionSummary[]>([])
 
 const INTERACTIVE_KINDS = new Set([
   'pretest',
@@ -132,6 +134,12 @@ onMounted(async () => {
     else failed.value = true
   } catch {
     failed.value = true
+  }
+  // "More like this" picks for the closing — best-effort, never blocks the lesson.
+  try {
+    suggestions.value = await api.getRecommendations({ requestId: props.sessionId, limit: 3 })
+  } catch {
+    /* recommendations are optional */
   }
 })
 </script>
@@ -248,11 +256,17 @@ onMounted(async () => {
         <p class="text-[var(--color-ink-soft)]">{{ t('lesson.review_body') }}</p>
       </section>
 
-      <!-- Growth-mindset closing -->
+      <!-- More like this (reuse existing lessons/quizzes) -->
+      <SuggestionsStrip :items="suggestions" :title="t('results.similar')" />
+
+      <!-- Growth-mindset closing + onward CTAs -->
       <section class="sa-lesson__close" role="note">
         <p class="sa-lesson__close-text">{{ t('lesson.closing') }}</p>
         <div class="sa-lesson__close-actions">
-          <SaButton variant="primary" to="/" icon="sparkle">{{ t('lesson.learn_more') }}</SaButton>
+          <SaButton variant="primary" icon="star" :to="{ name: 'stats' }">
+            {{ t('results.view_progress') }}
+          </SaButton>
+          <SaButton variant="ghost" to="/" icon="sparkle">{{ t('lesson.learn_more') }}</SaButton>
         </div>
       </section>
     </template>

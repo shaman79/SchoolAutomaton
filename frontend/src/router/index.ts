@@ -28,7 +28,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/ResultsView.vue'),
     props: true,
   },
+  {
+    path: '/review/:sessionId',
+    name: 'review',
+    component: () => import('@/views/ReviewView.vue'),
+    props: true,
+  },
   { path: '/history', name: 'history', component: () => import('@/views/HistoryView.vue') },
+  { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
   { path: '/resume', name: 'resume', component: () => import('@/views/ResumeView.vue') },
   { path: '/admin/login', name: 'admin-login', component: () => import('@/views/admin/AdminLoginView.vue') },
   {

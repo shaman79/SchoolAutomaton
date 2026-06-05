@@ -4,21 +4,33 @@
  * with the dash group) to re-adopt a server profile. If the device already has a freshly created
  * code, we surface it so the learner can save it. Mobile-first, WCAG 2.2 AA.
  */
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
 import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 
 const code = ref('')
 const error = ref<string | null>(null)
 const busy = ref(false)
+
+// A shared link carries the code in `?code=` — prefill it and resume straight away (one tap for the
+// parent/other device). If it fails, the code stays in the box so they can fix and retry.
+onMounted(() => {
+  const q = route.query.code
+  const incoming = Array.isArray(q) ? q[0] : q
+  if (incoming) {
+    code.value = String(incoming).trim()
+    void go()
+  }
+})
 
 // Surface a just-created code (shown once) so the learner can copy/save it.
 const savedCode = computed(() => session.lastResumeCodeForDisplay)

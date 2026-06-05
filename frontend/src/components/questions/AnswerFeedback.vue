@@ -55,8 +55,12 @@ const icon = computed(() => {
   }
 })
 
-const headline = computed(() => {
-  if (props.feedback?.text) return props.feedback.text
+// A short, fixed status label. Kept terse on purpose: the verbose server feedback.text used to be
+// shown here as a big headline and read as repetitive ("Skvělá práce!" on every answer). The
+// valuable content is the explanation / misconception below — so when those are present we keep the
+// status as a screen-reader-only announcement (the icon shape still carries the non-color cue), and
+// only surface a visible label when there is nothing else to show.
+const statusLabel = computed(() => {
   switch (state.value) {
     case 'correct':
       return t('common.correct')
@@ -66,6 +70,8 @@ const headline = computed(() => {
       return t('common.not_yet')
   }
 })
+
+const hasBody = computed(() => Boolean(props.explanation || props.misconception))
 
 // brief enter animation — gated on reduced motion
 const animate = ref(false)
@@ -120,7 +126,7 @@ watch(state, trigger)
   >
     <div class="sa-feedback__head">
       <span class="sa-feedback__icon" aria-hidden="true">{{ icon }}</span>
-      <span class="sa-feedback__headline">{{ headline }}</span>
+      <span class="sa-feedback__headline" :class="{ 'sr-only': hasBody }">{{ statusLabel }}</span>
     </div>
 
     <SafeContent

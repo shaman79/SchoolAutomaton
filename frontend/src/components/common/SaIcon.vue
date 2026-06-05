@@ -20,6 +20,7 @@ export type IconName =
   | 'trophy'
   | 'lock'
   | 'books'
+  | 'share'
 
 const props = withDefaults(
   defineProps<{
@@ -73,6 +74,11 @@ const ICONS: Record<IconName, { stroke?: string; fill?: string }> = {
     // Open book with a centre spine — "my lessons".
     stroke:
       'M12 6.5C10.5 5.4 8.4 5 6.3 5 5.2 5 4.2 5.1 3.5 5.4v12c.7-.3 1.7-.4 2.8-.4 2.1 0 4.2.4 5.7 1.5M12 6.5c1.5-1.1 3.6-1.5 5.7-1.5 1.1 0 2.1.1 2.8.4v12c-.7-.3-1.7-.4-2.8-.4-2.1 0-4.2.4-5.7 1.5M12 6.5V18',
+  },
+  share: {
+    // Three nodes joined — the standard "share" glyph.
+    stroke:
+      'M18 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM6 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6',
   },
 }
 

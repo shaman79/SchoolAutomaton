@@ -205,3 +205,27 @@ export interface Quiz {
   quiz_type: string
   questions: QuizQuestion[]
 }
+
+// ----- quiz review (post-completion, answers revealed) -----
+export interface QuizReviewItem {
+  ordinal: number
+  points: number
+  item: ItemPublic
+  submitted_value: unknown
+  is_correct: boolean
+  partial_credit: number
+  correct_answer: unknown
+  explanation: string | null
+}
+export interface QuizReview {
+  quiz_id: number
+  request_id: string
+  title: string
+  subject: string
+  attempt_id: number
+  completed_at: string | null
+  correct_count: number
+  total: number
+  accuracy: number
+  items: QuizReviewItem[]
+}

@@ -70,6 +70,21 @@
   --shadow-card: 0 0 0 2px #000;
   --shadow-pop: 0 0 0 3px #000;
 }
+/* Dyslexia-friendly reading: a warm, low-glare cream palette (white pages can wash out / "shimmer"
+   for dyslexic readers) plus the spacing aids that the evidence backs most — wider letter/word
+   spacing and taller lines. The OpenDyslexic typeface stays an independent Font choice; selecting it
+   here is orthogonal. Tokens set the palette; the spacing is applied in @layer base below. */
+:root[data-theme='dyslexia'] {
+  --color-bg: #f6efe1;
+  --color-bg-tint: #efe6d2;
+  --color-surface: #fbf6ec;
+  --color-surface-2: #f1e9d8;
+  --color-ink: #2c2722;
+  --color-ink-soft: #5c5447;
+  --color-line: #e2d8c2;
+  --color-primary: #5a3fd6;
+  --color-primary-strong: #46309f;
+}
 
 @layer base {
   html {
@@ -98,6 +113,16 @@
   .prose-reading {
     max-width: 62ch;
     line-height: 1.7;
+  }
+  /* Dyslexia-friendly spacing: open up letters, words and lines for easier tracking. */
+  :root[data-theme='dyslexia'] body {
+    letter-spacing: 0.035em;
+    word-spacing: 0.12em;
+    line-height: 1.85;
+  }
+  :root[data-theme='dyslexia'] .prose-reading {
+    max-width: 56ch;
+    line-height: 2;
   }
   /* Visible, generous focus ring for keyboard users */
   :focus-visible {

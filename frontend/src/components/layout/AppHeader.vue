@@ -33,12 +33,12 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
         <span class="hidden text-lg sm:inline">{{ t('app.name') }}</span>
       </RouterLink>
 
-      <!-- Compact gamification bar: authenticated learners only. -->
-      <div
+      <!-- Compact gamification bar: authenticated learners only. Taps through to full progress. -->
+      <RouterLink
         v-if="session.isAuthenticated && session.gamification"
-        class="ml-auto flex min-w-0 items-center gap-2"
-        role="group"
-        :aria-label="t('gamification.bar_label')"
+        :to="{ name: 'stats' }"
+        class="ml-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-pill)] px-1 py-0.5 hover:bg-[var(--color-surface-2)]"
+        :aria-label="t('stats.title')"
       >
         <LevelBadge :level="session.level" size="sm" />
         <StreakFlame :streak="session.gamification.streak" />
@@ -48,7 +48,7 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
           hide-badge
           size="sm"
         />
-      </div>
+      </RouterLink>
 
       <!-- My lessons (history) — available once a learner has a profile/resume code. -->
       <RouterLink

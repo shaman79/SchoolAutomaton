@@ -15,6 +15,7 @@
     "generic_error": "Something went wrong. Please try again.",
     "refuse_try": "How about one of these instead?",
     "have_code": "Have a resume code? Continue learning",
+    "continue_title": "Pick up where you left off",
     "example_list": [
       "Learn about the water cycle for 3rd grade",
       "Quiz me on the French Revolution, high school",
@@ -55,9 +56,30 @@
   "results": {
     "title": "Nice work!",
     "score": "Score",
+    "accuracy": "Accuracy",
     "xp_earned": "XP earned",
     "review": "Review answers",
-    "again": "Learn something else"
+    "again": "Learn something else",
+    "view_progress": "See my progress",
+    "new_badges": "New badges",
+    "growth": "What grew",
+    "similar": "More like this",
+    "subpar": "Want another go? These cover similar ground."
+  },
+  "stats": {
+    "title": "My progress",
+    "no_profile": "Start learning and your progress will show up here.",
+    "badges_title": "Badges",
+    "tree_title": "Your knowledge garden"
+  },
+  "review": {
+    "question_n": "Question {n}",
+    "correct_of": "{correct} of {total} correct",
+    "your_answer": "Your answer",
+    "correct_answer": "Correct answer",
+    "not_answered": "Not answered",
+    "empty_title": "Nothing to review yet",
+    "empty_body": "Take this quiz and you'll be able to review your answers here."
   },
   "resume": {
     "title": "Continue learning",
@@ -68,6 +90,9 @@
     "not_found": "We couldn't find that code. Please check it and try again.",
     "copy": "Copy code",
     "copied": "Code copied!",
+    "share": "Share link",
+    "link_copied": "Link copied!",
+    "share_text": "Continue learning on SchoolAutomaton — tap to pick up where we left off.",
     "created_toast": "Progress saved! Your code to continue is {code} — keep it safe (find it under ⚙ Settings).",
     "copy_failed": "Couldn't copy — long-press or select the code to copy it."
   },

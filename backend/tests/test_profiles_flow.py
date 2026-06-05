@@ -89,6 +89,162 @@ async def test_my_requests_history(client):
 
 
 @pytest.mark.asyncio
+async def test_recommendations_seeded_and_home(client):
+    code = (await client.post("/api/v1/profiles", json={})).json()["resume_code"]
+    me = (await client.get("/api/v1/profiles/me", headers={"X-Resume-Code": code})).json()
+    pid = me["profile"]["id"]
+
+    from app.db.session import SessionLocal
+    from app.models import LearningRequest, Lesson, Quiz
+
+    def _lesson(topic, subject):
+        return Lesson(
+            request_id="x", topic=topic, detected_language="en", grade_band="G3-5",
+            subject=subject, target_fkgl=6.0, objectives_json=[], model_id="m", prompt_version="v",
+        )
+
+    async with SessionLocal() as db:
+        seed_l = _lesson("Photosynthesis in plants", "biology")
+        b_l = _lesson("Animal cells", "biology")
+        c_l = _lesson("Adding fractions", "math")
+        db.add_all([seed_l, b_l, c_l])
+        await db.flush()
+        a_q = Quiz(
+            request_id="rec-a", title="Photosynthesis and sunlight", language="en",
+            grade_band="G3-5", subject="biology", model_id="m", prompt_version="v",
+        )
+        db.add(a_q)
+        await db.flush()
+
+        def _req(rid, *, mode, lesson_id=None, quiz_id=None):
+            return LearningRequest(
+                request_id=rid, profile_id=pid, decision_type="proceed", mode=mode,
+                status="ready", lesson_id=lesson_id, quiz_id=quiz_id, structured_intent_json={},
+                detected_language="en", grade_band="G3-5", prompt_version="v", model_id="m",
+            )
+
+        db.add_all([
+            _req("rec-seed", mode="study", lesson_id=seed_l.id),
+            _req("rec-a", mode="test", quiz_id=a_q.id),
+            _req("rec-b", mode="study", lesson_id=b_l.id),
+            _req("rec-c", mode="study", lesson_id=c_l.id),
+        ])
+        await db.commit()
+
+    # Seeded by the just-finished session: excludes itself, ranks the topic+subject match first.
+    r = await client.get(
+        "/api/v1/profiles/me/recommendations?request_id=rec-seed",
+        headers={"X-Resume-Code": code},
+    )
+    assert r.status_code == 200, r.text
+    ids = [it["request_id"] for it in r.json()]
+    assert "rec-seed" not in ids
+    assert ids[0] == "rec-a"  # highest topic overlap + same subject
+    assert "rec-b" in ids
+
+    # No seed (home screen): the learner's own recent ready sessions.
+    r = await client.get("/api/v1/profiles/me/recommendations", headers={"X-Resume-Code": code})
+    assert r.status_code == 200, r.text
+    home_ids = {it["request_id"] for it in r.json()}
+    assert {"rec-seed", "rec-a", "rec-b", "rec-c"} <= home_ids
+
+    # Requires a resume code.
+    assert (await client.get("/api/v1/profiles/me/recommendations")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_quiz_review_reveals_answers(client):
+    from datetime import UTC, datetime
+
+    code = (await client.post("/api/v1/profiles", json={})).json()["resume_code"]
+    me = (await client.get("/api/v1/profiles/me", headers={"X-Resume-Code": code})).json()
+    pid = me["profile"]["id"]
+
+    from app.db.session import SessionLocal
+    from app.models import Answer, Concept, Item, Quiz, QuizAttempt, QuizQuestion
+
+    def _mcq_item(concept_id, correct_id):
+        return Item(
+            concept_id=concept_id, item_type="mcq", bloom_tier=2, difficulty="medium",
+            item_difficulty=3, language="en", stem_markdown="Pick one", explanation="Because.",
+            payload_json={
+                "kind": "mcq", "multiple": False,
+                "options": [
+                    {"id": "a", "text": "Apple", "is_correct": correct_id == "a"},
+                    {"id": "b", "text": "Banana", "is_correct": correct_id == "b"},
+                ],
+            },
+            model_id="m", prompt_version="v",
+        )
+
+    async with SessionLocal() as db:
+        concept = Concept(slug="fruit", name="Fruit", subject="science")
+        db.add(concept)
+        await db.flush()
+        i1 = _mcq_item(concept.id, "a")
+        i2 = _mcq_item(concept.id, "b")
+        db.add_all([i1, i2])
+        await db.flush()
+        quiz = Quiz(
+            request_id="rev-1", title="Fruit quiz", language="en", grade_band="G3-5",
+            subject="science", model_id="m", prompt_version="v",
+        )
+        db.add(quiz)
+        await db.flush()
+        quiz_id = quiz.id
+        db.add_all([
+            QuizQuestion(quiz_id=quiz_id, item_id=i1.id, ordinal=1, points=10),
+            QuizQuestion(quiz_id=quiz_id, item_id=i2.id, ordinal=2, points=10),
+        ])
+        attempt = QuizAttempt(
+            profile_id=pid, quiz_id=quiz_id, max_score=20, score=10, accuracy=0.5,
+            completed_at=datetime.now(UTC),
+        )
+        db.add(attempt)
+        await db.flush()
+        # i1 answered correctly, i2 answered incorrectly.
+        db.add_all([
+            Answer(attempt_id=attempt.id, profile_id=pid, item_id=i1.id, submitted_value_json="a",
+                   is_correct=True, partial_credit=1.0, fsrs_rating=4, xp_awarded=10),
+            Answer(attempt_id=attempt.id, profile_id=pid, item_id=i2.id, submitted_value_json="a",
+                   is_correct=False, partial_credit=0.0, fsrs_rating=1, xp_awarded=0),
+        ])
+        await db.commit()
+
+    r = await client.get(f"/api/v1/quizzes/{quiz_id}/review", headers={"X-Resume-Code": code})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["title"] == "Fruit quiz"
+    assert body["total"] == 2
+    assert body["correct_count"] == 1
+    items = body["items"]
+    assert [it["ordinal"] for it in items] == [1, 2]
+    assert items[0]["is_correct"] is True
+    assert items[0]["submitted_value"] == "a"
+    assert items[0]["correct_answer"] == "a"
+    assert items[0]["explanation"] == "Because."
+    # The wrong one reveals the different correct answer.
+    assert items[1]["is_correct"] is False
+    assert items[1]["correct_answer"] == "b"
+    # Public payload still carries no is_correct flags.
+    assert all("is_correct" not in opt for opt in items[0]["item"]["payload"]["options"])
+
+    # A quiz the learner never attempted → 404.
+    async with SessionLocal() as db:
+        empty = Quiz(request_id="rev-empty", title="x", language="en", grade_band="G3-5",
+                     subject="science", model_id="m", prompt_version="v")
+        db.add(empty)
+        await db.flush()
+        empty_id = empty.id
+        await db.commit()
+    r = await client.get(f"/api/v1/quizzes/{empty_id}/review", headers={"X-Resume-Code": code})
+    assert r.status_code == 404
+
+    # Requires a resume code.
+    assert (await client.get(f"/api/v1/quizzes/{quiz_id}/review")).status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_resume_normalization(client):
     r = await client.post("/api/v1/profiles", json={})
     code = r.json()["resume_code"]

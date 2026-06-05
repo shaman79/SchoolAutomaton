@@ -17,28 +17,59 @@ const { t } = useI18n()
 const session = useSessionStore()
 const code = computed(() => session.resumeCode ?? '')
 
-async function copy() {
-  if (!code.value) return
+// A shareable continue link with the code baked in — paste to a parent/another device and one tap
+// resumes (ResumeView reads ?code= and auto-resumes). The code travels in the URL on purpose; it is
+// the anonymous credential, the same thing the learner would otherwise type by hand.
+const shareUrl = computed(() =>
+  code.value
+    ? `${window.location.origin}/resume?code=${encodeURIComponent(code.value)}`
+    : '',
+)
+
+async function writeClipboard(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(code.value)
-    toast.success(t('resume.copied'))
+    await navigator.clipboard.writeText(text)
+    return true
   } catch {
     // Fallback for browsers/contexts without the async clipboard API.
     const ta = document.createElement('textarea')
-    ta.value = code.value
+    ta.value = text
     ta.setAttribute('readonly', '')
     ta.style.position = 'fixed'
     ta.style.opacity = '0'
     document.body.appendChild(ta)
     ta.select()
+    let ok = false
     try {
-      document.execCommand('copy')
-      toast.success(t('resume.copied'))
+      ok = document.execCommand('copy')
     } catch {
-      toast.error(t('resume.copy_failed'))
+      ok = false
     }
     ta.remove()
+    return ok
   }
+}
+
+async function copy() {
+  if (!code.value) return
+  if (await writeClipboard(code.value)) toast.success(t('resume.copied'))
+  else toast.error(t('resume.copy_failed'))
+}
+
+async function shareLink() {
+  if (!shareUrl.value) return
+  // Prefer the native share sheet (great on phones — straight to Messages/WhatsApp/email).
+  const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> }
+  if (typeof nav.share === 'function') {
+    try {
+      await nav.share({ title: t('app.name'), text: t('resume.share_text'), url: shareUrl.value })
+      return
+    } catch {
+      /* user dismissed or share unavailable → fall through to clipboard */
+    }
+  }
+  if (await writeClipboard(shareUrl.value)) toast.success(t('resume.link_copied'))
+  else toast.error(t('resume.copy_failed'))
 }
 </script>
 
@@ -50,7 +81,10 @@ async function copy() {
     </div>
     <div class="sa-code__row">
       <code class="sa-code__value" aria-label="code.value">{{ code }}</code>
-      <SaButton variant="ghost" size="sm" icon="check" @click="copy">{{ t('resume.copy') }}</SaButton>
+      <span class="sa-code__actions">
+        <SaButton variant="ghost" size="sm" icon="check" @click="copy">{{ t('resume.copy') }}</SaButton>
+        <SaButton variant="ghost" size="sm" icon="share" @click="shareLink">{{ t('resume.share') }}</SaButton>
+      </span>
     </div>
     <p v-if="!compact" class="sa-code__hint">{{ t('resume.save_hint') }}</p>
   </section>
@@ -89,6 +123,12 @@ async function copy() {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.sa-code__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
   flex-wrap: wrap;
 }
 .sa-code__value {

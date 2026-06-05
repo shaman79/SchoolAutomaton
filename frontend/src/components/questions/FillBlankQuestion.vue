@@ -153,19 +153,20 @@ function submit() {
   gap: 1rem;
   padding: 1.1rem;
 }
+/* Natural inline flow (not flex): the prose wraps word-by-word like real text and each control sits
+ * on the baseline of the line it falls on. line-height leaves room for the ~44px tap targets, and
+ * vertical-align centres the box against the surrounding words so it reads as part of the sentence. */
 .sa-cloze {
-  line-height: 2.4;
+  line-height: 2.6;
   font-size: 1.05rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.15rem 0;
 }
 .sa-cloze :deep(span) {
   white-space: pre-wrap;
 }
 .sa-cloze__input,
 .sa-cloze__select {
+  display: inline-block;
+  vertical-align: middle;
   min-height: var(--tap-min);
   margin: 0 0.15rem;
   padding: 0.25rem 0.6rem;

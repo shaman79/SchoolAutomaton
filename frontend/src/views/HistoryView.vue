@@ -85,7 +85,7 @@ function open(it: LearningSessionSummary) {
     </div>
 
     <ul v-else class="sa-hist__list">
-      <li v-for="it in items" :key="it.request_id">
+      <li v-for="it in items" :key="it.request_id" class="sa-hist__li">
         <component
           :is="targetOf(it) ? 'button' : 'div'"
           type="button"
@@ -109,6 +109,15 @@ function open(it: LearningSessionSummary) {
           </span>
           <SaIcon v-if="targetOf(it)" name="back" :size="18" class="sa-hist__chevron" aria-hidden="true" />
         </component>
+        <!-- Review a completed quiz anytime (gracefully shows "no attempt" if never taken). -->
+        <RouterLink
+          v-if="it.mode === 'test' && it.status === 'ready'"
+          :to="{ name: 'review', params: { sessionId: it.request_id } }"
+          class="sa-hist__review"
+        >
+          <SaIcon name="books" :size="16" aria-hidden="true" />
+          {{ t('results.review') }}
+        </RouterLink>
       </li>
     </ul>
 
@@ -157,6 +166,24 @@ function open(it: LearningSessionSummary) {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+.sa-hist__li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.sa-hist__review {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: var(--tap-min);
+  padding: 0.2rem 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .sa-hist__item {
   width: 100%;
