@@ -154,6 +154,10 @@ function submit() {
 .sa-cloze {
   line-height: 2.4;
   font-size: 1.05rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0;
 }
 .sa-cloze :deep(span) {
   white-space: pre-wrap;
@@ -168,9 +172,11 @@ function submit() {
   background: var(--color-surface);
   font: inherit;
   color: var(--color-ink);
+  box-sizing: border-box;
+  max-width: 100%;
 }
 .sa-cloze__input {
-  min-width: 6rem;
+  min-width: min(6rem, 40%);
 }
 .sa-cloze__input:disabled,
 .sa-cloze__select:disabled {
@@ -178,6 +184,13 @@ function submit() {
   color: var(--color-ink-soft);
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 </style>

@@ -223,16 +223,19 @@ function submit() {
 .sa-match__row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
 }
 .sa-match__leftlabel {
   flex: 1;
+  min-width: 0;
   font-weight: 600;
 }
 .sa-match__slot {
   flex: 1;
   min-height: var(--tap-min);
-  min-width: 6rem;
+  min-width: clamp(3.5rem, 45%, 6rem);
+  max-width: 100%;
   display: flex;
   align-items: center;
   padding: 0.35rem 0.5rem;
@@ -240,6 +243,7 @@ function submit() {
   border-radius: var(--radius-btn);
   background: var(--color-surface-2);
   cursor: pointer;
+  box-sizing: border-box;
 }
 .sa-match__slot--target {
   border-color: var(--color-primary);
@@ -280,7 +284,14 @@ function submit() {
   border-color: var(--color-primary);
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 @media (min-width: 640px) {
   .sa-match {

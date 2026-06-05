@@ -109,7 +109,7 @@ function submit() {
 }
 .sa-tf {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
   gap: 0.75rem;
 }
 .sa-tf__btn {
@@ -123,6 +123,18 @@ function submit() {
   color: var(--color-on-primary);
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
+}
+@media (max-width: 360px) {
+  .sa-tf {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

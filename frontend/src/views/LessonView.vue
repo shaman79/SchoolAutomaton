@@ -328,7 +328,9 @@ onMounted(async () => {
 }
 .sa-lesson__close-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 0.5rem;
 }
 .sa-lesson__loading {
   display: grid;

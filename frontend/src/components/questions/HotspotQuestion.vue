@@ -215,6 +215,13 @@ function regionLabel(region: HotspotRegion, i: number) {
   color: var(--color-on-mint);
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 </style>

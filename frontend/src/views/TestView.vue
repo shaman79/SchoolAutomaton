@@ -189,12 +189,14 @@ onMounted(async () => {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
 }
 .sa-test__title {
   font-size: 1.2rem;
   font-weight: 800;
   line-height: 1.2;
+  min-width: 0;
 }
 .sa-test__count {
   flex: none;

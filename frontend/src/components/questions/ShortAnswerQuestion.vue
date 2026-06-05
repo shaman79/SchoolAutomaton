@@ -103,6 +103,8 @@ function submit() {
   font: inherit;
   color: var(--color-ink);
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .sa-sa__textarea {
   resize: vertical;
@@ -112,6 +114,13 @@ function submit() {
   border-color: var(--color-primary);
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 </style>

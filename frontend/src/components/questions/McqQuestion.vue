@@ -165,7 +165,14 @@ function submit() {
   outline-offset: 2px;
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 .sr-only {
   position: absolute;

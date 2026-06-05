@@ -190,9 +190,11 @@ function submit() {
 }
 .sa-order__text {
   flex: 1;
+  min-width: 0;
 }
 .sa-order__moves {
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
 }
 .sa-order__move {
@@ -210,6 +212,13 @@ function submit() {
   cursor: default;
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 </style>

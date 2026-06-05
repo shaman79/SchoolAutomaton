@@ -104,6 +104,7 @@ function submit() {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  flex-wrap: wrap;
 }
 .sa-num__input {
   min-height: var(--tap-min);
@@ -114,7 +115,8 @@ function submit() {
   font: inherit;
   font-size: 1.2rem;
   color: var(--color-ink);
-  width: 9rem;
+  width: min(9rem, 100%);
+  box-sizing: border-box;
   text-align: center;
 }
 .sa-num__input:focus {
@@ -125,6 +127,13 @@ function submit() {
   color: var(--color-ink-soft);
 }
 .sa-q__check {
-  align-self: flex-start;
+  align-self: stretch;
+  width: 100%;
+}
+@media (min-width: 640px) {
+  .sa-q__check {
+    align-self: flex-start;
+    width: auto;
+  }
 }
 </style>
