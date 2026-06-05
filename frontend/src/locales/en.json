@@ -1,0 +1,303 @@
+{
+  "app": { "name": "SchoolAutomaton", "tagline": "Learn anything, your way." },
+  "home": {
+    "prompt_label": "What would you like to learn?",
+    "prompt_placeholder": "e.g. I want to learn about photosynthesis at 5th grade level",
+    "go": "Let's go!",
+    "go_busy": "Sending…",
+    "enter_hint": "Press Enter to begin, or Shift+Enter for a new line.",
+    "examples": "Try one of these",
+    "hero_title": "What do you want to learn today?",
+    "hero_subtitle": "Type anything — a lesson with pictures or a playful quiz, made just for you.",
+    "generic_error": "Something went wrong. Please try again.",
+    "refuse_try": "How about one of these instead?",
+    "have_code": "Have a resume code? Continue learning",
+    "example_list": [
+      "Learn about the water cycle for 3rd grade",
+      "Quiz me on the French Revolution, high school",
+      "Explain fractions with pictures, age 9",
+      "Help me understand photosynthesis, 5th grade",
+      "Test me on Spanish food vocabulary"
+    ]
+  },
+  "loading": {
+    "thinking": "Putting your lesson together…",
+    "building_test": "Building your test…",
+    "almost": "Almost ready!",
+    "starting": "Getting started…",
+    "planning": "Planning your lesson…",
+    "progress_label": "Generation progress",
+    "section_done": "ready",
+    "error_title": "Hmm, that didn't work",
+    "error_body": "We hit a snag while building this. Let's try again.",
+    "cheer_1": "Great choice — this is going to be fun!",
+    "cheer_2": "Adding pictures and examples just for you…",
+    "cheer_3": "Mixing in a little practice to help it stick…",
+    "cheer_4": "Almost there — making it just right!"
+  },
+  "common": {
+    "next": "Next",
+    "back": "Back",
+    "retry": "Try again",
+    "continue": "Continue",
+    "check": "Check",
+    "hint": "Hint",
+    "correct": "Correct!",
+    "not_yet": "Not yet — keep going!",
+    "loading": "Loading…",
+    "close": "Close",
+    "done": "Done",
+    "dismiss": "Dismiss"
+  },
+  "results": {
+    "title": "Nice work!",
+    "score": "Score",
+    "xp_earned": "XP earned",
+    "review": "Review answers",
+    "again": "Learn something else"
+  },
+  "resume": {
+    "title": "Continue learning",
+    "label": "Enter your resume code",
+    "submit": "Continue",
+    "your_code": "Your resume code",
+    "save_hint": "Save this code to continue on any device. We don't ask for any personal details.",
+    "not_found": "We couldn't find that code. Please check it and try again.",
+    "copy": "Copy code",
+    "copied": "Code copied!"
+  },
+  "gamification": {
+    "level": "Level",
+    "streak": "day streak",
+    "xp": "XP",
+    "daily_goal": "Daily goal",
+    "badges": "Badges",
+    "bar_label": "Your progress",
+    "badge_earned_on": "Earned {date}",
+    "badge_locked": "Locked",
+    "badge_progress_label": "Progress",
+    "badge_unlocked": "Unlocked!",
+    "badges_progress": "{unlocked} of {total} badges",
+    "combo_a11y": "Combo multiplier {mult}",
+    "combo_max": "Max combo",
+    "daily_goal_a11y": "Daily goal: {earned} of {goal} XP",
+    "daily_goal_done": "Daily goal complete!",
+    "streak_count": "{count}-day streak",
+    "streak_protected": "Streak protected",
+    "streak_protected_a11y": "Streak protected at {count} days",
+    "streak_start": "Start a streak!",
+    "xp_max": "Max level reached",
+    "xp_to_next": "{n} XP to next level"
+  },
+  "tree": {
+    "detail_for": "Details for {title}",
+    "empty_desc": "Start learning and your knowledge garden will grow here.",
+    "empty_title": "Your garden is empty",
+    "grows_from": "Grows from",
+    "grows_into": "Grows into",
+    "legend": "Legend",
+    "locked_hint": "Master the earlier topics to unlock this.",
+    "other_subject": "Other",
+    "water_hint": "Time to water this — a quick review will keep it strong."
+  },
+  "footer": {
+    "ai_disclosure": "Lessons & quizzes are AI-generated — double-check anything important.",
+    "nav_label": "Footer",
+    "admin": "Admin"
+  },
+  "crisis": {
+    "title": "You matter. Help is available.",
+    "disclaimer": "I'm an AI assistant, not a mental-health professional.",
+    "default_message": "It sounds like you're going through something really hard. You're not alone, and people are ready to help right now.",
+    "call": "Call",
+    "text": "Text",
+    "visit": "Open website"
+  },
+  "a11y": {
+    "settings": "Accessibility settings",
+    "theme": "Theme",
+    "font": "Font",
+    "text_size": "Text size",
+    "reduced_motion": "Reduce motion",
+    "sound": "Sound",
+    "language": "Language",
+    "skip_to_content": "Skip to content",
+    "synced_hint": "Your preferences are saved and follow your resume code.",
+    "theme_default": "Default",
+    "theme_highcontrast": "High contrast",
+    "theme_dyslexia": "Dyslexia-friendly",
+    "font_lexend": "Lexend",
+    "font_atkinson": "Atkinson Hyperlegible",
+    "font_opendyslexic": "OpenDyslexic"
+  },
+  "lesson": {
+    "gated_hint": "Finish the section above to unlock this one.",
+    "minutes": "{n} min",
+    "objectives_title": "What you'll learn",
+    "review_title": "Coming back to remember it",
+    "review_body": "We'll bring the trickiest ideas back for a quick review at just the right time, so they stick for good.",
+    "closing": "You showed up and gave it a go — that's how learning grows. Proud of you!",
+    "learn_more": "Learn something new",
+    "load_error_title": "We couldn't load this lesson",
+    "load_error_body": "Something went wrong fetching your lesson. Let's head back and try again."
+  },
+  "admin": {
+    "title": "Admin console",
+    "sign_out": "Sign out",
+    "session_expired": "Your session expired. Please sign in again.",
+    "load_error": "Could not load data. Please try again.",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "tabs": {
+      "overview": "Overview",
+      "audit": "Audit",
+      "settings": "Settings",
+      "content": "Content"
+    },
+    "overview": {
+      "title": "Last 24 hours",
+      "requests_24h": "Requests (24h)",
+      "cache_hit_rate": "Cache hit rate",
+      "anthropic_cost": "Anthropic cost",
+      "replicate_cost": "Replicate cost",
+      "crisis_events": "Crisis events",
+      "refusals": "Refusals",
+      "injection_attempts": "Injection attempts",
+      "decisions": "Decision breakdown",
+      "totals": "Totals",
+      "profiles_total": "Profiles",
+      "lessons_total": "Lessons",
+      "quizzes_total": "Quizzes",
+      "no_decisions": "No decisions recorded yet.",
+      "decision": {
+        "proceed": "Proceed",
+        "clarify": "Clarify",
+        "refuse": "Refuse",
+        "crisis": "Crisis"
+      }
+    },
+    "audit": {
+      "title": "Sanitization audit",
+      "filter_decision": "Decision type",
+      "filter_all": "All decisions",
+      "injection_only": "Injection attempts only",
+      "topic_hashed_note": "Topics are stored hashed for privacy — only a one-way hash is shown, never the student's words.",
+      "col_time": "Time",
+      "col_request": "Request",
+      "col_decision": "Decision",
+      "col_lang": "Lang",
+      "col_suspicion": "Suspicion",
+      "col_injection": "Injection",
+      "col_flags": "Safety flags",
+      "col_reason": "Reason",
+      "col_length": "Len",
+      "col_topic_hash": "Topic (hashed)",
+      "injection_yes": "Detected",
+      "injection_no": "None",
+      "no_flags": "—",
+      "empty_title": "No audit records",
+      "empty_desc": "No requests match these filters yet.",
+      "prev": "Previous",
+      "next": "Next",
+      "page_of": "Page {page} of {pages}",
+      "showing": "{count} of {total} records"
+    },
+    "settings": {
+      "title": "App settings",
+      "desc": "Runtime configuration. Secret values (API keys) are write-only and shown masked.",
+      "col_key": "Key",
+      "col_value": "Value",
+      "col_updated": "Updated",
+      "secret_badge": "Secret",
+      "secret_masked": "•••••••• (write-only)",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "new_secret_placeholder": "Enter new secret to replace…",
+      "value_placeholder": "Value (JSON, e.g. true, 90, \"text\")",
+      "invalid_json": "Enter a valid JSON value (true, false, a number, or \"quoted text\").",
+      "saved": "Setting saved.",
+      "save_error": "Could not save. You may not have permission to edit settings.",
+      "is_secret_toggle": "Store as secret (write-only)",
+      "add_title": "Add or override a setting",
+      "add_key_placeholder": "setting_key",
+      "add": "Add setting",
+      "empty_title": "No settings yet",
+      "empty_desc": "Add a setting to configure runtime behavior.",
+      "quick_toggles": "Quick toggles",
+      "boolean_on": "On",
+      "boolean_off": "Off"
+    },
+    "content": {
+      "title": "Content library",
+      "desc": "Cached lessons and quizzes. Filter by subject and grade band.",
+      "filter_subject": "Subject",
+      "filter_subject_all": "All subjects",
+      "filter_grade": "Grade band",
+      "filter_grade_all": "All grades",
+      "kind_lesson": "Lesson",
+      "kind_quiz": "Quiz",
+      "col_kind": "Type",
+      "col_topic": "Topic",
+      "col_grade": "Grade",
+      "col_lang": "Lang",
+      "col_created": "Created",
+      "empty_title": "No content yet",
+      "empty_desc": "Generated lessons and quizzes will appear here."
+    }
+  },
+  "feedback": {
+    "partial": "Partly there — keep going!"
+  },
+  "test": {
+    "progress_label": "Quiz progress",
+    "progress_value": "Question {current} of {total}",
+    "points": "{n} pts",
+    "finish": "Finish",
+    "level_up": "Level up! You're now level {level} 🎉",
+    "badge_unlocked": "Badge unlocked: {title}!",
+    "grade_error": "We couldn't check that answer. Please try again.",
+    "load_error_title": "We couldn't load this test",
+    "load_error_body": "Something went wrong fetching your quiz. Let's head back and try again."
+  },
+  "q": {
+    "mcq": {
+      "select_one": "Select one answer",
+      "select_all": "Select all that apply"
+    },
+    "tf": {
+      "legend": "True or false?",
+      "true": "True",
+      "false": "False"
+    },
+    "cloze": {
+      "legend": "Fill in the blanks",
+      "blank_n": "Blank {n}",
+      "choose": "Choose…"
+    },
+    "short": {
+      "label": "Your answer",
+      "placeholder": "Type your answer…"
+    },
+    "numeric": {
+      "label": "Your numeric answer"
+    },
+    "match": {
+      "instructions": "Drag each answer onto its match, or tap an answer then tap where it goes.",
+      "pool": "Answers to place",
+      "slot_empty": "Empty slot for {left}",
+      "slot_filled": "{left} is matched with {right}"
+    },
+    "order": {
+      "instructions": "Put these in the correct order. Drag, or use the up and down buttons.",
+      "reorder": "{item}, position {pos}. Use arrow up or down to move it.",
+      "move_up": "Move {item} up",
+      "move_down": "Move {item} down"
+    },
+    "hotspot": {
+      "instructions": "Tap the correct spot on the picture.",
+      "image_alt": "Image with selectable regions",
+      "region_n": "Region {n}"
+    }
+  }
+}

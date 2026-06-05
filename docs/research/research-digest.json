@@ -1,0 +1,375 @@
+[
+  {
+    "stream": "pedagogy",
+    "summary": "SchoolAutomaton should structure every AI-generated lesson around the highest-utility evidence-based techniques (retrieval practice and distributed/spaced practice are the two strongest per Dunlosky 2013 and Donoghue & Hattie's 2021 meta-analysis of 242 studies / 169k participants), woven into a fixed lesson flow: prior-knowledge activation -> pretest -> dual-coded explanation with worked examples -> faded scaffolding -> interleaved retrieval practice -> spaced review scheduling -> growth-mindset feedback. For spaced review, implement FSRS-6 via the maintained py-fsrs library (v6.3.1, MIT) rather than hand-rolling SM-2; it needs 20-30% fewer reviews for the same retention and degrades gracefully. Grade/age calibration should be driven by explicit, machine-checkable targets: a target Flesch-Kincaid grade level and Lexile band per grade band, plus Bloom's-taxonomy tiers that map directly to question difficulty. Every lesson and every question must carry rich metadata (Bloom tier, FSRS card state, concept/skill IDs, misconception tags, prerequisite graph edges, readability score) so the scheduler, the difficulty adapter, and the misconception-remediation logic can all key off structured fields rather than re-parsing prose. The LLM should be instructed to emit this metadata as structured JSON alongside generated content, and the readability target should be verified post-generation with a deterministic Python check (textstat) and regenerated if out of band.",
+    "concrete_specs": [
+      "FSRS library: `fsrs>=6.3.1` (PyPI, MIT, Python>=3.10). Default param tuple (21 weights, FSRS-6): (0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614, 0.2629, 1.6483, 0.6014, 1.8729, 0.5425, 0.0912, 0.0658, 0.1542); last value w20=0.1542 is per-user decay.",
+      "FSRS Scheduler config: Scheduler(desired_retention=0.9, learning_steps=(timedelta(minutes=1), timedelta(minutes=10)), relearning_steps=(timedelta(minutes=10),), maximum_interval=36500, enable_fuzzing=True). Per-profile desired_retention knob: 0.85 casual / 0.90 default / 0.95 pre-deadline.",
+      "FSRS Rating mapping: Again=1 (wrong), Hard=2 (correct with hint/slow), Good=3 (correct), Easy=4 (correct + instant). API: `card, review_log = scheduler.review_card(card, rating)`; persist via card.to_json()/Card.from_json(); read next due from card.due (UTC datetime).",
+      "FSRS forgetting curve: R(t,S) = (1 + FACTOR * t/S)^DECAY ; next_interval = S/FACTOR * (desired_retention^(1/DECAY) - 1). Reference DECAY=-0.5, FACTOR=19/81 for the fixed-decay variant; FSRS-6 uses optimizable decay (w20).",
+      "Per-profile FSRS daily caps: 20 new items + all overdue for default; lower new-cap (~10) for youngest band.",
+      "Readability targets by grade band (FKGL = Flesch-Kincaid Grade Level; Lexile = CCSS college/career-ready stretch bands): K -> FKGL<=1, BR40L-230L; G1 -> 1, 190-530L; G2 -> 2, 420-650L; G3 -> 3, 520-820L; G4 -> 4, 740-940L; G5 -> 5, 830-1010L; G6 -> 6, 925-1070L; G7 -> 7, 970-1120L; G8 -> 8, 1010-1185L; G9 -> 9, 1050-1260L; G10 -> 10, 1080-1335L; G11-12 -> 11-12, 1185-1385L; adult/unspecified -> FKGL 9-11, ~1100-1300L.",
+      "Sentence-length / vocabulary caps: K-G2 <=10 words/sentence and <=3 new terms/lesson; G3-G5 <=15 words/sentence, ~5 new terms, define inline; G6-G8 glossary + domain vocab; G9-12 full academic register. Regenerate if measured FKGL > target+1.5.",
+      "Readability verification lib: `textstat`; use textstat.flesch_kincaid_grade() per explanation section after generation.",
+      "Bloom's revised taxonomy difficulty tiers (1-6): 1 Remember, 2 Understand, 3 Apply, 4 Analyze, 5 Evaluate, 6 Create. Grade weighting: K-G5 emphasize tiers 1-3; G6-12 + adults include 4-6. Adaptive: +1 tier after 2 consecutive correct, -1 tier after a miss.",
+      "Lesson section enum (ordered): hook, objectives, prior_knowledge, pretest, explanation, worked_example, faded_example, practice, interleaved_review, elaboration, misconception_check, summary.",
+      "Item metadata fields: id, concept_id(s), skill_id, bloom_tier, difficulty, item_type(mcq|cloze|short|numeric|match), language, expected_answer, accepted_variants, distractors[].misconception_id, hint_ladder[], worked_solution_steps[], fsrs(state,stability,difficulty,due,reps,lapses,last_review), source_lesson_id, model, prompt_version.",
+      "Lesson metadata fields: id, topic, detected_language, grade_band, target_fkgl, measured_fkgl, lexile_band, objectives[](bloom_tagged), prereq_concept_ids[], concept_ids_taught[], misconception_ids[], estimated_duration, sections[], illustration_refs[], model, prompt_version, created_at.",
+      "Interleaving session mix: ~50-60% current concept, 20-30% related-concept due items, 10-20% prerequisite refreshers, shuffled so consecutive items differ in concept/type.",
+      "Feedback rules (inject into prompts): praise strategy/process not ability; on error use 'not yet' + next actionable step + optional hint; never praise effort alone without a strategy/correction; generate in detected language. Gamify review-consistency/streaks and items reaching FSRS Review state, not raw click points."
+    ],
+    "pitfalls": [
+      "Do NOT hand-code FSRS weight math (initial difficulty, mean reversion, post-lapse stability, SInc with w15 hard-penalty/w16 easy-bonus) - the 21-weight formulas are error-prone and authoritative plain-text versions are hard to source; use the maintained py-fsrs library and treat its internals as a black box. SM-2 is a markedly weaker fallback (older, ~20-30% more reviews for equal retention).",
+      "FKGL is English-calibrated. For auto-detected non-English content the score is unreliable; fall back to language-appropriate proxies (sentence length + long-word share) and do not store a misleading FKGL. State this limitation in lesson metadata.",
+      "Growth-mindset feedback is frequently misimplemented: praising effort alone ('good try!') without a concrete strategy or correction is empty and can backfire. Always pair process feedback with the next actionable strategy. Ability praise ('you're so smart') is actively harmful to resilience.",
+      "LLMs do not reliably self-calibrate reading level or Bloom tier; never trust the model's self-reported readability/difficulty. Verify FKGL deterministically (textstat) and re-prompt on failure; sanity-check Bloom tiers against the verb used.",
+      "Spacing/interleaving feel harder and slower to learners and produce worse short-term performance (desirable difficulties); without UI framing students may rate the tool as 'less effective.' Surface long-term retention gains and streaks to counter this.",
+      "Over-interleaving across unrelated subjects (vs related concepts) harms novices and young learners; keep interleaving within a coherent concept neighborhood and reduce strength for the youngest band.",
+      "Daily review load can explode as the card pool grows; cap new items/day and prioritize overdue cards, otherwise learners abandon the queue. Lowering desired_retention reduces load but also long-term recall - expose it deliberately.",
+      "Don't let gamification reward raw activity (clicks/points) - that incentivizes guessing and gaming; tie rewards to mastery signals (FSRS Review state, spaced-review streaks) so incentives align with durable learning.",
+      "Pretests/low-stakes testing must be explicitly framed as ungraded; if learners perceive the pretest as a graded exam over un-taught material, it raises anxiety and undercuts the forward-testing benefit.",
+      "Misconception remediation only works if distractors are tagged with the specific misconception they probe; generic 'incorrect' feedback misses the conceptual-change opportunity. Require per-distractor misconception_id at generation time."
+    ],
+    "recommendations": [
+      {
+        "title": "Implement spaced repetition with FSRS-6 via the py-fsrs library, not a hand-coded SM-2",
+        "how_to_apply": "Add `fsrs>=6.3.1` to requirements. Create a thin `srs_service.py` wrapping Scheduler. SQLAlchemy: store card fields (state int, stability float, difficulty float, due datetime, last_review datetime, reps int, lapses int) plus `fsrs_card_json` Text for round-tripping via Card.to_json()/from_json(). Endpoint POST /review/{item_id} accepts a rating, updates the card, returns next due. A `due_items` query orders by due asc, limits to a daily cap (e.g. 20-40 new + all overdue) to avoid overwhelming the learner."
+      },
+      {
+        "title": "Use a fixed, evidence-based lesson structure (the 'lesson skeleton') the LLM must fill",
+        "how_to_apply": "Define a Pydantic `Lesson` schema with a `sections: list[Section]` where Section has `kind: Enum(hook|objectives|prior_knowledge|pretest|explanation|worked_example|faded_example|practice|interleaved_review|elaboration|misconception_check|summary)`. Put the skeleton in the system prompt as a required output contract and pass it to Claude with `tools`/structured output so it returns JSON matching the schema. Frontend renders sections in order; gate later sections until earlier interactive ones are attempted."
+      },
+      {
+        "title": "Drive grade/age calibration with explicit readability + vocabulary targets, verified deterministically after generation",
+        "how_to_apply": "Add `textstat` to requirements. After Claude returns lesson text, compute textstat.flesch_kincaid_grade() per explanation section; if it exceeds target+1.5 grades, re-prompt with the measured score and an instruction to simplify (shorter sentences, more common words, split long sentences). Store target_fkgl, measured_fkgl, lexile_band on the lesson. For non-English (auto-detected language), FKGL is English-tuned, so fall back to language-appropriate proxies (avg sentence length in words + share of long words) and instruct the model in the target language; note this limitation in the lesson metadata."
+      },
+      {
+        "title": "Tier question difficulty by Bloom's taxonomy and tie tiers to both objectives and the SRS rating",
+        "how_to_apply": "Add `bloom_tier: int(1..6)` and `difficulty: enum` to the Question schema and `bloom_tier` to each Objective. Include a Bloom verb cheat-sheet in the prompt and require the model to tag each item. Store an item-level `p_correct` running estimate to refine difficulty. The adaptive stepper lives in the quiz service, not the LLM."
+      },
+      {
+        "title": "Attach a rich, structured metadata envelope to every lesson and every item to power scheduling, remediation, and analytics",
+        "how_to_apply": "SQLAlchemy async models: Lesson, Section, Item, Concept, plus association tables for lesson<->concept (taught/prereq) and item<->concept. Store FSRS state on Item. Use a `misconceptions` table (id, concept_id, description, refutation_text). Require Claude to output all metadata in the structured JSON; validate with Pydantic before persisting; reject/regenerate on schema violation. Index Item.due and Item.concept_id for the scheduler and interleaver queries."
+      },
+      {
+        "title": "Frame all feedback as process/strategy-focused growth-mindset messages, never ability praise",
+        "how_to_apply": "Store a `feedback_style` enum and inject explicit rules into the LLM system prompt for both content generation and the answer-grading endpoint: 'Praise strategy and process, not innate ability; on errors give the next actionable step plus an optional hint; use not-yet framing.' Provide 2-3 templated examples per outcome in the prompt. Generate feedback in the lesson's detected language. Gamification: award badges/streaks for review-consistency and for items reaching FSRS Review state, not merely for answering."
+      },
+      {
+        "title": "Interleave related concepts in practice and reviews instead of blocking by single topic",
+        "how_to_apply": "The quiz/review service composes a session by sampling: ~50-60% current-concept items, ~20-30% related-concept due items, ~10-20% prerequisite refreshers, shuffled so consecutive items differ in type/concept. Use the concept association table to find related/prereq concepts. Expose an `interleave_strength` setting; reduce it for the youngest band to avoid overload."
+      }
+    ]
+  },
+  {
+    "stream": "gamification",
+    "summary": "Ground SchoolAutomaton's gamification in Self-Determination Theory (autonomy/competence/relatedness) and flow theory, not in raw point-chasing. The strongest 2023-2025 evidence (Springer meta-analysis, ETR&D) shows gamification reliably lifts intrinsic motivation, autonomy, and relatedness but has MINIMAL direct impact on competence unless mechanics are explicitly tied to mastery and competence-supporting feedback — so XP/badges/streaks must be wrappers around genuine learning signals, never the reward itself. For a tool serving children of any age, the overjustification/crowding-out risk is real and stronger in younger kids: rewards must be framed as informational (showing growing competence) rather than controlling. Concretely: an XP curve that levels every node mastered, streaks with bounded forgiveness (auto-applied freezes, earn-back, rest days — never weekend amnesty alone), ~15 mastery-anchored badges, self-referenced progress visualization via a \"knowledge tree\", adaptive difficulty targeting ~80-85% success to keep learners in flow/ZPD, and deliberate avoidance of public leaderboards (which raise anxiety and demotivate the less-confident with no proven learning gain). The data model needs per-skill mastery tracking, an event-sourced XP/activity ledger, streak state with freeze inventory, badge progress, and daily-goal config — all tied to the anonymous resume-code profile.",
+    "concrete_specs": [
+      "XP curve: xp_total(L) = round(100 * L**1.5); level_from_xp(t) = floor((t/100)**(1/1.5)). Constants BASE_XP=100, CURVE_EXP=1.5 (config-driven).",
+      "XP per answer: xp = round(BASE_ITEM_XP * difficulty_mult * (1 - mastery_before)) so re-grinding mastered nodes yields ~0 XP. Suggested BASE_ITEM_XP=10, difficulty_mult = item_difficulty(1..5)/3.",
+      "Adaptive difficulty target_success_rate = 0.83 (range 0.80-0.85); maintain rolling recent_accuracy per (profile, skill) over last ~10 items.",
+      "Streak freeze cap: 2 for free/standard users, up to 5 for long streaks (>=30 days); freezes earned through play only, auto-applied silently. Repair/earn-back window: 48h.",
+      "Rest days: configurable 0-2 planned non-breaking days per week (default 1 for under-13 age band, 0 default otherwise).",
+      "Mastery model: per-skill mastery in [0,1] updated by spaced-repetition (half-life regression or SM-2 ease). Node states: locked, available, learning, mastered (mastery>=0.85), needs_review (now>decay_due_at).",
+      "Grading LLM (Opus 4.8) structured output: {correct: bool, partial_credit: 0..1, concept_tags: [str], misconception: str|null, explanation: str, encouragement_focus: 'effort'|'strategy'|'progress'}.",
+      "Generation LLM input: {skill_id, mastery, recent_accuracy, target_success=0.83, known_misconceptions:[...], language, grade_level} to keep items in the ZPD.",
+      "~15 mastery-anchored badges (First Light, Root System, Deep Diver, Comeback, Spaced Master, Sharpshooter, Honest Explorer, Polyglot, Cross-Pollinator, Curiosity, Self-Beater, Tree Grower[tiered], Teacher, Resilient, Marathon of Mastery).",
+      "Combo/accuracy bonus: session-level multiplier for consecutive first-try-correct answers, cap the multiplier (e.g. max 2.0x at 8-combo) so it rewards focus without runaway grinding; combo never penalizes a wrong answer beyond resetting to 1.0x.",
+      "Daily goal presets (autonomy): Casual=5min/~50 XP, Regular=10min/~100 XP, Serious=15min/~150 XP, Intense=20min/~200 XP; user-selectable and changeable anytime.",
+      "Leaderboards OFF by default; if enabled, ability-banded leagues of ~15-30 similar learners, personal-best framing, opt-in flag on profile.",
+      "Optional challenge modes (opt-in): Timed Sprint, Boss Review (mixed spaced-review of due nodes), No-Hint Mastery Check, Explain-It (LLM-graded teach-back) — none gate core progression.",
+      "DB tables: Profile, SkillMastery, XpEvent (event-sourced ledger), StreakState, BadgeDefinition, ProfileBadge, DailyGoal, SkillNode/Prereq edges, ProfileSettings(age_band, competitive_opt_in, language)."
+    ],
+    "pitfalls": [
+      "Gamifying activity instead of learning: the meta-analysis shows competence gains are minimal unless rewards track real mastery — XP-for-time-on-task produces engagement metrics but not durable learning.",
+      "Overjustification/crowding-out, stronger in children: expected, controlling rewards for an already-interesting topic can REDUCE intrinsic motivation. Frame rewards as informational competence signals, vary them, and lean on effort/strategy praise.",
+      "Public leaderboards as a default: documented to raise anxiety in less-confident learners and demotivate, with no proven knowledge gain; they help only highly competitive users. Keep opt-in, banded, personal-best framed.",
+      "Loss-framed / FOMO streak pressure: 'you're about to lose your streak!' and limited-time countdowns create compulsive, anxious engagement (especially in younger users). Use gentle gain-framed reminders, bounded forgiveness, and rest days.",
+      "Unbounded forgiveness: stockpiling many freezes destroys the streak's meaning ('a safety net with no ceiling stops being a safety net'). Cap freezes (2, up to 5) and use a short earn-back window.",
+      "Ability praise and norm-referenced feedback ('you scored higher than 80% of students'): fosters fixed mindset and performance-avoidance. Use self-referenced ('better than your last attempt') and strategy/effort praise.",
+      "Punishing failure or wrong answers harshly (big XP loss, broken combo with penalty): discourages exploration and rewards safe guessing. Reward error-correction (Comeback badge) and metacognitive honesty (Honest Explorer).",
+      "Pay/grind-to-win currencies: never let money or low-value grinding buy badges, freezes, or progress; for an anonymous no-registration tool keep all gamification currency earnable through learning only.",
+      "One-size-fits-all across ages: a 7-year-old and an adult need different competitive intensity and forgiveness. Make mechanics age/grade-aware and admin-configurable, with kill-switches per mechanic.",
+      "Decay neglect: if mastered nodes never decay, 'durable learning' is unmeasured and spaced review feels pointless. Model decay (needs_review state) so retention is the thing celebrated (Spaced Master badge)."
+    ],
+    "recommendations": [
+      {
+        "title": "Anchor every reward to demonstrated mastery, not activity — XP is a side-effect of learning",
+        "how_to_apply": "Add a SkillMastery table (one row per profile x skill). On each graded answer, update mastery via a spaced-repetition update (e.g. half-life regression / SM-2-style ease). XP_awarded = round(BASE_XP * difficulty_multiplier * mastery_delta_factor) where mastery_delta_factor decays toward 0 as mastery -> 1.0. In the LLM grading prompt, return structured JSON {correct: bool, partial_credit: 0-1, concept_tags: [...], misconception_detected: str|null} so the backend can attribute XP to specific skill nodes."
+      },
+      {
+        "title": "XP & leveling curve: gentle early, sub-quadratic growth, with a concrete formula",
+        "how_to_apply": "Implement as pure functions in a leveling.py module: level_from_xp(total_xp) = floor((total_xp/100)**(1/1.5)); xp_to_next(total_xp). Store only total_xp on the profile and derive level on read (cheap, avoids drift). Surface 'XP to next level' and a progress ring in the UI. Make these constants (BASE=100, EXP=1.5) config-driven so they can be A/B tuned without migration."
+      },
+      {
+        "title": "Streaks with bounded, mostly-invisible forgiveness — protect the habit, not the anxiety",
+        "how_to_apply": "StreakState table: current_streak_len, longest_streak, last_active_date (UTC date, computed in the user's tz), freeze_inventory (int), freezes_used_in_current_streak, rest_days_per_week, rest_days_used_this_week, is_perfect (bool). On daily login/session-complete, run a settle_streak() job: if gap==1 day -> increment; if gap>1 -> consume freezes/rest days to cover missed days before breaking; if break and within repair window -> offer earn-back. Never send guilt-tripping 'you're about to lose your streak!' push at-risk; phrase as gentle, optional reminders."
+      },
+      {
+        "title": "~15 mastery-anchored badges/achievements (not activity-counters)",
+        "how_to_apply": "Badge definitions live as data (BadgeDefinition table or seed JSON) with a machine-evaluable criterion (a small DSL or a tagged evaluator function key). A badge-evaluation step runs after each learning event against the event ledger + mastery table. Store unlocks in ProfileBadge (profile_id, badge_id, unlocked_at, tier, progress_numerator/denominator for tiered/in-progress display). Show progress toward locked badges ('3/5') to support autonomy and goal-setting."
+      },
+      {
+        "title": "Progress visualization as a self-referenced 'Knowledge Tree/Map', not a ranking",
+        "how_to_apply": "Backend exposes GET /profile/{code}/tree returning nodes with {id, title, mastery, state, prereq_ids, last_reviewed, decay_due_at}. Frontend (Vue) renders an SVG/canvas force-or-DAG layout, color/animation by state. Compute decay server-side: a node drops from 'mastered' to 'needs review' when now > decay_due_at (derived from the spaced-repetition half-life). Offer an optional weekly personal progress recap ('you mastered 6 new nodes, your science branch is 60% green')."
+      },
+      {
+        "title": "Keep learners in flow via adaptive difficulty targeting ~80-85% success",
+        "how_to_apply": "Maintain a rolling recent_accuracy per (profile, skill). Feed target difficulty into the Opus 4.8 generation prompt: include the learner's mastery, recent_accuracy, target_success=0.83, and known misconceptions so it generates items at the right level and language. Adjust an item_difficulty field (1-5) on the fly. Log predicted vs actual correctness to recalibrate."
+      },
+      {
+        "title": "Make feedback informational and competence-supporting, never merely evaluative",
+        "how_to_apply": "Standardize the grading LLM call to return {correct, partial_credit, misconception, explanation, encouragement_focus:'effort'|'strategy'|'progress'}. Build the encouragement string from self-referenced mastery deltas, not from XP totals. Vary phrasing/visuals so reward feedback is not perfectly predictable. Never show a bare 'WRONG / -10 XP'; always pair with the why and a path forward."
+      },
+      {
+        "title": "Avoid the documented anti-patterns: public leaderboards, loss-framed streak pressure, pay/grind-to-win, and reward-for-its-own-sake",
+        "how_to_apply": "Architecturally: gate any leaderboard behind an explicit opt-in flag (default off), restrict to ability-banded cohorts, and never expose raw rank to non-opted-in users. Make freeze/badge currency earnable only through learning, never purchasable (the tool is anonymous/no-payment anyway — keep it that way). In notification copy, use gain/encouragement framing. Add an admin/config kill-switch per mechanic so harmful elements can be disabled per deployment or age band. Consider an age/grade-aware config: dial down competitive elements and dial up forgiveness for younger learners."
+      }
+    ]
+  },
+  {
+    "stream": "security",
+    "summary": "Layered sanitize-classify-validate pipeline for an untrusted, minor-facing student prompt (OWASP LLM01:2025). See recommendations for the 5 layers and concrete_specs for exact schema, char-strip set, models, routing, audit fields, regexes, and module layout.",
+    "concrete_specs": [
+      "Classifier: Claude Haiku 4.5 (classification only). Generator: Claude Opus 4.8. Never run the generator on raw prompt text.",
+      "Max prompt length 2000 chars/8KB UTF-8. Rate limit ~20/min, ~300/day per (profile_id, ip_hash) token bucket; HTTP 429 on breach.",
+      "Unicode strip set: unicodedata.normalize NFKC then remove U+200B U+200C U+200D U+2060 U+FEFF U+202A-U+202E U+2066-U+2069 and all C0/C1 controls except newline and tab; collapse whitespace; flag Latin+Cyrillic/Greek mixing.",
+      "Structured Outputs call: output_config.format type json_schema with INTENT_SCHEMA, temperature 0, small max_tokens, prompt caching on the static system prompt. output_config.format is GA (Nov 2025); output_format was beta.",
+      "StructuredIntent enums (all required, additionalProperties false): intent=study|test|refuse|crisis|clarify; subject=enum allowlist+other; topic=string max 120 chars; grade_band=early_primary|primary|lower_secondary|upper_secondary|adult|unknown; age=int 4-99 or null; language=ISO-639-1; constraints.difficulty=easy|medium|hard, constraints.length=short|standard|long, constraints.format_pref=visual|text|mixed; is_educational=bool; safety_flags=array of none|self_harm|violence|sexual|illegal|hate|pii|age_inappropriate; injection_detected=bool; off_task=bool; classifier_confidence=0..1.",
+      "Delimiter: per-request nonce secrets.token_hex(8) wrapping sanitized text in a student_input block tagged with the nonce id. Never fixed/guessable.",
+      "Routing: is_educational false OR off_task true to Refuse; self_harm to Crisis (resources, no LLM counseling); other safety_flags to Refuse+redirect; classifier_confidence under 0.5 to Clarify; injection_detected true to log+strike and proceed with clean fields only.",
+      "Crisis: crisis_resources.yaml by ISO country + global fallback; US 988 Suicide and Crisis Lifeline, EU 112/local; non-dismissable front-end card; I-am-an-AI-not-a-professional disclosure.",
+      "Audit record fields: request_id, hashed_profile_id, ip_hash, ts, raw_length, language, removed_char_summary, suspicion_score, heuristic_hit_ids, classifier verdict (topic hashed), decision_type, reason, latency_ms, model+PROMPT_VERSION, token_usage. Default no raw text; RAW_CAPTURE_ON_FLAG env flag default false with N-day purge.",
+      "Heuristic regexes (raise suspicion_score, never block alone): ignore all previous instructions, disregard, you are now, system prompt, DAN, leading Assistant/User/System role markers, long base64 blobs, payload-splitting markers. Stored in patterns.yaml.",
+      "Module layout: backend/app/sanitization with preprocess.py classifier.py validate.py safety.py audit.py models.py prompts.py patterns.yaml crisis_resources.yaml; ratelimit.py middleware; tests/test_injection_corpus.py. Use grade_band/age + intent to avoid over-blocking legitimate older-student topics (WWII, reproduction, chemistry)."
+    ],
+    "pitfalls": [
+      "Relying on the system prompt or delimiters alone. arXiv 2604.23887 and Zylos 2026 show model-reliant defenses fall to adaptive attackers; only deterministic layers contain a breakout.",
+      "Interpolating raw/sanitized prompt into the generator reopens the same-channel vulnerability; the generator must receive ONLY validated fields. Skipping NFKC + invisible/bidi stripping lets homoglyph/zero-width attacks bypass regex and the classifier.",
+      "Letting the LLM counsel a self-harm case instead of routing to crisis resources (CA SB 243 / SAFE BOTs require crisis referral). Logging raw prompts by default (COPPA 2026); store salted hashes, raw only for flagged events.",
+      "Trusting structured-output conformance as the only validation (re-check enums, re-sanitize topic). Using Opus 4.8 for the cheap screen instead of Haiku 4.5. Anonymous resume codes make evasion trivial unless limits key on IP/device hash too."
+    ],
+    "recommendations": [
+      {
+        "title": "Raw prompt is untrusted data end-to-end; the generator never sees it",
+        "how_to_apply": "Frozen Pydantic StructuredIntent in models.py is the only thing passed to the generator; unit-test no raw_prompt parameter."
+      },
+      {
+        "title": "Layer 0+1 length/rate limiting and deterministic pre-processing before any LLM call",
+        "how_to_apply": "sanitization/preprocess.py pure function (normalized text, removed_chars, suspicion_score, heuristic_hits); ratelimit.py SQLite counters keyed on (profile_id, ip_hash), HTTP 429."
+      },
+      {
+        "title": "Layer 2+3 hardened CLASSIFIER on Haiku 4.5 then deterministic validation",
+        "how_to_apply": "sanitization/classifier.py nonce secrets.token_hex(8), temperature 0, INTENT_SCHEMA from Python Enums; sanitization/validate.py returns a Decision tagged union; Refuse/Crisis never reach generation; red-team tests/test_injection_corpus.py."
+      },
+      {
+        "title": "Layer 4+5 child-safety moderation, crisis routing, generator, and audit logging",
+        "how_to_apply": "sanitization/safety.py with crisis_resources.yaml (ISO country + global fallback), non-dismissable Vue card; async audit_log + sanitization/audit.py record(event) fire-and-forget with an N-day purge."
+      }
+    ]
+  },
+  {
+    "stream": "claude",
+    "summary": "Use the async Anthropic Python SDK (AsyncAnthropic) with model claude-opus-4-8, thinking adaptive, and output_config effort per step. Full lessons use a multi-step pipeline (intent -> plan -> parallel per-section content -> visual specs); quizzes use one streamed structured call. Both get guaranteed JSON via output_config.format json_schema (client.messages.parse with Pydantic models), never response prefill (400 on 4.8). Make the big reusable pedagogy system prompt a frozen cache_control prefix so it hits the prompt cache across the many per-student calls; append volatile student data last. Stream long generations to dodge the SDK timeout guard. Detect language once and thread the BCP-47 code into every step.",
+    "concrete_specs": [
+      "Model id exact, no date suffix: claude-opus-4-8",
+      "thinking={type:adaptive}; display defaults to omitted - leave it, never surface chain-of-thought to students",
+      "Effort in output_config: intent=low, plan=high, per-section=medium, quiz=high, visual-spec=low; max for hardest only",
+      "REMOVED on 4.8 (400): temperature, top_p, top_k, thinking enabled+budget_tokens, last-assistant-turn prefill",
+      "Structured: client.messages.parse(output_format=PydanticModel)->parsed_output; raw output_config={format:{type:json_schema,schema:{...,additionalProperties:false}}}",
+      "Schema SUPPORTED: type, enum, const, anyOf, allOf, $ref/$def, formats(date-time,date,email,uri,uuid), additionalProperties:false",
+      "Schema NOT supported (use prompt+Pydantic validator): minimum, maximum, multipleOf, minLength, maxLength, recursive, complex array constraints",
+      "Caching: cache_control={type:ephemeral} 5m=1.25x write, {type:ephemeral,ttl:1h}=2x write, read=0.1x; break-even 2/3 reads; max 4 breakpoints; 20-block lookback",
+      "Min cacheable prefix on Opus 4.8 = 4096 tokens; verify response.usage.cache_read_input_tokens>0",
+      "Pre-warm: messages.create(model=claude-opus-4-8, max_tokens=0, system=[{...,cache_control:{type:ephemeral}}], messages=[{role:user,content:warmup}]); incompatible with stream/thinking-enabled/output_config.format",
+      "max_tokens: lesson/section=64000, quiz=32000, intent/visual=2000-4000; STREAM >16000 via messages.stream()+get_final_message()",
+      "Opus 4.8: 1M input context, 128K max output (128K needs streaming); $5/1M input, $25/1M output",
+      "Retries: SDK auto-retries 429/408/409/5xx/529; client.with_options(max_retries=5); never retry 400/401/403/404",
+      "Typed exceptions: RateLimitError, BadRequestError, OverloadedError, InternalServerError, APITimeoutError, APIConnectionError; log response._request_id",
+      "Async: anthropic.AsyncAnthropic(); high concurrency pip install anthropic[aiohttp] + AsyncAnthropic(http_client=DefaultAioHttpClient())",
+      "Batches (50% off bulk pre-gen): client.messages.batches.create(requests=[Request(custom_id, params=MessageCreateParamsNonStreaming(...))])",
+      "Multilingual: intent returns BCP-47 language; thread into volatile tail; JSON keys English, values localized; instruct idiomatic native phrasing",
+      "Resumed-session operator context: append {role:system,content:...} to messages under beta mid-conversation-system-2026-04-07 (do not edit cached top-level system)",
+      "Guardrail: client.messages.count_tokens(model=claude-opus-4-8, system=..., messages=...) before expensive fan-out"
+    ],
+    "pitfalls": [
+      "datetime.now/student id/resume code/unsorted json.dumps in the pedagogy prefix silently kills caching (cache_read stays 0); keep prefix byte-identical, inject volatile data after the breakpoint",
+      "Prefix under 4096 tokens on 4.8 will not cache (no error, cache_creation=0); pad/consolidate above 4096",
+      "Response prefill to force JSON shape returns 400 on 4.8; use output_config.format",
+      "Relying on schema minimum/maximum/minLength/enum-count for exactly-4-options or difficulty-1-5; silently stripped, enforce in prompt+Pydantic validator and regenerate",
+      "Sending temperature/top_p/top_k or budget_tokens (old Claude code) all 400 on 4.8; steer via prompting+effort",
+      "Non-streaming with max_tokens>16000 raises ValueError / risks ~10-min idle timeout; always stream and use get_final_message()",
+      "Firing N parallel identical-prefix calls at once: all miss cache until the first streams, all pay full write; fire plan first, await its first token, then fan out",
+      "Trusting parsed_output without stop_reason check: refusal may not match schema, max_tokens means truncated JSON",
+      "Not capping 4.8 verbosity in quiz explanations; use a positive length exemplar, not just be-concise",
+      "Disabling thinking to save tokens can leak reasoning into the visible answer (bad for students); keep adaptive thinking on",
+      "Sending correct_index/explanation to the Vue client at quiz delivery exposes them in network tab; keep server-side, reveal via grading endpoint",
+      "Structured outputs are incompatible with Citations (400) and with prefilling; do not combine",
+      "Synchronous anthropic.Anthropic() inside async FastAPI handlers blocks the event loop; use AsyncAnthropic",
+      "Defaulting effort to high everywhere wastes tokens on cheap steps; set effort per step"
+    ],
+    "recommendations": [
+      {
+        "title": "Async SDK, model claude-opus-4-8, adaptive thinking, per-step effort",
+        "how_to_apply": "Centralize model id + per-step effort in config; thin LLM service injects thinking/output_config/max_tokens. Never take these from user input."
+      },
+      {
+        "title": "Reliable JSON via output_config.format + Pydantic, not prefill",
+        "how_to_apply": "app/llm/schemas.py with validators; check stop_reason refusal/max_tokens before trusting parsed_output; reuse schema (24h compile cache)."
+      },
+      {
+        "title": "Frozen cached pedagogy prefix to cut cost across per-student calls",
+        "how_to_apply": "SYSTEM_PEDAGOGY constant per content-type with cache_control on last block; inject date/id/language in trailing user msg or role:system (beta mid-conversation-system-2026-04-07); max_tokens:0 pre-warm at startup."
+      },
+      {
+        "title": "Lesson pipeline: plan -> parallel sections -> visual specs",
+        "how_to_apply": "Plain-Python async orchestrator (not Managed Agents). Persist plan+sections to SQLite as they land for resume-code recovery. Await first plan token before fanning out to seed cache."
+      },
+      {
+        "title": "Quiz pipeline: single streamed structured call",
+        "how_to_apply": "Pydantic validators; regenerate (max 2 retries) on failure. Keep correct_index/explanation server-side; reveal via grading endpoint."
+      },
+      {
+        "title": "Multilingual: detect once, thread language into every step",
+        "how_to_apply": "language:str in intent schema + run context; interpolate into volatile tail only (keep prefix byte-identical/cacheable across languages); per-language exemplars in language-keyed cached prefixes."
+      },
+      {
+        "title": "Token/cost control, retries, error handling",
+        "how_to_apply": "try/except -> FastAPI responses; generation_usage table keyed by resume code; token guardrail in sanitize step; nightly Batches job for curated library."
+      },
+      {
+        "title": "Tune Opus 4.8 behavioral defaults in the pedagogy prompt",
+        "how_to_apply": "Cached prefix carries a concise length/format spec + one positive output exemplar + an instruction to produce the complete artifact in one pass; keep thinking adaptive, do not set display:summarized."
+      }
+    ]
+  },
+  {
+    "stream": "visuals",
+    "summary": "SchoolAutomaton should use a 3-tier visual pipeline. Tier 1 (default, free, instant): Claude Opus 4.8 generates SVG diagrams/charts/labeled figures and CSS/SVG-SMIL animations directly as text — zero per-image cost, infinitely re-styleable, crisp at any zoom, perfect for labels and multilingual text. Tier 2 (raster illustrations, only when a scene/character is needed): Replicate FLUX.2 family — default to FLUX.2 [dev] (black-forest-labs/flux-2-dev, ~$0.012/MP, ~2.5s) or the cheapest FLUX.2 [klein] 4B (black-forest-labs/flux-2-klein-4b, Apache-2.0, sub-second) for high-volume; FLUX.2 [pro] (black-forest-labs/flux-2-pro, $0.015 + $0.015/MP, ~6s) when typography/quality matters. For SVG icons/logos use recraft-ai/recraft-v3-svg ($0.08/vector image). Tier 3 (rare, opt-in animation): Replicate image-to-video (wan-video/wan-2.2-i2v-fast cheapest, ~$0.018-0.05/s) — but prefer Lottie/CSS for almost all motion. Everything is cached on disk keyed by a SHA-256 content hash of (model + normalized prompt + params). Verified Nov-2025 FLUX.2 launch pricing and IDs against the Replicate blog and model pages.",
+    "concrete_specs": [
+      "Replicate raster default: black-forest-labs/flux-2-dev (~$0.012/megapixel, ~2.5s, 32B)",
+      "Replicate cheap/high-volume: black-forest-labs/flux-2-klein-4b (Apache-2.0 license, sub-second latency)",
+      "Replicate hero/quality: black-forest-labs/flux-2-pro ($0.015 base + $0.015/MP, ~6s)",
+      "Replicate max-typography (rare): black-forest-labs/flux-2-flex ($0.06/MP, ~22s)",
+      "Legacy budget fallback: black-forest-labs/flux-schnell ($0.003/image) and black-forest-labs/flux-dev ($0.030/image)",
+      "Vector icons/badges: recraft-ai/recraft-v3-svg ($0.08 per vector image, $0.04 per raster)",
+      "Image-to-video (opt-in only): wan-video/wan-2.2-i2v-fast (cheapest, ~$0.018-0.05/s) or wan-video/wan-2.5-i2v (480/720/1080p, up to 10s, optional audio); Kling kwaivgi/* at ~$0.07-0.14/s for premium",
+      "FLUX.2 default params: megapixels=1, output_format=webp, safety_tolerance=1 (strictest; 1=strict..5=permissive), num_outputs=1, store seed for reproducibility, supports up to 8 reference images for character consistency",
+      "FLUX.2 aspect_ratio enum: 1:1, 4:3, 3:4, 16:9, 9:16, 21:9, 9:21 (~1MP default, up to ~1.4MP)",
+      "flux-schnell extra params: go_fast=true (fp8 optimized), aspect_ratio adds 2:3/3:2/4:5/5:4, num_outputs max 4, output_quality 0-100, disable_safety_checker (API only, keep False)",
+      "Layout slots -> aspect/MP/tier: HERO 16:9@1MP/dev; INLINE_FIGURE 4:3 or 1:1@1MP/dev; QUIZ_THUMB & icon 1:1@0.25-0.5MP/klein; PORTRAIT_CHARACTER 3:4@1MP/pro; FULL_BLEED_MOBILE 9:16@1MP/dev",
+      "Cache key = SHA-256(canonical JSON {asset_type, model_id, model_version, normalized_prompt(NFC, lowercased, whitespace-collapsed), sorted params, seed, output_format})",
+      "Cache path: data/cache/visuals/<hash[0:2]>/<hash[2:4]>/<hash>.<ext>; SQLAlchemy visual_assets table (hash PK, type, model, params_json, prompt, lang, width, height, bytes, mime, created_at, last_accessed_at, hit_count)",
+      "Serve assets with Cache-Control: public, max-age=31536000, immutable; URL contains the content hash; Docker named volume for data/cache",
+      "Raster illustration prompt template: 'A friendly, colorful flat vector illustration of {subject}, simple clean shapes, soft rounded edges, bright cheerful palette, plain off-white background, no text, no labels, educational children's textbook style, age-appropriate for {grade}, safe for kids, clear and uncluttered, centered composition'",
+      "Safety/avoid clause appended to prompt: 'Do not include: scary imagery, violence, blood, weapons, realistic human faces, brand logos, watermarks, or any written text.'",
+      "SVG output contract from Claude: strict JSON {svg, alt, caption}; sanitize with lxml (reject <script>,<foreignObject>,external href, on* attrs), require viewBox, cap ~60KB",
+      "Animation: SVG SMIL/CSS @keyframes by default; Lottie via @lottiefiles/dotlottie-vue for rich motion; always wrap in @media (prefers-reduced-motion: reduce) + pause control",
+      "Labels are language-neutral: generate raster with 'no text', overlay translated labels as SVG <text> positioned by layout per detected_lang"
+    ],
+    "pitfalls": [
+      "Replicate output URLs expire (~1 hour) — you MUST download and persist bytes to disk immediately; never store or hotlink the Replicate-hosted URL.",
+      "Diffusion models (including FLUX.2) misspell text, especially non-English/non-Latin labels — never bake lesson labels into raster; use 'no text' prompts + SVG/HTML text overlays in the student's language.",
+      "FLUX.2 [dev] is open-WEIGHT but under a Non-Commercial license; running it via Replicate's hosted endpoint is fine (you pay per use), but do NOT self-host flux-2-dev/9B weights for a commercial product. For self-hosting only the Apache-2.0 flux-2-klein-4B is license-safe.",
+      "Cost scales with megapixels, not per-image, for FLUX.2 — a careless 4MP generation costs ~4x a 1MP one; pin megapixels=1 (or lower for thumbs) and use klein for high-volume small assets.",
+      "Replicate models have cold starts; the first call after idle can take many extra seconds. Generate asynchronously in a FastAPI background task, show a skeleton/placeholder, and rely on the cache for repeat hits rather than blocking the request.",
+      "Generating educational VIDEO with image-to-video models is expensive, slow, non-deterministic, and frequently physically/pedagogically wrong (hallucinated motion) — do not use it for core teaching; default to deterministic SVG/CSS/Lottie animation and gate Replicate video behind explicit opt-in + quota.",
+      "Unsanitized SVG is an XSS vector — Claude-generated SVG can contain <script>, event handlers, or <foreignObject>; always strip these server-side before storing/serving, and serve from a separate asset path with a restrictive CSP.",
+      "SQLite is single-writer; under concurrent generation, funnel cache-row inserts through one writer (or use INSERT OR IGNORE on the hash PK) and write files atomically (temp + os.replace) to avoid partial/corrupt cached assets.",
+      "Don't let the LLM choose arbitrary image dimensions — it breaks responsive layouts and inflates cost; constrain to the fixed LayoutSlot enum and reserve space in Vue to avoid layout shift.",
+      "Model IDs and prices verified Nov-2025/June-2026; Replicate/BFL iterate fast (FLUX.2 launched Nov 2025). Keep model_id and model_version in config and in the cache key so a model upgrade invalidates the cache cleanly instead of serving mismatched assets.",
+      "Keep safety_tolerance at the strictest setting and keep the Replicate safety checker ENABLED (disable_safety_checker=False) for a children's product; layer your own Claude-based prompt moderation before generation."
+    ],
+    "recommendations": [
+      {
+        "title": "Make Claude-generated SVG the DEFAULT visual, not raster",
+        "how_to_apply": "Add a `generate_svg` tool/path in the LLM service: a dedicated Claude call (or a section of the lesson-generation call) that returns strict JSON `{\"svg\": \"<svg ...>\", \"alt\": \"...\", \"caption\": \"...\"}`. Validate server-side: parse with lxml, reject <script>/<foreignObject>/external href/on* attributes (XSS), enforce a viewBox, cap byte size (~60KB). Store the sanitized SVG in the same cache table as raster. Set width=100% height=auto in the Vue component and use `currentColor`/CSS vars so it themes automatically. Use a decision flag from intent extraction: visual_kind in {diagram, chart, illustration, photo} -> SVG for diagram/chart, Replicate for illustration/photo."
+      },
+      {
+        "title": "Use FLUX.2 [dev] as the raster default, klein-4B for high volume, pro for hero images",
+        "how_to_apply": "Config-drive the model per use: `RASTER_MODEL_DEFAULT=black-forest-labs/flux-2-dev`, `RASTER_MODEL_CHEAP=black-forest-labs/flux-2-klein-4b`, `RASTER_MODEL_HERO=black-forest-labs/flux-2-pro`. Call via `replicate` async client (httpx-based) inside a FastAPI background task; persist the returned image bytes to disk, never hotlink Replicate URLs (they expire ~1h). Default params: `megapixels=1`, `output_format=webp`, `aspect_ratio` from layout, `safety_tolerance=1` (strictest), `seed` stored for reproducibility. Budget: at $0.012/MP a 1MP image is ~1.2 cents; with caching, repeat lessons cost $0."
+      },
+      {
+        "title": "Generate SVG/CSS animation by default; reserve Replicate video for rare cinematic moments",
+        "how_to_apply": "Default `animation_kind` from intent: `css_svg` for anything diagrammatic; only set `replicate_video` when the student explicitly taps 'bring this to life' on a Tier-2 illustration. Gate video behind a per-profile daily quota (it is the only meaningful cost). Cache the resulting MP4 by content hash exactly like images. Always wrap motion in `@media (prefers-reduced-motion: reduce)` and provide a pause control."
+      },
+      {
+        "title": "Cache every asset on disk by a deterministic content hash",
+        "how_to_apply": "Before any Replicate/SVG generation, compute the hash and SELECT the row; on hit, return the existing path. On miss, generate, write atomically (temp file + os.replace), insert the row, return. Run a periodic LRU eviction (delete files where last_accessed_at older than N days AND hit_count low) to bound disk. In Docker Compose, mount data/cache as a named volume so the cache survives redeploys. Include the hash in the asset URL so the immutable Cache-Control header is safe."
+      },
+      {
+        "title": "Standardize kid-safe, consistent, labelled illustration prompts via a server-side template",
+        "how_to_apply": "Template: `\"A friendly, colorful flat vector illustration of {subject}, simple clean shapes, soft rounded edges, bright cheerful palette, plain off-white background, no text, no labels, educational children's textbook style, age-appropriate for {grade}, safe for kids, clear and uncluttered, centered composition\"`. Global negative/avoid (put in prompt since FLUX uses positive prompting): append `\"Do not include: scary imagery, violence, blood, weapons, realistic human faces, brand logos, watermarks, or any written text.\"` Keep `safety_tolerance=1`. Maintain per-lesson style consistency by fixing the same `seed` family and reusing a reference image (FLUX.2 accepts up to 8) of an established character/mascot. Render labels as a separate SVG <text> overlay positioned by the lesson layout, translated per `detected_lang`."
+      },
+      {
+        "title": "Pick aspect ratios and sizes to match fixed lesson layout slots",
+        "how_to_apply": "Add a `LayoutSlot` enum in Python with `(aspect_ratio, megapixels, model_tier)` per slot; the lesson generator tags each requested visual with a slot, and the visual service derives Replicate params from it. In Vue/Tailwind use aspect-[16/9] / aspect-square utility classes matching the slot so the skeleton reserves correct space before the asset loads. Generate WEBP for raster (smaller) with a PNG fallback only where transparency over arbitrary backgrounds is needed."
+      },
+      {
+        "title": "Use recraft-v3-svg for crisp vector ICONS/badges that Claude shouldn't hand-author",
+        "how_to_apply": "Use it sparingly and cache aggressively (icons are reused across the whole app, so cost amortizes to ~$0). Generate the badge/icon set once at design time or lazily on first unlock, store the SVG in the visual_assets cache, and recolor via CSS to fit themes. Prefer Claude-SVG for anything that must encode specific lesson data (a labeled diagram); use Recraft for stylized decorative vectors."
+      }
+    ]
+  },
+  {
+    "stream": "vue",
+    "summary": "SchoolAutomaton's frontend should be a thin, playful Vue 3.5 + Vite 7 + TS + Tailwind v4 SPA organized around three flows (prompt -> generation/loading -> lesson reader OR interactive test -> results) with Pinia for state and Vue Router for routes. The design system is \"soft, rounded, high-contrast playful but accessible\": a token-driven Tailwind v4 @theme palette, a rounded friendly variable font (Lexend as default + Atkinson Hyperlegible & OpenDyslexic as user-selectable accessibility options), and motion via @vueuse/motion for declarative micro-interactions plus GSAP (now fully free incl. all plugins since v3.13) for celebratory result/quiz sequences, with Lottie (@lottiefiles/dotlottie-vue) reserved for reward animations. Interactive question components (MCQ, true/false, fill-blank, drag-drop matching/ordering, image hotspot) are built as a discriminated-union-typed component family with delightful, accessible feedback, all keyboard-operable and respecting prefers-reduced-motion. Untrusted LLM/Replicate output is hard-sanitized: SVG via DOMPurify in SVG profile (or rendered through <img>), markdown via markdown-it + DOMPurify, and math via KaTeX — never raw v-html. Accessibility is first-class (WCAG 2.2 AA, large touch targets for young kids, dyslexia mode, reduced-motion, full keyboard/SR support), and the whole app is mobile-first responsive.",
+    "concrete_specs": [
+      "package.json deps: vue@^3.5.31, vue-router@^4.5, pinia@^3, pinia-plugin-persistedstate@^4, @vueuse/core@^11, @vueuse/motion@^2, gsap@^3.13, @lottiefiles/dotlottie-vue@latest, markdown-it@^14, markdown-it-katex (or @vscode/markdown-it-katex), katex@^0.16, dompurify@^3, vuedraggable@^4 (vue.draggable.next), vue-i18n@^10/^11, @fontsource/lexend, @fontsource/atkinson-hyperlegible",
+      "package.json devDeps: vite@^7, @vitejs/plugin-vue@^5, @tailwindcss/vite@^4, tailwindcss@^4, typescript@~5.6, vue-tsc@^2, vitest@^2, @vue/test-utils@^2, @playwright/test, @axe-core/playwright, eslint@^9, prettier",
+      "vite.config.ts plugins: [vue(), tailwindcss()] (no PostCSS, no tailwind.config.js)",
+      "src/assets/main.css: `@import \"tailwindcss\";` then `@theme { --color-primary: ...; --color-success: ...; --color-error: ...; --font-sans: 'Lexend', system-ui, sans-serif; --radius-card: 1.25rem; --text-base-size: 18px; }`",
+      "Folder structure: src/ { main.ts, App.vue, router/index.ts, stores/{session,prompt,generation,lesson,test,prefs}.ts, views/{HomeView,LoadingView,LessonView,TestView,ResultsView,ResumeView,admin/*}.vue, components/{common,layout,gamification}/*.vue, components/questions/{QuestionRenderer,McqQuestion,TrueFalseQuestion,FillBlankQuestion,MatchQuestion,OrderQuestion,HotspotQuestion,AnswerFeedback}.vue, components/content/{SafeContent,LessonSection,MathBlock}.vue, composables/{useReducedMotion,useCelebration,useGeneration,useApi}.ts, lib/{safeContent.ts,api.ts}, types/{question.ts,session.ts,api.ts}, locales/*.json, assets/ }",
+      "Question discriminated union: type Question = McqQuestion | TrueFalseQuestion | FillBlankQuestion | MatchQuestion | OrderQuestion | HotspotQuestion; each has { id:string; kind:'mcq'|'truefalse'|'fillblank'|'match'|'order'|'hotspot'; prompt:string; explanation?:string; ...kind-specific fields }",
+      "AnswerEvent normalized payload: { questionId: string; value: unknown; isCorrect: boolean; latencyMs: number }",
+      "Routes: '/', '/loading/:sessionId', '/lesson/:sessionId', '/test/:sessionId', '/results/:sessionId', '/resume', '/admin' (lazy + auth guard)",
+      "DOMPurify config for SVG: DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ['script','foreignObject'], FORBID_ATTR: [/^on/i] })",
+      "markdown-it config: markdownit({ html: false, linkify: true, typographer: true }).use(katexPlugin) then DOMPurify.sanitize before v-html",
+      "Accessibility prefs (usePrefs, persisted): { theme: 'default'|'highcontrast', font: 'lexend'|'atkinson'|'opendyslexic', fontScale: 1|1.15|1.3, reducedMotion: boolean, sound: boolean, locale: string }",
+      "WCAG targets: contrast >=4.5:1 (text), touch target >=44px (48px young-learner density), prefers-reduced-motion honored, aria-live='polite' for feedback/score, no color-only meaning",
+      "Theme switching via document.documentElement.dataset.theme and [data-theme] CSS var overrides; font via --font-sans override"
+    ],
+    "pitfalls": [
+      "Do NOT keep a tailwind.config.js with Tailwind v4 — config is now CSS-first via @theme and the @tailwindcss/vite plugin; mixing the old PostCSS/JS-config path with v4 causes broken or duplicated tokens.",
+      "Never bind LLM/Replicate output to v-html, :href, or :src without sanitization — v-html bypasses Vue escaping and :href/:src do not block javascript: URLs; this is the single biggest XSS risk in this app.",
+      "vuedraggable/Sortable.js drag-drop is NOT keyboard-accessible by default and is hard for young children to perform on touch; ship a select-then-place keyboard/click fallback for every match/order/hotspot question or it fails WCAG 2.1.1.",
+      "Do not force a dyslexia font on everyone — research is mixed on OpenDyslexic; offer Lexend/Atkinson/OpenDyslexic as a user-selectable option (default Lexend) per BDA guidance.",
+      "Reserve GSAP and Lottie for the results/reward route and lazy-load them; loading heavy animation libs on the prompt/home screen hurts first-load on the low-end devices children often use.",
+      "Gate ALL motion (GSAP, @vueuse/motion, Lottie) behind prefers-reduced-motion AND the in-app toggle in one central composable; scattered animation calls will inevitably miss the reduced-motion check and harm vestibular/attention-sensitive users.",
+      "Keep DOMPurify and KaTeX patched in CI — past DOMPurify SVG namespace-confusion mutation-XSS bypasses (<2.2.2) show stale versions reintroduce holes; pin to ^ and run dependency audit.",
+      "Don't render hotspot regions as bare clickable SVG <path> elements — they are not reliably focusable/labelable; overlay real <button> elements positioned over the image for SR/keyboard support.",
+      "Do not encode correct/incorrect using color only — colorblind and young pre-literate users need icon + text + (optional) sound as well.",
+      "The resume code is a convenience cache only; never trust the client-stored code/profile for authorization — the FastAPI server must remain the source of truth, and admin auth must be entirely separate from the learner resume code."
+    ],
+    "recommendations": [
+      {
+        "title": "Adopt the exact 2025-2026 core stack with pinned versions",
+        "how_to_apply": "package.json deps: vue@^3.5, vue-router@^4.5, pinia@^3, @tailwindcss/vite@^4, tailwindcss@^4; devDeps: vite@^7, @vitejs/plugin-vue@^5, typescript@~5.6, vue-tsc@^2, vitest@^2, @vue/test-utils@^2, @playwright/test, eslint@^9, prettier. In vite.config.ts: plugins: [vue(), tailwindcss()]. In src/assets/main.css use a single `@import \"tailwindcss\";` then a `@theme { ... }` block. Delete any tailwind.config.js."
+      },
+      {
+        "title": "Structure routes + Pinia stores around the three learner flows",
+        "how_to_apply": "Define stores with defineStore('session', () => { ... return {...} }) setup syntax. The loading route polls or opens an EventSource to the FastAPI generation endpoint, writing into useGenerationStore.status ('queued'|'generating'|'ready'|'error') and partial; on 'ready' it router.push to '/lesson' or '/test' based on usePromptStore.mode. Guard /admin with router.beforeEach checking an admin token (separate from learner resume code). Store resume code only client-side as a convenience; server is source of truth."
+      },
+      {
+        "title": "Build a token-driven, playful-but-accessible design system in Tailwind v4 @theme",
+        "how_to_apply": "In main.css @theme define semantic tokens: --color-bg, --color-surface, --color-primary, --color-on-primary, --color-success, --color-error, --color-accent (each meeting 4.5:1 against its on-color), --font-sans: 'Lexend', system-ui, sans-serif, --radius-card, --shadow-soft. Add [data-theme=\"highcontrast\"] and [data-theme=\"dyslexia\"] override blocks. usePrefsStore sets document.documentElement.dataset.theme and a --font-sans override (Atkinson/OpenDyslexic). Self-host fonts via @fontsource/lexend, @fontsource/atkinson-hyperlegible, and OpenDyslexic woff2 to avoid CDN/privacy issues for minors. Never encode meaning in color alone — pair with icon/text (correct/incorrect uses check/cross + label)."
+      },
+      {
+        "title": "Use a layered motion strategy: @vueuse/motion for micro-interactions, GSAP for sequences, Lottie for rewards",
+        "how_to_apply": "Install @vueuse/motion, gsap, @lottiefiles/dotlottie-vue. Register MotionPlugin in main.ts. Create a useReducedMotion() composable that reads window.matchMedia('(prefers-reduced-motion: reduce)') OR usePrefs.reducedMotion and, when true, sets GSAP global gsap.globalTimeline.timeScale or simply swaps animated transitions for instant state changes, and passes :speed/:autoplay=false or a static frame to Lottie. Wrap celebration logic in a single useCelebration() composable so the reduced-motion check lives in one place. Keep .dotlottie reward files tiny and lazy-load gsap only on the results route via dynamic import."
+      },
+      {
+        "title": "Implement interactive question components as a typed, polymorphic family with shared accessible feedback",
+        "how_to_apply": "Create src/components/questions/ with one file per kind plus QuestionRenderer.vue and AnswerFeedback.vue, and types in src/types/question.ts. Drive scoring in useTestStore.submitAnswer(answerEvent). For match/order, render a parallel keyboard mode: each draggable also gets role/tabindex, Enter to 'pick up', arrow/Enter to 'drop', with aria-live announcing moves; vuedraggable handles the pointer/touch path. Hotspot: overlay absolutely-positioned <button> regions (not bare SVG paths) over the image so they are focusable/labeled; show coordinates only as fallback. AnswerFeedback uses role='status' aria-live='polite', shows a check/cross icon + localized text + GSAP/@vueuse micro-bounce (reduced-motion aware), and never relies on color alone."
+      },
+      {
+        "title": "Hard-sanitize all LLM/Replicate output: SVG, markdown, and math through a single trusted boundary",
+        "how_to_apply": "Create src/lib/safeContent.ts exporting renderMarkdown(md:string):string (markdown-it{html:false,linkify:true} + markdown-it-katex, then DOMPurify.sanitize(html,{ADD_TAGS:['math',...],USE_PROFILES:{html:true,svg:true,mathMl:true}})) and renderSvg(svg:string):string (DOMPurify SVG profile + FORBID_TAGS:['script','foreignObject'], FORBID_ATTR:[/^on/]). A <SafeContent :markdown> wrapper component calls these and binds via v-html only after sanitize. Add a strict CSP header from FastAPI (no inline script, img-src restricted to your domain + Replicate CDN) as defense-in-depth. Keep dompurify and katex on the latest patch in CI dependency checks."
+      },
+      {
+        "title": "Make accessibility, i18n, and responsiveness structural, not bolted-on",
+        "how_to_apply": "Add vue-i18n (lazy import of /src/locales/{lng}.json; set locale from session.locale returned by the API). Build an AccessibilityPanel.vue (gear/cog in header) writing usePrefs, persisted to localStorage and synced to server profile. Add @axe-core/playwright a11y assertions to e2e covering Home, LessonReader, each question type, and Results. Use Tailwind responsive prefixes mobile-first (base = phone, sm:/md:/lg: enhance). Ensure every interactive element is a real <button>/<a>/<input> or has correct role+tabindex+keydown handlers. Announce score/streak changes via a single aria-live region in the Results view."
+      }
+    ]
+  }
+]

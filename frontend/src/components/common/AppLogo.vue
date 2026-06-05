@@ -1,0 +1,50 @@
+<script setup lang="ts">
+/**
+ * SchoolAutomaton brand mark — a friendly robot ("automaton") in a graduation cap ("school").
+ * Crisp vector at any size, themeable via the brand tokens. Decorative by default (aria-hidden):
+ * the parent (e.g. the header home link) provides the accessible name.
+ */
+withDefaults(defineProps<{ size?: number | string; title?: string }>(), { size: 36, title: '' })
+</script>
+
+<template>
+  <svg
+    :width="size"
+    :height="size"
+    viewBox="0 0 64 64"
+    class="sa-app-logo"
+    :role="title ? 'img' : undefined"
+    :aria-label="title || undefined"
+    :aria-hidden="title ? undefined : 'true'"
+    focusable="false"
+  >
+    <title v-if="title">{{ title }}</title>
+    <defs>
+      <linearGradient id="saLogoBg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#7c5cff" />
+        <stop offset="1" stop-color="#5638e0" />
+      </linearGradient>
+    </defs>
+    <rect width="64" height="64" rx="15" fill="url(#saLogoBg)" />
+    <rect x="11.5" y="34" width="5" height="8" rx="2.5" fill="#18c29c" />
+    <rect x="47.5" y="34" width="5" height="8" rx="2.5" fill="#18c29c" />
+    <rect x="16" y="27" width="32" height="22" rx="9" fill="#ffffff" />
+    <circle cx="26" cy="38" r="3" fill="#2a2350" />
+    <circle cx="38" cy="38" r="3" fill="#2a2350" />
+    <circle cx="25" cy="37" r="0.9" fill="#ffffff" />
+    <circle cx="37" cy="37" r="0.9" fill="#ffffff" />
+    <path d="M26 43 Q32 48 38 43" fill="none" stroke="#2a2350" stroke-width="2.4" stroke-linecap="round" />
+    <path d="M32 13 L55 21 L32 29 L9 21 Z" fill="#2a2350" />
+    <circle cx="32" cy="21" r="2.4" fill="#ffb020" />
+    <path d="M32 21 Q49 18 55 21 L55 32" fill="none" stroke="#ffb020" stroke-width="2" stroke-linecap="round" />
+    <circle cx="55" cy="34" r="2.6" fill="#ffb020" />
+  </svg>
+</template>
+
+<style scoped>
+.sa-app-logo {
+  display: block;
+  flex: none;
+  border-radius: 0.7rem;
+}
+</style>

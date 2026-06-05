@@ -1,0 +1,188 @@
+@import 'tailwindcss';
+
+/* ============================================================================
+   SchoolAutomaton design system — light, playful, mobile-first, accessible.
+   Tokens drive everything; theme variants (high-contrast, dyslexia) and the
+   font-scale just override these CSS vars on <html>. WCAG: all text/bg pairs
+   target >= 4.5:1; tap targets >= 44px; never color-only meaning.
+   ============================================================================ */
+
+@theme {
+  /* Brand + semantic colors */
+  --color-bg: #f7f7fb;
+  --color-bg-tint: #eef0ff;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f3fa;
+  --color-ink: #1f2330; /* primary text — 13.6:1 on bg */
+  --color-ink-soft: #565d72; /* secondary text — 4.8:1 on surface */
+  --color-line: #e3e5ef;
+
+  --color-primary: #6c4cff; /* violet */
+  --color-primary-strong: #5638e0;
+  --color-on-primary: #ffffff;
+  --color-accent: #ff7ac6; /* playful pink */
+  --color-mint: #18c29c; /* success/correct */
+  --color-on-mint: #04382e;
+  --color-sun: #ffb020; /* highlight / streak */
+  --color-coral: #ff5a6e; /* error/incorrect */
+  --color-on-coral: #ffffff;
+  --color-sky: #38b6ff; /* info */
+
+  /* Shape + motion */
+  --radius-card: 1.25rem;
+  --radius-pill: 999px;
+  --radius-btn: 0.9rem;
+  --shadow-card: 0 6px 24px -8px rgb(56 36 120 / 0.18);
+  --shadow-pop: 0 12px 40px -10px rgb(56 36 120 / 0.32);
+
+  /* Typography — friendly, rounded, generous */
+  --font-sans: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-reading: var(--font-sans);
+
+  /* Touch ergonomics */
+  --tap-min: 2.75rem; /* 44px */
+}
+
+/* ----- accessibility variants (set by usePrefs on document.documentElement) ----- */
+:root {
+  --font-scale: 1;
+  color-scheme: light;
+}
+:root[data-font='atkinson'] {
+  --font-sans: 'Atkinson Hyperlegible', system-ui, sans-serif;
+}
+:root[data-font='opendyslexic'] {
+  --font-sans: 'OpenDyslexic', 'Comic Sans MS', system-ui, sans-serif;
+  letter-spacing: 0.02em;
+}
+:root[data-theme='highcontrast'] {
+  --color-bg: #ffffff;
+  --color-bg-tint: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #ffffff;
+  --color-ink: #000000;
+  --color-ink-soft: #1a1a1a;
+  --color-line: #000000;
+  --color-primary: #4322c7;
+  --color-on-primary: #ffffff;
+  --color-mint: #0a7a52;
+  --color-coral: #c61126;
+  --shadow-card: 0 0 0 2px #000;
+  --shadow-pop: 0 0 0 3px #000;
+}
+
+@layer base {
+  html {
+    font-size: calc(17px * var(--font-scale));
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background:
+      radial-gradient(1200px 600px at 50% -10%, var(--color-bg-tint), transparent 60%),
+      var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  h1, h2, h3 {
+    line-height: 1.2;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  /* Readable measure for generated lesson prose */
+  .prose-reading {
+    max-width: 62ch;
+    line-height: 1.7;
+  }
+  /* Visible, generous focus ring for keyboard users */
+  :focus-visible {
+    outline: 3px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 40%, transparent);
+  }
+}
+
+@layer components {
+  /* Reusable playful primitives — agents compose these for visual consistency. */
+  .sa-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+  }
+  .sa-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: var(--tap-min);
+    padding: 0.65rem 1.15rem;
+    border-radius: var(--radius-btn);
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+    user-select: none;
+  }
+  .sa-btn:active {
+    transform: translateY(1px) scale(0.99);
+  }
+  .sa-btn-primary {
+    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-strong));
+    color: var(--color-on-primary);
+    box-shadow: var(--shadow-card);
+  }
+  .sa-btn-ghost {
+    background: var(--color-surface-2);
+    color: var(--color-ink);
+  }
+  .sa-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: var(--radius-pill);
+    background: var(--color-surface-2);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  /* Tap-friendly hit area helper for icon buttons */
+  .sa-tap {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  }
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top), 0.5rem);
+  }
+}
+
+/* Respect the OS / per-profile reduced-motion preference everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-reduced-motion='true'] *,
+:root[data-reduced-motion='true'] *::before,
+:root[data-reduced-motion='true'] *::after {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+}

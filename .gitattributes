@@ -1,0 +1,19 @@
+# Normalize line endings so Linux containers (and the .sh deploy scripts they may run) always get
+# LF, regardless of the contributor's OS. PowerShell scripts keep CRLF.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets — never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp4 binary
+*.woff binary
+*.woff2 binary
+*.ttf binary

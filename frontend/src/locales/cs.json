@@ -1,0 +1,303 @@
+{
+  "app": { "name": "SchoolAutomaton", "tagline": "Nauč se cokoliv, po svém." },
+  "home": {
+    "prompt_label": "Co se chceš naučit?",
+    "prompt_placeholder": "např. Chci se naučit o fotosyntéze na úrovni 5. třídy",
+    "go": "Jdeme na to!",
+    "go_busy": "Odesílám…",
+    "enter_hint": "Stiskni Enter pro start, nebo Shift+Enter pro nový řádek.",
+    "examples": "Zkus jeden z těchto",
+    "hero_title": "Co se chceš dnes naučit?",
+    "hero_subtitle": "Napiš cokoliv — lekci s obrázky nebo hravý kvíz, připravené přímo pro tebe.",
+    "generic_error": "Něco se pokazilo. Zkus to prosím znovu.",
+    "refuse_try": "Co takhle místo toho jeden z těchto?",
+    "have_code": "Máš kód pro pokračování? Pokračuj v učení",
+    "example_list": [
+      "Nauč mě o koloběhu vody pro 3. třídu",
+      "Vyzkoušej mě z Velké francouzské revoluce, střední škola",
+      "Vysvětli zlomky pomocí obrázků, věk 9 let",
+      "Pomoz mi pochopit fotosyntézu, 5. třída",
+      "Otestuj mě ze španělské slovní zásoby o jídle"
+    ]
+  },
+  "loading": {
+    "thinking": "Připravuji tvou lekci…",
+    "building_test": "Sestavuji tvůj test…",
+    "almost": "Už to skoro je!",
+    "starting": "Začínáme…",
+    "planning": "Plánuji tvou lekci…",
+    "progress_label": "Průběh generování",
+    "section_done": "hotovo",
+    "error_title": "Hmm, to nevyšlo",
+    "error_body": "Při sestavování jsme narazili na zádrhel. Zkusme to znovu.",
+    "cheer_1": "Skvělá volba — tohle bude zábava!",
+    "cheer_2": "Přidávám obrázky a příklady přímo pro tebe…",
+    "cheer_3": "Přimíchávám trochu procvičování, aby ti to lépe utkvělo…",
+    "cheer_4": "Už to skoro je — ladím to k dokonalosti!"
+  },
+  "common": {
+    "next": "Další",
+    "back": "Zpět",
+    "retry": "Zkusit znovu",
+    "continue": "Pokračovat",
+    "check": "Zkontrolovat",
+    "hint": "Nápověda",
+    "correct": "Správně!",
+    "not_yet": "Ještě ne — pokračuj!",
+    "loading": "Načítání…",
+    "close": "Zavřít",
+    "done": "Hotovo",
+    "dismiss": "Zavřít"
+  },
+  "results": {
+    "title": "Skvělá práce!",
+    "score": "Skóre",
+    "xp_earned": "Získané XP",
+    "review": "Projít odpovědi",
+    "again": "Naučit se něco dalšího"
+  },
+  "resume": {
+    "title": "Pokračovat v učení",
+    "label": "Zadej svůj kód pro pokračování",
+    "submit": "Pokračovat",
+    "your_code": "Tvůj kód pro pokračování",
+    "save_hint": "Ulož si tento kód, abys mohl pokračovat na jakémkoli zařízení. Nechceme žádné osobní údaje.",
+    "not_found": "Tento kód se nám nepodařilo najít. Zkontroluj ho prosím a zkus to znovu.",
+    "copy": "Kopírovat kód",
+    "copied": "Kód zkopírován!"
+  },
+  "gamification": {
+    "level": "Úroveň",
+    "streak": "dní v řadě",
+    "xp": "XP",
+    "daily_goal": "Denní cíl",
+    "badges": "Odznaky",
+    "bar_label": "Tvůj pokrok",
+    "badge_earned_on": "Získáno {date}",
+    "badge_locked": "Zamčeno",
+    "badge_progress_label": "Pokrok",
+    "badge_unlocked": "Odemčeno!",
+    "badges_progress": "{unlocked} z {total} odznaků",
+    "combo_a11y": "Násobitel komba {mult}",
+    "combo_max": "Maximální kombo",
+    "daily_goal_a11y": "Denní cíl: {earned} z {goal} XP",
+    "daily_goal_done": "Denní cíl splněn!",
+    "streak_count": "{count} dní v řadě",
+    "streak_protected": "Série je chráněná",
+    "streak_protected_a11y": "Série je chráněná na {count} dnech",
+    "streak_start": "Začni sérii!",
+    "xp_max": "Dosažena nejvyšší úroveň",
+    "xp_to_next": "{n} XP do další úrovně"
+  },
+  "tree": {
+    "detail_for": "Podrobnosti k {title}",
+    "empty_desc": "Začni se učit a tady ti vyroste tvá zahrada vědomostí.",
+    "empty_title": "Tvá zahrada je prázdná",
+    "grows_from": "Vyrůstá z",
+    "grows_into": "Vyroste v",
+    "legend": "Legenda",
+    "locked_hint": "Zvládni dřívější témata, abys tohle odemkl.",
+    "other_subject": "Ostatní",
+    "water_hint": "Čas tohle zalít — krátké opakování to udrží silné."
+  },
+  "footer": {
+    "ai_disclosure": "Lekce a kvízy generuje AI — důležité informace si ověř.",
+    "nav_label": "Patička",
+    "admin": "Administrace"
+  },
+  "crisis": {
+    "title": "Záleží na tobě. Pomoc je dostupná.",
+    "disclaimer": "Jsem AI asistent, ne odborník na duševní zdraví.",
+    "default_message": "Zní to, že procházíš něčím opravdu těžkým. Nejsi na to sám a lidé jsou připraveni ti hned pomoct.",
+    "call": "Zavolat",
+    "text": "Napsat SMS",
+    "visit": "Otevřít web"
+  },
+  "a11y": {
+    "settings": "Nastavení přístupnosti",
+    "theme": "Motiv",
+    "font": "Písmo",
+    "text_size": "Velikost textu",
+    "reduced_motion": "Omezit pohyb",
+    "sound": "Zvuk",
+    "language": "Jazyk",
+    "skip_to_content": "Přeskočit na obsah",
+    "synced_hint": "Tvá nastavení jsou uložena a sledují tvůj kód pro pokračování.",
+    "theme_default": "Výchozí",
+    "theme_highcontrast": "Vysoký kontrast",
+    "theme_dyslexia": "Pro dyslexii",
+    "font_lexend": "Lexend",
+    "font_atkinson": "Atkinson Hyperlegible",
+    "font_opendyslexic": "OpenDyslexic"
+  },
+  "lesson": {
+    "gated_hint": "Dokonči předchozí část, abys odemkl tuto.",
+    "minutes": "{n} min",
+    "objectives_title": "Co se naučíš",
+    "review_title": "Vracíme se, abys si to zapamatoval",
+    "review_body": "Ty nejzapeklitější myšlenky ti ve správnou chvíli vrátíme ke krátkému opakování, aby ti zůstaly natrvalo.",
+    "closing": "Přišel jsi a pustil se do toho — tak roste učení. Jsme na tebe hrdí!",
+    "learn_more": "Naučit se něco nového",
+    "load_error_title": "Tuto lekci se nám nepodařilo načíst",
+    "load_error_body": "Při načítání tvé lekce se něco pokazilo. Vraťme se zpět a zkusme to znovu."
+  },
+  "admin": {
+    "title": "Administrátorská konzole",
+    "sign_out": "Odhlásit se",
+    "session_expired": "Vaše relace vypršela. Přihlaste se prosím znovu.",
+    "load_error": "Data se nepodařilo načíst. Zkuste to prosím znovu.",
+    "retry": "Zkusit znovu",
+    "refresh": "Obnovit",
+    "tabs": {
+      "overview": "Přehled",
+      "audit": "Audit",
+      "settings": "Nastavení",
+      "content": "Obsah"
+    },
+    "overview": {
+      "title": "Posledních 24 hodin",
+      "requests_24h": "Požadavky (24 h)",
+      "cache_hit_rate": "Úspěšnost cache",
+      "anthropic_cost": "Náklady Anthropic",
+      "replicate_cost": "Náklady Replicate",
+      "crisis_events": "Krizové události",
+      "refusals": "Odmítnutí",
+      "injection_attempts": "Pokusy o injekci",
+      "decisions": "Rozdělení rozhodnutí",
+      "totals": "Souhrny",
+      "profiles_total": "Profily",
+      "lessons_total": "Lekce",
+      "quizzes_total": "Kvízy",
+      "no_decisions": "Zatím nejsou zaznamenána žádná rozhodnutí.",
+      "decision": {
+        "proceed": "Pokračovat",
+        "clarify": "Upřesnit",
+        "refuse": "Odmítnout",
+        "crisis": "Krize"
+      }
+    },
+    "audit": {
+      "title": "Audit sanitizace",
+      "filter_decision": "Typ rozhodnutí",
+      "filter_all": "Všechna rozhodnutí",
+      "injection_only": "Pouze pokusy o injekci",
+      "topic_hashed_note": "Témata jsou z důvodu soukromí ukládána jako hash — zobrazuje se pouze jednosměrný hash, nikdy slova studenta.",
+      "col_time": "Čas",
+      "col_request": "Požadavek",
+      "col_decision": "Rozhodnutí",
+      "col_lang": "Jazyk",
+      "col_suspicion": "Podezření",
+      "col_injection": "Injekce",
+      "col_flags": "Bezpečnostní příznaky",
+      "col_reason": "Důvod",
+      "col_length": "Délka",
+      "col_topic_hash": "Téma (hash)",
+      "injection_yes": "Zjištěno",
+      "injection_no": "Žádné",
+      "no_flags": "—",
+      "empty_title": "Žádné záznamy auditu",
+      "empty_desc": "Těmto filtrům zatím neodpovídají žádné požadavky.",
+      "prev": "Předchozí",
+      "next": "Další",
+      "page_of": "Stránka {page} z {pages}",
+      "showing": "{count} z {total} záznamů"
+    },
+    "settings": {
+      "title": "Nastavení aplikace",
+      "desc": "Konfigurace za běhu. Tajné hodnoty (API klíče) lze pouze zapisovat a zobrazují se maskované.",
+      "col_key": "Klíč",
+      "col_value": "Hodnota",
+      "col_updated": "Aktualizováno",
+      "secret_badge": "Tajné",
+      "secret_masked": "•••••••• (pouze zápis)",
+      "edit": "Upravit",
+      "save": "Uložit",
+      "cancel": "Zrušit",
+      "new_secret_placeholder": "Zadejte nové tajemství pro nahrazení…",
+      "value_placeholder": "Hodnota (JSON, např. true, 90, \"text\")",
+      "invalid_json": "Zadejte platnou hodnotu JSON (true, false, číslo nebo \"text v uvozovkách\").",
+      "saved": "Nastavení uloženo.",
+      "save_error": "Uložení se nezdařilo. Možná nemáte oprávnění upravovat nastavení.",
+      "is_secret_toggle": "Uložit jako tajné (pouze zápis)",
+      "add_title": "Přidat nebo přepsat nastavení",
+      "add_key_placeholder": "klic_nastaveni",
+      "add": "Přidat nastavení",
+      "empty_title": "Zatím žádná nastavení",
+      "empty_desc": "Přidejte nastavení pro konfiguraci chování za běhu.",
+      "quick_toggles": "Rychlé přepínače",
+      "boolean_on": "Zapnuto",
+      "boolean_off": "Vypnuto"
+    },
+    "content": {
+      "title": "Knihovna obsahu",
+      "desc": "Lekce a kvízy v cache. Filtrujte podle předmětu a ročníku.",
+      "filter_subject": "Předmět",
+      "filter_subject_all": "Všechny předměty",
+      "filter_grade": "Ročník",
+      "filter_grade_all": "Všechny ročníky",
+      "kind_lesson": "Lekce",
+      "kind_quiz": "Kvíz",
+      "col_kind": "Typ",
+      "col_topic": "Téma",
+      "col_grade": "Ročník",
+      "col_lang": "Jazyk",
+      "col_created": "Vytvořeno",
+      "empty_title": "Zatím žádný obsah",
+      "empty_desc": "Vygenerované lekce a kvízy se zobrazí zde."
+    }
+  },
+  "feedback": {
+    "partial": "Skoro to je — pokračuj!"
+  },
+  "test": {
+    "progress_label": "Průběh kvízu",
+    "progress_value": "Otázka {current} z {total}",
+    "points": "{n} b.",
+    "finish": "Dokončit",
+    "level_up": "Postup! Teď jsi na úrovni {level} 🎉",
+    "badge_unlocked": "Odemčen odznak: {title}!",
+    "grade_error": "Tuto odpověď se nám nepodařilo zkontrolovat. Zkus to prosím znovu.",
+    "load_error_title": "Tento test se nám nepodařilo načíst",
+    "load_error_body": "Při načítání tvého kvízu se něco pokazilo. Vraťme se zpět a zkusme to znovu."
+  },
+  "q": {
+    "mcq": {
+      "select_one": "Vyber jednu odpověď",
+      "select_all": "Vyber všechny správné možnosti"
+    },
+    "tf": {
+      "legend": "Pravda, nebo nepravda?",
+      "true": "Pravda",
+      "false": "Nepravda"
+    },
+    "cloze": {
+      "legend": "Doplň chybějící slova",
+      "blank_n": "Mezera {n}",
+      "choose": "Vyber…"
+    },
+    "short": {
+      "label": "Tvá odpověď",
+      "placeholder": "Napiš svou odpověď…"
+    },
+    "numeric": {
+      "label": "Tvá číselná odpověď"
+    },
+    "match": {
+      "instructions": "Přetáhni každou odpověď k jejímu protějšku, nebo klepni na odpověď a pak na místo.",
+      "pool": "Odpovědi k umístění",
+      "slot_empty": "Prázdné místo pro {left}",
+      "slot_filled": "{left} je spárováno s {right}"
+    },
+    "order": {
+      "instructions": "Seřaď je do správného pořadí. Přetáhni, nebo použij tlačítka nahoru a dolů.",
+      "reorder": "{item}, pozice {pos}. Použij šipku nahoru nebo dolů pro přesun.",
+      "move_up": "Posunout {item} nahoru",
+      "move_down": "Posunout {item} dolů"
+    },
+    "hotspot": {
+      "instructions": "Klepni na správné místo na obrázku.",
+      "image_alt": "Obrázek s volitelnými oblastmi",
+      "region_n": "Oblast {n}"
+    }
+  }
+}

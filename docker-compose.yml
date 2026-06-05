@@ -1,0 +1,41 @@
+# SchoolAutomaton — full stack. `docker compose up --build` brings up backend + frontend(nginx).
+# SQLite DB and the content-hashed visual cache live on the named volume `sa-data` (survives redeploys).
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend
+    image: schoolautomaton-backend:latest
+    env_file: .env
+    environment:
+      SA_ENV: production
+      SA_DATABASE_URL: sqlite+aiosqlite:////app/data/schoolautomaton.db
+      SA_DATA_DIR: /app/data
+      SA_CORS_ORIGINS: http://localhost:8080
+    volumes:
+      - sa-data:/app/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/healthz'); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.frontend
+    image: schoolautomaton-frontend:latest
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  sa-data:

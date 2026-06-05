@@ -1,0 +1,39 @@
+# Keep build contexts lean and avoid copying host-specific / large artifacts into images.
+# (Build context is the repo root for both Dockerfiles.)
+
+# Python
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.mypy_cache/
+
+# Node / Vite (frontend deps + build output are produced inside the image)
+**/node_modules/
+frontend/dist/
+**/.vite/
+
+# Runtime data (DB + generated visual cache live on a Docker volume, not in the image)
+data/
+backend/data/
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+**/*.db-*
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# VCS / editor / OS / docs
+.git/
+.gitignore
+.idea/
+.vscode/
+**/.DS_Store
+**/Thumbs.db
+*.log
+docs/

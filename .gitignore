@@ -1,0 +1,51 @@
+# ---- Python / backend ----
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.python-version
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- Node / frontend ----
+node_modules/
+dist/
+.vite/
+*.local
+.eslintcache
+
+# ---- Data / runtime (local DB, generated assets, caches) ----
+data/
+!data/.gitkeep
+backend/data/
+storage/
+!storage/.gitkeep
+assets_cache/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ---- Secrets / env ----
+.env
+.env.*
+!.env.example
+*.key
+secrets/
+
+# ---- Editor / OS ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# ---- Docker ----
+.docker/

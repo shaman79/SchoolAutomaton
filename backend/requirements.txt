@@ -1,0 +1,38 @@
+# ---- Web framework ----
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.32
+python-multipart>=0.0.12       # admin login form
+sse-starlette>=2.1             # Server-Sent Events for generation progress
+
+# ---- Data / persistence ----
+SQLAlchemy>=2.0.36
+aiosqlite>=0.20
+alembic>=1.14
+pydantic>=2.10
+pydantic-settings>=2.7
+email-validator>=2.2
+
+# ---- LLM + image providers ----
+# anthropic: structured outputs via messages.parse(output_format=...); aiohttp extra for concurrency.
+# NOTE (B2 agent): verify the exact structured-output API against the installed SDK version and adapt
+# the thin client wrapper if the parse() signature differs; keep a tool-use JSON fallback.
+anthropic[aiohttp]>=0.45
+replicate>=1.0
+
+# ---- Pedagogy / scheduling ----
+# py-fsrs (FSRS-6). NOTE (B4 agent): verify Scheduler/Card/Rating API against the installed version.
+fsrs>=5.0
+textstat>=0.7
+
+# ---- Security ----
+argon2-cffi>=23.1              # admin password hashing
+PyJWT>=2.9                     # admin JWT
+cryptography>=43.0             # Fernet (encrypt secrets/raw audit at rest)
+
+# ---- Content safety / parsing ----
+lxml>=5.3                      # server-side SVG sanitization
+bleach>=6.1                    # markdown/text hardening helper
+PyYAML>=6.0                    # patterns / badges / crisis resources data
+
+# ---- HTTP / misc ----
+httpx>=0.27
