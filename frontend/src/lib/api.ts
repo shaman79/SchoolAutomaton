@@ -8,6 +8,7 @@ import type {
   Decision,
   GamificationSnapshot,
   GradeResult,
+  LearningSessionSummary,
   Lesson,
   ProfileCreateOut,
   ProfileEnvelope,
@@ -91,6 +92,8 @@ export const api = {
     request<ProfileSettings>('/profiles/me/settings', { method: 'PATCH', body: patch }),
 
   getGamification: () => request<GamificationSnapshot>('/profiles/me/gamification'),
+
+  getMyRequests: () => request<LearningSessionSummary[]>('/profiles/me/requests'),
 
   getTree: (subject?: string) =>
     request<unknown>(`/profiles/me/tree${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),

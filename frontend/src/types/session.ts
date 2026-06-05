@@ -115,6 +115,17 @@ export interface RequestStatus {
   quiz_id: number | null
 }
 
+export interface LearningSessionSummary {
+  request_id: string
+  mode: Mode
+  status: 'queued' | 'generating' | 'ready' | 'error'
+  lesson_id: number | null
+  quiz_id: number | null
+  title: string | null
+  subject: string | null
+  created_at: string | null
+}
+
 export interface FeedbackBlock {
   text: string
   encouragement_focus: 'effort' | 'strategy' | 'progress'

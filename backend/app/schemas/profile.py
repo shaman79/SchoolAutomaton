@@ -70,3 +70,16 @@ class ProfileCreateOut(AppModel):
     resume_code: str
     profile: ProfilePublic
     settings: ProfileSettingsPublic
+
+
+class LearningSessionSummary(AppModel):
+    """One past (or in-progress) learning session for the 'My lessons' history list."""
+
+    request_id: str
+    mode: str  # study|test
+    status: str  # queued|generating|ready|error
+    lesson_id: int | None = None
+    quiz_id: int | None = None
+    title: str | None = None  # lesson topic or quiz title
+    subject: str | None = None
+    created_at: datetime | None = None

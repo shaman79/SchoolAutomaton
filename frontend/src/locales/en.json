@@ -304,5 +304,17 @@
       "image_alt": "Image with selectable regions",
       "region_n": "Region {n}"
     }
+  },
+  "history": {
+    "title": "My lessons",
+    "no_profile": "You haven't started any lessons yet.",
+    "empty": "Your lessons will appear here once you create one.",
+    "start_learning": "Start learning",
+    "load_error": "Couldn't load your lessons. Please try again.",
+    "untitled": "Untitled lesson",
+    "mode_study": "Lesson",
+    "mode_test": "Quiz",
+    "in_progress": "Preparing…",
+    "failed": "Failed"
   }
 }

@@ -50,11 +50,22 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
         />
       </div>
 
+      <!-- My lessons (history) — available once a learner has a profile/resume code. -->
+      <RouterLink
+        v-if="session.resumeCode"
+        :to="{ name: 'history' }"
+        class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
+        :class="session.isAuthenticated && session.gamification ? 'ml-2' : 'ml-auto'"
+        :aria-label="t('history.title')"
+      >
+        <SaIcon name="books" :size="22" :title="t('history.title')" />
+      </RouterLink>
+
       <!-- Settings trigger lives in the header on >=sm; on phones the floating FAB (App.vue) is primary. -->
       <button
         type="button"
         class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
-        :class="session.isAuthenticated && session.gamification ? 'ml-2' : 'ml-auto'"
+        :class="session.resumeCode ? 'ml-1' : (session.isAuthenticated && session.gamification ? 'ml-2' : 'ml-auto')"
         :aria-label="t('a11y.settings')"
         @click="emit('open-settings')"
       >

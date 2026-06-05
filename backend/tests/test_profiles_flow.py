@@ -45,6 +45,50 @@ async def test_create_resume_me_settings(client):
 
 
 @pytest.mark.asyncio
+async def test_my_requests_history(client):
+    # Create a profile and learn its internal id.
+    code = (await client.post("/api/v1/profiles", json={})).json()["resume_code"]
+    me = (await client.get("/api/v1/profiles/me", headers={"X-Resume-Code": code})).json()
+    pid = me["profile"]["id"]
+
+    # Seed a ready study request + lesson and a clarify (non-content) request that must NOT appear.
+    from app.db.session import SessionLocal
+    from app.models import LearningRequest, Lesson
+
+    async with SessionLocal() as db:
+        lesson = Lesson(
+            request_id="hist-1", topic="Optika", detected_language="cs", grade_band="G6-8",
+            subject="physics", target_fkgl=6.0, objectives_json=[], model_id="m", prompt_version="v",
+        )
+        db.add(lesson)
+        await db.flush()
+        lesson_id = lesson.id
+        db.add(LearningRequest(
+            request_id="hist-1", profile_id=pid, decision_type="proceed", mode="study",
+            status="ready", lesson_id=lesson_id, structured_intent_json={}, detected_language="cs",
+            grade_band="G6-8", prompt_version="v", model_id="m",
+        ))
+        db.add(LearningRequest(
+            request_id="hist-clarify", profile_id=pid, decision_type="clarify", mode=None,
+            status="ready", structured_intent_json={}, prompt_version="v", model_id="m",
+        ))
+        await db.commit()
+
+    r = await client.get("/api/v1/profiles/me/requests", headers={"X-Resume-Code": code})
+    assert r.status_code == 200, r.text
+    items = r.json()
+    assert len(items) == 1  # only the proceed/content request, not the clarify
+    assert items[0]["request_id"] == "hist-1"
+    assert items[0]["mode"] == "study"
+    assert items[0]["lesson_id"] == lesson_id
+    assert items[0]["title"] == "Optika"
+    assert items[0]["subject"] == "physics"
+
+    # Requires a resume code.
+    assert (await client.get("/api/v1/profiles/me/requests")).status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_resume_normalization(client):
     r = await client.post("/api/v1/profiles", json={})
     code = r.json()["resume_code"]

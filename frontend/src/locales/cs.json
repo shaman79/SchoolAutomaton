@@ -304,5 +304,17 @@
       "image_alt": "Obrázek s volitelnými oblastmi",
       "region_n": "Oblast {n}"
     }
+  },
+  "history": {
+    "title": "Moje lekce",
+    "no_profile": "Zatím jsi nezačal/a žádnou lekci.",
+    "empty": "Tvoje lekce se objeví tady, jakmile nějakou vytvoříš.",
+    "start_learning": "Začít se učit",
+    "load_error": "Lekce se nepodařilo načíst. Zkus to prosím znovu.",
+    "untitled": "Lekce bez názvu",
+    "mode_study": "Lekce",
+    "mode_test": "Kvíz",
+    "in_progress": "Připravuje se…",
+    "failed": "Nepovedlo se"
   }
 }

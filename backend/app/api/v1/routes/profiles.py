@@ -4,12 +4,14 @@ snapshot, knowledge tree."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Profile
+from ....models import LearningRequest, Lesson, Profile, Quiz
 from ....schemas.gamification import GamificationSnapshot, TreeResponse
 from ....schemas.profile import (
     CreateProfileIn,
+    LearningSessionSummary,
     ProfileCreateOut,
     ProfileEnvelope,
     ProfileSettingsPublic,
@@ -48,6 +50,45 @@ async def resume_profile(body: ResumeIn, db: AsyncSession = Depends(get_db)):
 async def get_me(profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)):
     await profile_service.touch_last_active(db, profile)
     return await profile_service.build_envelope(db, profile)
+
+
+@router.get("/me/requests", response_model=list[LearningSessionSummary])
+async def list_my_requests(
+    profile: Profile = Depends(get_profile),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(default=100, ge=1, le=200),
+):
+    """The learner's own lesson/quiz history (most recent first) for the 'My lessons' list.
+
+    Only content-bearing requests (decision was 'proceed') that are ready, still generating, or
+    errored — so a learner can re-open a past lesson/quiz or rejoin one that's still building."""
+    rows = (
+        await db.execute(
+            select(LearningRequest, Lesson, Quiz)
+            .outerjoin(Lesson, Lesson.id == LearningRequest.lesson_id)
+            .outerjoin(Quiz, Quiz.id == LearningRequest.quiz_id)
+            .where(
+                LearningRequest.profile_id == profile.id,
+                LearningRequest.decision_type == "proceed",
+                LearningRequest.status.in_(("ready", "generating", "error")),
+            )
+            .order_by(LearningRequest.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        LearningSessionSummary(
+            request_id=lr.request_id,
+            mode=lr.mode,
+            status=lr.status,
+            lesson_id=lr.lesson_id,
+            quiz_id=lr.quiz_id,
+            title=(lesson.topic if lesson else (quiz.title if quiz else None)),
+            subject=(lesson.subject if lesson else (quiz.subject if quiz else None)),
+            created_at=lr.created_at,
+        )
+        for lr, lesson, quiz in rows
+    ]
 
 
 @router.patch("/me/settings", response_model=ProfileSettingsPublic)
