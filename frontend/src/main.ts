@@ -13,7 +13,7 @@ import '@fontsource/opendyslexic/700.css'
 import './style/main.css'
 
 import App from './App.vue'
-import { i18n, setLocale } from './i18n'
+import { SUPPORTED_LOCALES, i18n, setLocale } from './i18n'
 import router from './router'
 import { usePrefsStore } from './stores/prefs'
 
@@ -26,8 +26,18 @@ app.use(router)
 app.use(i18n)
 app.use(MotionPlugin)
 
-// Apply persisted accessibility prefs to <html> before first paint.
+// On a FIRST visit (no persisted prefs yet), follow the browser's language; afterwards the
+// learner's explicit choice (persisted) always wins.
+const hadStoredPrefs = localStorage.getItem('prefs') != null
 const prefs = usePrefsStore()
+if (!hadStoredPrefs) {
+  const browserLang = (navigator.language || 'en').split('-')[0].toLowerCase()
+  if ((SUPPORTED_LOCALES as readonly string[]).includes(browserLang)) {
+    prefs.locale = browserLang
+  }
+}
+
+// Apply persisted accessibility prefs to <html> before first paint.
 prefs.applyToDom()
 setLocale(prefs.locale)
 

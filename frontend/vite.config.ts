@@ -10,6 +10,11 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  // Don't emit the inline modulepreload-polyfill <script> — it trips our strict CSP
+  // (script-src 'self'), and modern browsers support modulepreload natively.
+  build: {
+    modulePreload: { polyfill: false },
+  },
   server: {
     port: 5173,
     proxy: {
