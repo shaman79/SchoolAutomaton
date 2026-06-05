@@ -188,6 +188,38 @@ def _tool_for(output_model: type[BaseModel], name: str = "emit_result") -> dict[
     }
 
 
+# Models that rejected `thinking` (e.g. Haiku: "adaptive thinking is not supported on this model").
+# We remember them so we stop sending it after the first rejection.
+_thinking_unsupported: set[str] = set()
+
+
+def _is_thinking_unsupported(exc: Exception) -> bool:
+    return "thinking" in str(exc).lower()
+
+
+async def _provider_call(
+    cli, *, model, max_tokens, system, messages, effort, output_model, use_tools, send_thinking
+):
+    """One provider call. Tool-use path (most widely supported, used for the Haiku classifier) or the
+    native structured-output parse path. ``thinking`` is only sent when ``send_thinking``."""
+    common: dict[str, Any] = {
+        "model": model,
+        "max_tokens": max_tokens,
+        "system": system,
+        "messages": messages,
+    }
+    if send_thinking:
+        common["thinking"] = ADAPTIVE_THINKING
+    if use_tools:
+        tool = _tool_for(output_model)
+        return await cli.messages.create(
+            tools=[tool], tool_choice={"type": "tool", "name": tool["name"]}, **common
+        )
+    return await cli.messages.parse(
+        output_config={"effort": effort}, output_format=output_model, **common
+    )
+
+
 async def generate_structured[OutputT: BaseModel](
     *,
     system_blocks: list[str] | str,
@@ -201,6 +233,7 @@ async def generate_structured[OutputT: BaseModel](
     profile_id: int | None = None,
     client: anthropic.AsyncAnthropic | None = None,
     use_tools_fallback: bool = False,
+    use_thinking: bool = True,
 ) -> tuple[OutputT, Usage]:
     """Run one structured Opus 4.8 call and parse it into ``output_model``.
 
@@ -230,28 +263,20 @@ async def generate_structured[OutputT: BaseModel](
             # The provider call AND its parse/validate live inside the try so a pydantic
             # ValidationError raised by messages.parse (the SDK validates synchronously during the
             # await) triggers the corrective-instruction retry instead of escaping (SPEC §5).
-            if use_tools_fallback:
-                tool = _tool_for(output_model)
-                # Order: tools -> system -> messages.
-                message = await cli.messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    thinking=ADAPTIVE_THINKING,
-                    tools=[tool],
-                    tool_choice={"type": "tool", "name": tool["name"]},
-                    system=system,
-                    messages=messages,
-                )
-            else:
-                message = await cli.messages.parse(
-                    model=model,
-                    max_tokens=max_tokens,
-                    thinking=ADAPTIVE_THINKING,
-                    output_config={"effort": effort},
-                    output_format=output_model,
-                    system=system,
-                    messages=messages,
-                )
+            send_thinking = use_thinking and model not in _thinking_unsupported
+            call_kwargs = {
+                "model": model, "max_tokens": max_tokens, "system": system, "messages": messages,
+                "effort": effort, "output_model": output_model, "use_tools": use_tools_fallback,
+            }
+            try:
+                message = await _provider_call(cli, send_thinking=send_thinking, **call_kwargs)
+            except Exception as exc:  # noqa: BLE001
+                # Some models reject `thinking` (e.g. Haiku). Self-heal: remember + retry without it.
+                if send_thinking and _is_thinking_unsupported(exc):
+                    _thinking_unsupported.add(model)
+                    message = await _provider_call(cli, send_thinking=False, **call_kwargs)
+                else:
+                    raise
 
             raw_request_id = (
                 getattr(message, "_request_id", None)
@@ -315,4 +340,7 @@ async def classify[OutputT: BaseModel](
         db=db,
         request_id=request_id,
         client=client,
+        # Haiku-safe: tool-use structured output, no `thinking`/`output_config` (Opus-only features).
+        use_tools_fallback=True,
+        use_thinking=False,
     )
