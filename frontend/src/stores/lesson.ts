@@ -17,6 +17,9 @@ export const useLessonStore = defineStore('lesson', () => {
   async function load(id: number): Promise<void> {
     loading.value = true
     error.value = null
+    // Reset per-section progressive state so it never leaks across lessons (singleton store).
+    generatingOrdinal.value = null
+    failedOrdinal.value = null
     try {
       lesson.value = await api.getLesson(id)
     } catch (e) {

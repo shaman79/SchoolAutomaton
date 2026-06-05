@@ -71,15 +71,19 @@ async def generate_section(
         except Exception:  # noqa: BLE001 — surface a clean error; mark the section errored
             logger.exception("On-demand section generation failed (lesson=%s ordinal=%s)",
                              lesson_id, ordinal)
-            await db.rollback()
-            section = await db.scalar(
-                select(LessonSection).where(
-                    LessonSection.lesson_id == lesson_id, LessonSection.ordinal == ordinal
+            try:
+                await db.rollback()
+                errored = await db.scalar(
+                    select(LessonSection).where(
+                        LessonSection.lesson_id == lesson_id, LessonSection.ordinal == ordinal
+                    )
                 )
-            )
-            if section is not None:
-                section.gen_status = "error"
-                await db.commit()
+                if errored is not None:
+                    errored.gen_status = "error"
+                    await db.commit()
+            except Exception:  # noqa: BLE001 — best-effort; the 503 below must still be returned
+                logger.exception("Failed to mark section errored (lesson=%s ordinal=%s)",
+                                 lesson_id, ordinal)
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Couldn't prepare the next part just now. Please try again in a moment.",

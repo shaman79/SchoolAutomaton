@@ -335,6 +335,9 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
     # Readability ran on the (on-demand) explanation body.
     assert calls, "readability (_fkgl_english) was never invoked"
     assert rows[expl_ord].gen_status == "ready" and rows[expl_ord].section_measured_fkgl is not None
+    # Lesson-level readability aggregate is recomputed as explanation sections fill in.
+    await db.refresh(lesson)
+    assert lesson.measured_fkgl is not None
 
     # Idempotent: re-generating a ready section is a no-op that returns it unchanged.
     again = await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), pretest_ord, client=client)

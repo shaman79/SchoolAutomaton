@@ -550,6 +550,18 @@ async def _fill_section(
     await _attach_visuals(db, specs, ordered_sections=[row], intent=intent)
 
     row.gen_status = "ready"
+    # Keep the lesson-level readability metric current as explanation sections fill in over time.
+    samples = list(
+        await db.scalars(
+            select(LessonSection.section_measured_fkgl).where(
+                LessonSection.lesson_id == lesson.id,
+                LessonSection.kind == SectionKind.EXPLANATION.value,
+                LessonSection.section_measured_fkgl.is_not(None),
+            )
+        )
+    )
+    if samples:
+        lesson.measured_fkgl = round(sum(samples) / len(samples), 2)
     await db.flush()
     return row
 
