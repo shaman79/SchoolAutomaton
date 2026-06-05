@@ -51,6 +51,26 @@ async def get_db() -> AsyncIterator[AsyncSession]:
             raise
 
 
+# Additive SQLite migrations (no Alembic in this deployment): (table, column, ADD COLUMN DDL).
+# create_all builds these on a fresh DB; for an EXISTING DB we add any missing column in place so
+# upgrades never require wiping the volume (and the learner's resume code + history survive).
+_ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("lessons", "plan_json", "ALTER TABLE lessons ADD COLUMN plan_json JSON"),
+    (
+        "lesson_sections",
+        "gen_status",
+        "ALTER TABLE lesson_sections ADD COLUMN gen_status VARCHAR(12) NOT NULL DEFAULT 'ready'",
+    ),
+)
+
+
+async def _ensure_sqlite_columns(conn) -> None:
+    for table, column, ddl in _ADDITIVE_COLUMNS:
+        rows = (await conn.execute(text(f"PRAGMA table_info({table})"))).all()
+        if rows and column not in {r[1] for r in rows}:  # table exists but lacks the column
+            await conn.execute(text(ddl))
+
+
 async def init_db() -> None:
     """Create tables if absent (dev/first-boot convenience; Alembic owns migrations in prod)."""
     settings.ensure_dirs()
@@ -61,3 +81,4 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
         if _is_sqlite:
             await conn.execute(text("PRAGMA journal_mode=WAL"))
+            await _ensure_sqlite_columns(conn)

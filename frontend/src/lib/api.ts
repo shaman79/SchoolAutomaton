@@ -10,6 +10,7 @@ import type {
   GradeResult,
   LearningSessionSummary,
   Lesson,
+  LessonSection,
   ProfileCreateOut,
   ProfileEnvelope,
   ProfileSettings,
@@ -112,6 +113,13 @@ export const api = {
 
   // ------------------------------------------------------------------------- content
   getLesson: (id: number) => request<Lesson>(`/lessons/${id}`),
+
+  /** Progressive generation: build (or fetch, if ready) one lesson section on demand. */
+  generateSection: (lessonId: number, ordinal: number) =>
+    request<LessonSection>(`/lessons/${lessonId}/sections/${ordinal}/generate`, {
+      method: 'POST',
+      body: {},
+    }),
   getQuiz: (id: number) => request<Quiz>(`/quizzes/${id}`),
 
   startAttempt: (quizId: number) =>

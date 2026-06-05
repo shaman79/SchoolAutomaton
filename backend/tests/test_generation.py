@@ -286,48 +286,59 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
     assert isinstance(lesson, Lesson)
     assert lesson.model_id == "claude-opus-4-8"
     assert lesson.prompt_version  # stamped
+    assert lesson.plan_json  # frozen plan stored so sections can be generated lazily
 
-    # Ordered, complete skeleton.
+    # Ordered, complete skeleton — but PROGRESSIVE: only the first section is filled now.
     sections = list(await db.scalars(
         select(LessonSection).where(LessonSection.lesson_id == lesson.id).order_by(LessonSection.ordinal)
     ))
     assert [s.kind for s in sections] == [k.value for k in LESSON_SKELETON]
+    assert sections[0].gen_status == "ready" and sections[0].body_markdown
+    assert all(s.gen_status == "pending" and s.body_markdown is None for s in sections[1:])
 
-    # Items persisted with lesson_section_id set.
-    items = list(await db.scalars(select(Item).where(Item.source_lesson_id == lesson.id)))
-    assert items and all(i.lesson_section_id is not None for i in items)
-    assert all(i.model_id == "claude-opus-4-8" for i in items)
-
-    # Concept upserted; distractor misconception mapped to a Misconception row + id stored.
-    concept = await db.scalar(select(Concept).where(Concept.slug == "photosynthesis"))
-    assert concept is not None
-    misc_count = await db.scalar(select(func.count()).select_from(Misconception))
-    assert misc_count >= 1
-    mcq_item = next(i for i in items if i.item_type == "mcq")
-    assert mcq_item.distractors_json[0]["misconception_id"] is not None
-
-    # Readability check invoked on the explanation body.
-    assert calls, "readability (_fkgl_english) was never invoked"
-    assert lesson.measured_fkgl is not None
-
-    # SSE events published (status/plan emitted by orchestrator; plan/section by the generator).
+    # SSE events: 'plan' + the first 'section' (ordinal 0) only.
     ch = await task_registry._channel(lr.request_id)
     events = {e["event"] for e in ch.backlog}
     assert "plan" in events and "section" in events
-
-    # 'plan' carries SectionStub objects (ordinal/kind/title), not bare strings (frontend contract).
     plan_ev = next(e for e in ch.backlog if e["event"] == "plan")
     plan_sections = plan_ev["data"]["sections"]
-    assert plan_sections and all(isinstance(s, dict) for s in plan_sections)
-    assert {"ordinal", "kind", "title"} <= set(plan_sections[0].keys())
-
-    # Each 'section' event includes ordinal + kind + title so the checklist ticks.
+    assert plan_sections and {"ordinal", "kind", "title"} <= set(plan_sections[0].keys())
     section_ev = next(e for e in ch.backlog if e["event"] == "section")
-    assert {"ordinal", "kind", "title"} <= set(section_ev["data"].keys())
+    assert section_ev["data"]["ordinal"] == 0
 
     # GenerationUsage logged with an observable cache read.
     usage_rows = list(await db.scalars(select(GenerationUsage)))
     assert usage_rows and any((u.cache_read_tokens or 0) > 0 for u in usage_rows)
+
+    # --- on-demand: filling a pending section builds its items + readability in place ---
+    pretest_ord = LESSON_SKELETON.index(SectionKind.PRETEST)
+    expl_ord = LESSON_SKELETON.index(SectionKind.EXPLANATION)
+    await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), pretest_ord, client=client)
+    await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), expl_ord, client=client)
+    await db.commit()
+
+    rows = {
+        s.ordinal: s
+        for s in await db.scalars(
+            select(LessonSection).where(LessonSection.lesson_id == lesson.id)
+        )
+    }
+    assert rows[pretest_ord].gen_status == "ready"
+    items = list(await db.scalars(select(Item).where(Item.lesson_section_id == rows[pretest_ord].id)))
+    assert items and all(i.model_id == "claude-opus-4-8" for i in items)
+    concept = await db.scalar(select(Concept).where(Concept.slug == "photosynthesis"))
+    assert concept is not None
+    assert (await db.scalar(select(func.count()).select_from(Misconception))) >= 1
+    mcq_item = next(i for i in items if i.item_type == "mcq")
+    assert mcq_item.distractors_json[0]["misconception_id"] is not None
+
+    # Readability ran on the (on-demand) explanation body.
+    assert calls, "readability (_fkgl_english) was never invoked"
+    assert rows[expl_ord].gen_status == "ready" and rows[expl_ord].section_measured_fkgl is not None
+
+    # Idempotent: re-generating a ready section is a no-op that returns it unchanged.
+    again = await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), pretest_ord, client=client)
+    assert again.ordinal == pretest_ord and again.gen_status == "ready"
 
 
 @pytest.mark.asyncio
@@ -349,13 +360,46 @@ async def test_generate_lesson_attaches_visual_asset(db):
     visuals_mod.ensure_visual = _fake_ensure_visual
     try:
         lr = await _seed_request(db, Mode.STUDY)
-        await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+        lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+        # The canned EXPLANATION section carries the visual request — generate it on demand.
+        expl_ord = LESSON_SKELETON.index(SectionKind.EXPLANATION)
+        await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), expl_ord, client=client)
         await db.flush()
         refs = list(await db.scalars(select(AssetsRef)))
         assert refs and refs[0].visual_asset_hash == "deadbeef"
         assert refs[0].alt_text
     finally:
         visuals_mod.ensure_visual = orig
+
+
+@pytest.mark.asyncio
+async def test_generate_section_endpoint_fills_pending(db):
+    """POST /lessons/{id}/sections/{ordinal}/generate fills a pending section on demand."""
+    from app.api.v1.routes.lessons import generate_section as route_generate_section
+    from app.llm import client as client_mod
+
+    client = _make_mock_client()
+    client_mod.set_client(client)  # the route uses the shared client (no client param)
+    try:
+        lr = await _seed_request(db, Mode.STUDY)
+        lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+        await db.commit()
+
+        pretest_ord = LESSON_SKELETON.index(SectionKind.PRETEST)
+        before = await db.scalar(
+            select(LessonSection).where(
+                LessonSection.lesson_id == lesson.id, LessonSection.ordinal == pretest_ord
+            )
+        )
+        assert before.gen_status == "pending" and before.body_markdown is None
+
+        res = await route_generate_section(lesson.id, pretest_ord, db)
+        assert res.ordinal == pretest_ord
+        assert res.gen_status == "ready"
+        assert res.body_markdown
+        assert res.items  # pretest carries interactive items
+    finally:
+        client_mod.set_client(None)
 
 
 @pytest.mark.asyncio

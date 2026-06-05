@@ -425,6 +425,7 @@ async def generate_lesson(
         target_fkgl=float(target_band["fkgl"]),
         lexile_band=target_band["lexile"],
         objectives_json=[],  # filled after concepts are upserted
+        plan_json=plan.model_dump(mode="json"),  # so sections can be generated lazily, on demand
         estimated_duration_min=plan.estimated_duration_min,
         model_id=settings.model_id,
         prompt_version=PROMPT_VERSION,
@@ -466,6 +467,9 @@ async def generate_lesson(
     await db.flush()
 
     # ---- Step 2: ordered skeleton sections (rows first so items can reference them) ----
+    # PROGRESSIVE GENERATION: persist all section skeletons as 'pending'; fill ONLY the first
+    # section now. The rest are generated on demand (POST /lessons/{id}/sections/{ordinal}/generate)
+    # as the learner advances — so an abandoned lesson never pays to generate sections never read.
     ordered_stubs = _ordered_stubs(plan)
     sections: list[LessonSection] = []
     for ordinal, stub in enumerate(ordered_stubs):
@@ -474,83 +478,108 @@ async def generate_lesson(
             ordinal=ordinal,
             kind=stub.kind.value,
             title=stub.title[:200] if stub.title else None,
+            gen_status="pending",
         )
         db.add(row)
         sections.append(row)
     await db.flush()
 
-    # ---- per-section fill (parallel LLM calls; serial DB writes) ----
-    sem = asyncio.Semaphore(_SECTION_CONCURRENCY)
-    results = await asyncio.gather(
-        *(
-            _generate_section(intent, stub, request_id=request_id, sem=sem, client=client)
-            for stub in ordered_stubs
+    if sections:
+        await _fill_section(
+            db, lesson, request_id, intent, ordered_stubs[0], sections[0], client=client
         )
-    )
-    gen_sections = [section for section, _ in results]
-    # Log the (concurrently produced) usage rows serially now that gather is complete.
-    for _, usages in results:
-        for usage in usages:
-            db.add(usage_row(usage, request_id=request_id))
-    await db.flush()
-
-    misconception_cache: dict[tuple[int, str], int] = {}
-    fkgl_samples: list[float] = []
-    for ordinal, (row, gen) in enumerate(zip(sections, gen_sections, strict=True)):
-        row.body_markdown = gen.body_markdown or None
-        if gen.kind == SectionKind.EXPLANATION:
-            measured = (
-                _fkgl_english(gen.body_markdown)
-                if _is_english(intent.language)
-                else _readability_proxy(gen.body_markdown)
-            )
-            if measured is not None:
-                row.section_measured_fkgl = measured
-                fkgl_samples.append(measured)
-        for gi in gen.items:
-            await _persist_item(
-                db,
-                gi,
-                lesson=lesson,
-                section=row,
-                concept_cache=concept_cache,
-                misconception_cache=misconception_cache,
-            )
-        await db.flush()
         await task_registry.publish(
             request_id,
             "section",
-            {"ordinal": ordinal, "kind": gen.kind.value, "title": gen.title or row.title},
+            {"ordinal": 0, "kind": sections[0].kind, "title": sections[0].title},
         )
 
-    # lesson-level readability summary
-    if fkgl_samples:
-        lesson.measured_fkgl = round(sum(fkgl_samples) / len(fkgl_samples), 2)
     if not _is_english(intent.language):
         lesson.readability_note = (
             "Non-English content: FKGL is unreliable; a sentence-length / long-word proxy was used."
         )
 
-    # ---- Step 3: visual specs ----
-    visual_specs = _collect_visual_specs(gen_sections, ordered_stubs)
-    if not visual_specs:
-        specs, _ = await generate_structured(
-            system_blocks=prompts.system_pedagogy(intent.language),
-            user=prompts.build_visual_spec_user(intent, [s.title or s.kind.value for s in ordered_stubs]),
-            output_model=_VisualSpecBatch,
-            model=settings.model_id,
-            max_tokens=_VISUAL_MAX_TOKENS,
-            effort="low",
-            db=db,
-            request_id=request_id,
-            client=client,
-        )
-        visual_specs = list(specs.visuals)
-
-    await _attach_visuals(db, visual_specs, ordered_sections=sections, intent=intent)
-
     await db.flush()
     return lesson
+
+
+async def _fill_section(
+    db: AsyncSession,
+    lesson: Lesson,
+    request_id: str,
+    intent: StructuredIntent,
+    stub: LessonPlanStub,
+    row: LessonSection,
+    *,
+    client: Any = None,
+) -> LessonSection:
+    """Generate one section's body + items + visuals and persist them onto ``row`` (gen_status→ready).
+
+    Shared by the eager first-section build and the on-demand endpoint. Concepts are upserted
+    idempotently (INSERT-OR-IGNORE on slug), so fresh per-call caches are safe."""
+    sem = asyncio.Semaphore(1)
+    gen, usages = await _generate_section(intent, stub, request_id=request_id, sem=sem, client=client)
+    for usage in usages:
+        db.add(usage_row(usage, request_id=request_id))
+
+    row.body_markdown = gen.body_markdown or None
+    if gen.kind == SectionKind.EXPLANATION:
+        measured = (
+            _fkgl_english(gen.body_markdown)
+            if _is_english(intent.language)
+            else _readability_proxy(gen.body_markdown)
+        )
+        if measured is not None:
+            row.section_measured_fkgl = measured
+
+    concept_cache: dict[str, Concept] = {}
+    misconception_cache: dict[tuple[int, str], int] = {}
+    for gi in gen.items:
+        await _persist_item(
+            db, gi, lesson=lesson, section=row,
+            concept_cache=concept_cache, misconception_cache=misconception_cache,
+        )
+    await db.flush()
+
+    # Per-section visuals (bounded). Normalize each spec to this single section (ordinal 0 of [row]).
+    specs: list[GenVisualSpec] = []
+    for spec in gen.visual_requests:
+        data = spec.model_dump()
+        data["section_ordinal"] = 0
+        specs.append(GenVisualSpec.model_validate(data))
+    await _attach_visuals(db, specs, ordered_sections=[row], intent=intent)
+
+    row.gen_status = "ready"
+    await db.flush()
+    return row
+
+
+async def generate_one_section(
+    db: AsyncSession,
+    lesson: Lesson,
+    intent: StructuredIntent,
+    ordinal: int,
+    *,
+    client: Any = None,
+) -> LessonSection:
+    """On-demand: generate the pending section at ``ordinal`` for an already-delivered lesson.
+
+    Reconstructs the frozen plan stub from ``lesson.plan_json``; idempotent if already ready."""
+    row = await db.scalar(
+        select(LessonSection).where(
+            LessonSection.lesson_id == lesson.id, LessonSection.ordinal == ordinal
+        )
+    )
+    if row is None:
+        raise ValueError(f"Lesson {lesson.id} has no section ordinal {ordinal}")
+    if row.gen_status == "ready" and row.body_markdown is not None:
+        return row
+    plan = LessonPlan.model_validate(lesson.plan_json or {})
+    ordered_stubs = _ordered_stubs(plan)
+    stub = ordered_stubs[ordinal] if 0 <= ordinal < len(ordered_stubs) else LessonPlanStub(
+        kind=SectionKind(row.kind), title=row.title
+    )
+    return await _fill_section(db, lesson, lesson.request_id, intent, stub, row, client=client)
 
 
 def _ordered_stubs(plan: LessonPlan) -> list[LessonPlanStub]:

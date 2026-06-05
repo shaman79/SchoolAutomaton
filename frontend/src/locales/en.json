@@ -144,7 +144,11 @@
     "closing": "You showed up and gave it a go — that's how learning grows. Proud of you!",
     "learn_more": "Learn something new",
     "load_error_title": "We couldn't load this lesson",
-    "load_error_body": "Something went wrong fetching your lesson. Let's head back and try again."
+    "load_error_body": "Something went wrong fetching your lesson. Let's head back and try again.",
+    "continue_next": "Continue →",
+    "more_to_come": "Ready for the next part?",
+    "preparing_next": "Preparing the next part…",
+    "next_error": "Couldn't prepare the next part. Please try again."
   },
   "admin": {
     "title": "Admin console",

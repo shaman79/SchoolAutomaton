@@ -144,7 +144,11 @@
     "closing": "Přišel jsi a pustil se do toho — tak roste učení. Jsme na tebe hrdí!",
     "learn_more": "Naučit se něco nového",
     "load_error_title": "Tuto lekci se nám nepodařilo načíst",
-    "load_error_body": "Při načítání tvé lekce se něco pokazilo. Vraťme se zpět a zkusme to znovu."
+    "load_error_body": "Při načítání tvé lekce se něco pokazilo. Vraťme se zpět a zkusme to znovu.",
+    "continue_next": "Pokračovat →",
+    "more_to_come": "Připraven/a na další část?",
+    "preparing_next": "Připravuji další část…",
+    "next_error": "Další část se nepodařilo připravit. Zkus to prosím znovu."
   },
   "admin": {
     "title": "Administrátorská konzole",

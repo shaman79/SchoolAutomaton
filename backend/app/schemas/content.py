@@ -30,6 +30,7 @@ class LessonSectionPublic(AppModel):
     title: str | None = None
     body_markdown: str | None = None
     gated: bool = False
+    gen_status: str = "ready"  # pending|ready|error — progressive (lazy) generation
     assets: list[AssetRefPublic] = []
     items: list[ItemPublic] = []
 

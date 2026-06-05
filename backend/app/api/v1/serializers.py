@@ -119,6 +119,23 @@ async def item_public(db: AsyncSession, item: Item, *, with_assets: bool = True)
     )
 
 
+async def lesson_section_public(db: AsyncSession, s: LessonSection) -> LessonSectionPublic:
+    """Serialize one lesson section (pending sections carry no body/items yet)."""
+    item_rows = (
+        await db.execute(select(Item).where(Item.lesson_section_id == s.id).order_by(Item.id))
+    ).scalars().all()
+    return LessonSectionPublic(
+        ordinal=s.ordinal,
+        kind=s.kind,
+        title=s.title,
+        body_markdown=s.body_markdown,
+        gated=s.gated,
+        gen_status=getattr(s, "gen_status", "ready"),
+        assets=await _assets_for(db, section_id=s.id),
+        items=[await item_public(db, it) for it in item_rows],
+    )
+
+
 async def lesson_public(db: AsyncSession, lesson: Lesson) -> LessonPublic:
     objectives = [
         LessonObjectivePublic(
@@ -136,24 +153,7 @@ async def lesson_public(db: AsyncSession, lesson: Lesson) -> LessonPublic:
         )
     ).scalars().all()
 
-    sections: list[LessonSectionPublic] = []
-    for s in sections_rows:
-        item_rows = (
-            await db.execute(
-                select(Item).where(Item.lesson_section_id == s.id).order_by(Item.id)
-            )
-        ).scalars().all()
-        sections.append(
-            LessonSectionPublic(
-                ordinal=s.ordinal,
-                kind=s.kind,
-                title=s.title,
-                body_markdown=s.body_markdown,
-                gated=s.gated,
-                assets=await _assets_for(db, section_id=s.id),
-                items=[await item_public(db, it) for it in item_rows],
-            )
-        )
+    sections = [await lesson_section_public(db, s) for s in sections_rows]
 
     return LessonPublic(
         id=lesson.id,

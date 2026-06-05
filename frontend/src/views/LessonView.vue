@@ -56,6 +56,19 @@ const sortedSections = computed<LessonSection[]>(() =>
   lesson.value ? [...lesson.value.sections].sort((a, b) => a.ordinal - b.ordinal) : [],
 )
 
+// --- progressive (lazy) reveal: show the ready prefix; the first not-ready section is the next to
+// generate on demand (a "Continue" card), so we never pay to build sections the learner won't read.
+function isReady(s: LessonSection): boolean {
+  return (s.gen_status ?? 'ready') === 'ready'
+}
+const readySections = computed(() => sortedSections.value.filter(isReady))
+const nextPending = computed(() => sortedSections.value.find((s) => !isReady(s)) ?? null)
+const allReady = computed(() => nextPending.value === null)
+
+function revealNext() {
+  if (nextPending.value) void lessonStore.generateSection(nextPending.value.ordinal)
+}
+
 function isInteractive(s: LessonSection): boolean {
   return INTERACTIVE_KINDS.has(s.kind) && s.items.length > 0
 }
@@ -147,9 +160,9 @@ onMounted(async () => {
       </ul>
     </section>
 
-    <!-- Sections in order -->
+    <!-- Sections in order (only the already-generated prefix; the rest reveal on demand) -->
     <section
-      v-for="s in sortedSections"
+      v-for="s in readySections"
       :key="s.ordinal"
       class="sa-card sa-lesson__section"
       :class="{ 'sa-lesson__section--locked': isLocked(s) }"
@@ -196,21 +209,53 @@ onMounted(async () => {
       </template>
     </section>
 
-    <!-- Spaced-review preview -->
-    <section class="sa-card sa-lesson__review">
-      <h2 class="sa-lesson__h2">
-        <span aria-hidden="true">🔁</span> {{ t('lesson.review_title') }}
-      </h2>
-      <p class="text-[var(--color-ink-soft)]">{{ t('lesson.review_body') }}</p>
+    <!-- Progressive reveal: build the next part on demand (max savings — unread parts never generate). -->
+    <section v-if="nextPending" class="sa-card sa-lesson__next" aria-live="polite">
+      <template v-if="lessonStore.generatingOrdinal === nextPending.ordinal">
+        <LoadingSpinner :size="32" :label="t('lesson.preparing_next')" />
+        <p class="sa-lesson__next-hint">{{ t('lesson.preparing_next') }}</p>
+      </template>
+      <template v-else>
+        <p class="sa-lesson__next-hint">{{ t('lesson.more_to_come') }}</p>
+        <p
+          v-if="lessonStore.failedOrdinal === nextPending.ordinal"
+          class="sa-lesson__next-err"
+          role="alert"
+        >
+          {{ t('lesson.next_error') }}
+        </p>
+        <SaButton
+          variant="primary"
+          icon="sparkle"
+          :loading="lessonStore.generatingOrdinal !== null"
+          @click="revealNext"
+        >
+          {{
+            lessonStore.failedOrdinal === nextPending.ordinal
+              ? t('common.retry')
+              : t('lesson.continue_next')
+          }}
+        </SaButton>
+      </template>
     </section>
 
-    <!-- Growth-mindset closing -->
-    <section class="sa-lesson__close" role="note">
-      <p class="sa-lesson__close-text">{{ t('lesson.closing') }}</p>
-      <div class="sa-lesson__close-actions">
-        <SaButton variant="primary" to="/" icon="sparkle">{{ t('lesson.learn_more') }}</SaButton>
-      </div>
-    </section>
+    <!-- Spaced-review preview + closing appear once the whole lesson has been revealed. -->
+    <template v-if="allReady">
+      <section class="sa-card sa-lesson__review">
+        <h2 class="sa-lesson__h2">
+          <span aria-hidden="true">🔁</span> {{ t('lesson.review_title') }}
+        </h2>
+        <p class="text-[var(--color-ink-soft)]">{{ t('lesson.review_body') }}</p>
+      </section>
+
+      <!-- Growth-mindset closing -->
+      <section class="sa-lesson__close" role="note">
+        <p class="sa-lesson__close-text">{{ t('lesson.closing') }}</p>
+        <div class="sa-lesson__close-actions">
+          <SaButton variant="primary" to="/" icon="sparkle">{{ t('lesson.learn_more') }}</SaButton>
+        </div>
+      </section>
+    </template>
   </article>
 
   <EmptyState
@@ -312,6 +357,25 @@ onMounted(async () => {
 }
 .sa-lesson__review {
   border-left: 4px solid var(--color-sun);
+}
+.sa-lesson__next {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.25rem 1.1rem;
+  text-align: center;
+  border: 2px dashed var(--color-line);
+}
+.sa-lesson__next-hint {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+.sa-lesson__next-err {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-coral);
 }
 .sa-lesson__close {
   text-align: center;

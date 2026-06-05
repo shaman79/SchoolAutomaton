@@ -68,6 +68,9 @@ class Lesson(Base):
     readability_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     lexile_band: Mapped[str | None] = mapped_column(String(24), nullable=True)
     objectives_json: Mapped[list] = mapped_column(JSON)  # [{text, bloom_tier, concept_id}]
+    # Frozen LessonPlan (stubs + objectives + concept graph) so sections can be generated lazily,
+    # on demand, after the lesson is first delivered (progressive generation).
+    plan_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     estimated_duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model_id: Mapped[str] = mapped_column(String(48))
     prompt_version: Mapped[str] = mapped_column(String(20))
@@ -95,6 +98,9 @@ class LessonSection(Base):
     title: Mapped[str | None] = mapped_column(String(200), nullable=True)
     body_markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
     gated: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Progressive generation: 'pending' (skeleton only) | 'ready' (filled) | 'error'. Defaults to
+    # 'ready' so pre-existing rows + non-lazy paths behave exactly as before.
+    gen_status: Mapped[str] = mapped_column(String(12), default="ready")
     section_measured_fkgl: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 

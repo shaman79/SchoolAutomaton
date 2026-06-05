@@ -169,6 +169,8 @@ export interface LessonSection {
   title: string | null
   body_markdown: string | null
   gated: boolean
+  /** Progressive generation: pending = not generated yet, ready = filled. Absent ⇒ treat as ready. */
+  gen_status?: 'pending' | 'ready' | 'error'
   assets: AssetRef[]
   items: ItemPublic[]
 }
