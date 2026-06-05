@@ -39,6 +39,9 @@ assets_cache/
 *.key
 secrets/
 
+# ---- Auto-update runtime (scheduler lock; log is covered by *.log) ----
+.sa-update.lock
+
 # ---- Editor / OS ----
 .vscode/*
 !.vscode/extensions.json

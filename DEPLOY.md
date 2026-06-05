@@ -65,11 +65,33 @@ curl -fsS http://127.0.0.1:8080/ >/dev/null && echo "web OK"     # match your po
 docker compose ps                                                # both services Up/healthy
 ```
 
-## 4. Update / operate
+## 4. Automatic updates (every 15 minutes)
+
+Schedule it once and the server keeps itself current — `update.sh` pulls from git and **only rebuilds
++ restarts when there are actually new commits** (otherwise it's a fast no-op, so there's no needless
+downtime), with a lock so runs never overlap.
+
+```bash
+sudo ./infra/scripts/install-auto-update.sh        # every 15 min (systemd timer; cron fallback)
+# custom interval:  sudo ./infra/scripts/install-auto-update.sh 30
+# stop auto-updates: sudo ./infra/scripts/install-auto-update.sh --uninstall
+```
+Watch it:
+```bash
+systemctl list-timers schoolautomaton-update.timer       # next run
+journalctl -u schoolautomaton-update.service -f          # live logs
+```
+Requirements: the deploy must be a **git clone** (so it can `git pull`) and the deploy user must be
+in the `docker` group (the deploy script arranges this). Auto-update runs as that user.
+
+> Note: schema-changing releases (rare) aren't auto-migrated — the app creates missing tables on boot
+> but won't alter existing ones. For those, redeploy with a fresh `sa-data` or apply a migration.
+
+## 5. Update / operate manually
 
 | Task | Command |
 |---|---|
-| Update to latest | `./infra/scripts/update.sh` (git pull, rebuild, recreate — data preserved) |
+| Update now | `./infra/scripts/update.sh` (no-op if nothing new; `--force` to rebuild anyway) |
 | Change settings/port | re-run `./infra/scripts/deploy.sh` (then update the tunnel port) |
 | Logs | `docker compose logs -f` (or `… logs -f backend`) |
 | Restart / stop | `docker compose restart` · `docker compose down` (keeps `sa-data`) |
