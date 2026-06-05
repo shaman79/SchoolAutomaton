@@ -72,42 +72,43 @@ watch(complete, (now) => {
     role="img"
     :aria-label="a11yLabel"
   >
-    <svg
-      :width="size"
-      :height="size"
-      :viewBox="`0 0 ${size} ${size}`"
-      class="sa-goal-ring__svg -rotate-90"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <circle
-        :cx="size / 2"
-        :cy="size / 2"
-        :r="radius"
-        fill="none"
-        stroke="var(--color-surface-2)"
-        :stroke-width="stroke"
-      />
-      <circle
-        class="sa-goal-ring__arc"
-        :cx="size / 2"
-        :cy="size / 2"
-        :r="radius"
-        fill="none"
-        :stroke="complete ? 'var(--color-mint)' : 'var(--color-primary)'"
-        :stroke-width="stroke"
-        stroke-linecap="round"
-        :stroke-dasharray="circumference"
-        :stroke-dashoffset="dashOffset"
-        :class="{ 'sa-goal-ring__arc--static': reduced }"
-      />
-    </svg>
-    <span
-      class="sa-goal-ring__center pointer-events-none absolute inline-flex flex-col items-center"
-      aria-hidden="true"
-      :style="{ width: size + 'px', height: size + 'px', marginTop: -(size + 4) + 'px' }"
-    >
-      <span class="flex h-full flex-col items-center justify-center leading-none">
+    <!-- relative box sized to the SVG => the centered label overlays the ring exactly, regardless of
+         the flex gap, the caption below, or any ancestor positioning. -->
+    <div class="relative" :style="{ width: size + 'px', height: size + 'px' }">
+      <svg
+        :width="size"
+        :height="size"
+        :viewBox="`0 0 ${size} ${size}`"
+        class="sa-goal-ring__svg -rotate-90"
+        aria-hidden="true"
+        focusable="false"
+      >
+        <circle
+          :cx="size / 2"
+          :cy="size / 2"
+          :r="radius"
+          fill="none"
+          stroke="var(--color-surface-2)"
+          :stroke-width="stroke"
+        />
+        <circle
+          class="sa-goal-ring__arc"
+          :cx="size / 2"
+          :cy="size / 2"
+          :r="radius"
+          fill="none"
+          :stroke="complete ? 'var(--color-mint)' : 'var(--color-primary)'"
+          :stroke-width="stroke"
+          stroke-linecap="round"
+          :stroke-dasharray="circumference"
+          :stroke-dashoffset="dashOffset"
+          :class="{ 'sa-goal-ring__arc--static': reduced }"
+        />
+      </svg>
+      <span
+        class="sa-goal-ring__center pointer-events-none absolute inset-0 flex flex-col items-center justify-center leading-none"
+        aria-hidden="true"
+      >
         <SaIcon
           v-if="complete"
           name="check"
@@ -123,7 +124,7 @@ watch(complete, (now) => {
           </span>
         </template>
       </span>
-    </span>
+    </div>
     <span class="text-xs font-semibold text-[var(--color-ink-soft)]">
       {{ complete ? t('gamification.daily_goal_done') : t('gamification.daily_goal') }}
     </span>

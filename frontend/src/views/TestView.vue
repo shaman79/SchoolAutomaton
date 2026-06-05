@@ -146,8 +146,9 @@ onMounted(async () => {
       />
     </header>
 
-    <!-- One question at a time -->
-    <div v-if="current" :key="current.item.id" class="sa-card sa-test__question">
+    <!-- One question at a time (the QuestionRenderer's own root is the card; this wrapper only holds
+         the points label above it — no nested card). -->
+    <div v-if="current" :key="current.item.id" class="sa-test__question">
       <p class="sa-test__points">
         {{ t('test.points', { n: current.points }) }}
       </p>
@@ -189,9 +190,9 @@ onMounted(async () => {
       >
         {{ t('common.check') }}
       </SaButton>
-      <button v-if="!answeredCurrent" type="button" class="sa-test__skip" @click="onSkip">
+      <SaButton v-if="!answeredCurrent" variant="subtle" size="sm" @click="onSkip">
         {{ isLast ? t('test.skip_finish') : t('test.skip') }}
-      </button>
+      </SaButton>
     </div>
   </section>
 
@@ -242,11 +243,8 @@ onMounted(async () => {
   color: var(--color-ink-soft);
   font-variant-numeric: tabular-nums;
 }
-.sa-test__question {
-  padding: 1.1rem;
-}
 .sa-test__points {
-  margin: 0 0 0.6rem;
+  margin: 0 0 0.5rem;
   font-size: 0.75rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -256,17 +254,10 @@ onMounted(async () => {
 .sa-test__footer {
   margin-top: auto;
   padding-top: 0.5rem;
-}
-.sa-test__skip {
-  display: block;
-  margin: 0 auto;
-  min-height: var(--tap-min);
-  padding: 0.5rem 1rem;
-  color: var(--color-ink-soft);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
 }
 .sa-test__loading {
   display: grid;

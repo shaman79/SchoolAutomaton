@@ -118,18 +118,32 @@ async function shareLink() {
   font-size: 1rem;
   font-weight: 700;
 }
+/* Phones: code on top, two equal-width buttons below (space-between + wrap stranded them raggedly). */
 .sa-code__row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6rem;
 }
 .sa-code__actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-wrap: wrap;
+  display: flex;
+  gap: 0.5rem;
+}
+.sa-code__actions > * {
+  flex: 1;
+}
+@media (min-width: 40rem) {
+  .sa-code__row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sa-code__actions {
+    flex: 0 0 auto;
+  }
+  .sa-code__actions > * {
+    flex: 0 0 auto;
+  }
 }
 .sa-code__value {
   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;

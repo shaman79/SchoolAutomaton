@@ -68,6 +68,7 @@
   },
   "stats": {
     "title": "My progress",
+    "today_title": "Today",
     "no_profile": "Start learning and your progress will show up here.",
     "badges_title": "Badges",
     "tree_title": "Your knowledge garden"
@@ -108,11 +109,14 @@
     "badge_progress_label": "Progress",
     "badge_unlocked": "Unlocked!",
     "badges_progress": "{unlocked} of {total} badges",
+    "badges_empty_title": "No badges yet",
+    "badges_empty_desc": "Keep learning — your first badge is on its way!",
     "combo_a11y": "Combo multiplier {mult}",
     "combo_max": "Max combo",
     "daily_goal_a11y": "Daily goal: {earned} of {goal} XP",
     "daily_goal_done": "Daily goal complete!",
     "streak_count": "{count}-day streak",
+    "streak_longest": "Longest: {n}",
     "streak_protected": "Streak protected",
     "streak_protected_a11y": "Streak protected at {count} days",
     "streak_start": "Start a streak!",

@@ -171,7 +171,7 @@ function submit() {
  * on the baseline of the line it falls on. line-height leaves room for the ~44px tap targets, and
  * vertical-align centres the box against the surrounding words so it reads as part of the sentence. */
 .sa-cloze {
-  line-height: 2.6;
+  line-height: 1.9;
   font-size: 1.05rem;
 }
 .sa-cloze :deep(span) {
@@ -182,7 +182,10 @@ function submit() {
   display: inline-block;
   vertical-align: middle;
   min-height: var(--tap-min);
-  margin: 0 0.15rem;
+  /* vertical margin clears the tall (~44px) control over the now-normal 1.9 line-height so wrapped
+     prose lines don't collide; horizontal keeps the inline gap. */
+  margin-inline: 0.15rem;
+  margin-block: 0.35rem;
   padding: 0.25rem 0.6rem;
   border: 2px solid var(--color-primary);
   border-radius: var(--radius-btn);

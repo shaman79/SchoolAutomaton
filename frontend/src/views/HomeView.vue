@@ -222,14 +222,25 @@ function applyRedirect(suggestion: string) {
         </div>
       </div>
 
-      <!-- Pick up where you left off (returning learners). -->
-      <SuggestionsStrip :items="suggestions" :title="t('home.continue_title')" />
+      <!-- Pick up where you left off (returning learners), with a path to the full list. -->
+      <template v-if="suggestions.length">
+        <SuggestionsStrip :items="suggestions" :title="t('home.continue_title')" />
+        <RouterLink :to="{ name: 'history' }" class="sa-home__seeall">
+          <SaIcon name="books" :size="16" aria-hidden="true" />
+          {{ t('history.title') }}
+        </RouterLink>
+      </template>
 
-      <!-- Always-available progress entry for anyone with a profile (the header cluster only appears
-           once the gamification snapshot has loaded). -->
-      <RouterLink v-if="session.resumeCode" :to="{ name: 'stats' }" class="sa-home__progress">
-        <SaIcon name="star" :size="18" aria-hidden="true" />
-        {{ t('stats.title') }}
+      <!-- Progress entry as a tidy card row — only as a fallback when the header cluster isn't yet
+           showing the gamification snapshot (avoids a duplicate route to /stats on one screen). -->
+      <RouterLink
+        v-if="session.resumeCode && !session.gamification"
+        :to="{ name: 'stats' }"
+        class="sa-card sa-home__progress"
+      >
+        <span class="sa-home__progress-icon" aria-hidden="true"><SaIcon name="star" :size="20" /></span>
+        <span class="sa-home__progress-label">{{ t('stats.title') }}</span>
+        <SaIcon name="back" :size="16" class="sa-home__progress-chevron" aria-hidden="true" />
       </RouterLink>
 
       <!-- Once a profile exists, show the learner THEIR code to save; otherwise offer to enter one. -->
@@ -338,13 +349,43 @@ function applyRedirect(suggestion: string) {
   align-items: center;
 }
 .sa-home__progress {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  min-height: var(--tap-min);
+  border: 2px solid var(--color-line);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.sa-home__progress-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-2);
+  color: var(--color-primary);
+}
+.sa-home__progress-label {
+  flex: 1;
+  min-width: 0;
+}
+.sa-home__progress-chevron {
+  flex-shrink: 0;
+  transform: rotate(180deg);
+  color: var(--color-ink-soft);
+}
+.sa-home__seeall {
   align-self: center;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   min-height: var(--tap-min);
-  font-weight: 700;
-  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-ink-soft);
   text-decoration: underline;
   text-underline-offset: 2px;
 }

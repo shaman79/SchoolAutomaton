@@ -93,7 +93,8 @@ async function copySaved() {
         {{ t('resume.submit') }}
       </SaButton>
       <p v-if="error" id="resume-error" class="sa-resume__error" role="alert">{{ error }}</p>
-      <p id="resume-hint" class="sa-resume__hint">{{ t('resume.save_hint') }}</p>
+      <!-- The saved-code card above already shows this hint; only show it here in the plain entry case. -->
+      <p v-if="!savedCode" id="resume-hint" class="sa-resume__hint">{{ t('resume.save_hint') }}</p>
     </form>
 
     <RouterLink to="/" class="sa-resume__back">{{ t('common.back') }}</RouterLink>

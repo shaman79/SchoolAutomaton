@@ -58,19 +58,33 @@ onMounted(async () => {
     </div>
 
     <template v-else>
-      <!-- Level + XP + streak -->
+      <!-- Hero: level medallion + progress to the next level. -->
       <div v-if="gami" class="sa-card sa-stats__hero">
-        <div class="sa-stats__level">
-          <LevelBadge :level="gami.level" size="md" />
-          <div class="min-w-0 flex-1">
-            <XpBar :snapshot="gami" hide-badge size="lg" />
-          </div>
-        </div>
-        <div class="sa-stats__hero-row">
-          <StreakFlame :streak="gami.streak" size="lg" />
-          <DailyGoalRing :snapshot="gami" :size="78" />
+        <LevelBadge :level="gami.level" size="lg" />
+        <div class="sa-stats__hero-main">
+          <p class="sa-stats__level-label">{{ t('gamification.level') }} {{ gami.level }}</p>
+          <XpBar :snapshot="gami" hide-badge size="lg" />
         </div>
       </div>
+
+      <!-- Streak + daily goal as two balanced tiles, under a section heading for consistent rhythm. -->
+      <section v-if="gami">
+        <h2 class="sa-stats__h2">{{ t('stats.today_title') }}</h2>
+        <div class="sa-stats__tiles">
+          <div class="sa-card sa-stats__tile">
+            <StreakFlame :streak="gami.streak" size="lg" :show-label="false" />
+            <span class="sa-stats__tile-label">
+              {{ gami.streak.current > 0 ? t('gamification.streak') : t('gamification.streak_start') }}
+            </span>
+            <span v-if="gami.streak.longest > 0" class="sa-stats__tile-sub">
+              {{ t('gamification.streak_longest', { n: gami.streak.longest }) }}
+            </span>
+          </div>
+          <div class="sa-card sa-stats__tile">
+            <DailyGoalRing :snapshot="gami" :size="92" />
+          </div>
+        </div>
+      </section>
 
       <!-- Badges -->
       <section class="sa-card sa-stats__section">
@@ -88,9 +102,6 @@ onMounted(async () => {
         <SaButton variant="primary" size="lg" block icon="sparkle" to="/">
           {{ t('lesson.learn_more') }}
         </SaButton>
-        <SaButton variant="ghost" size="md" block icon="books" :to="{ name: 'history' }">
-          {{ t('history.title') }}
-        </SaButton>
       </div>
     </template>
   </section>
@@ -100,7 +111,7 @@ onMounted(async () => {
 .sa-stats {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.35rem;
   padding: 1.5rem 0 2rem;
 }
 .sa-stats__title {
@@ -119,21 +130,44 @@ onMounted(async () => {
 }
 .sa-stats__hero {
   display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.4rem;
+}
+.sa-stats__hero-main {
+  display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1.1rem;
+  gap: 0.45rem;
+  min-width: 0;
+  flex: 1;
 }
-.sa-stats__level {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
+.sa-stats__level-label {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
 }
-.sa-stats__hero-row {
+.sa-stats__tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.sa-stats__tile {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.15rem 0.75rem;
+  text-align: center;
+}
+.sa-stats__tile-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+.sa-stats__tile-sub {
+  font-size: 0.78rem;
+  color: var(--color-ink-soft);
 }
 .sa-stats__section {
   padding: 1.1rem;

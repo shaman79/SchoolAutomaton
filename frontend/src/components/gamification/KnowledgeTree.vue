@@ -127,10 +127,14 @@ function masteryPct(n: TreeNode) {
         <li
           v-for="s in (['mastered', 'learning', 'needs_review', 'available', 'locked'] as NodeState[])"
           :key="s"
-          class="sa-chip"
-          :style="{ color: STATE_META[s].tone }"
+          class="sa-chip text-[var(--color-ink)]"
         >
           <span aria-hidden="true">{{ STATE_META[s].glyph }}</span>
+          <span
+            aria-hidden="true"
+            class="inline-block h-2 w-2 rounded-full"
+            :style="{ background: STATE_META[s].tone }"
+          />
           <span>{{ stateLabel(s) }}</span>
           <span class="tabular-nums opacity-70">{{ counts[s] }}</span>
         </li>
@@ -138,7 +142,7 @@ function masteryPct(n: TreeNode) {
 
       <!-- Garden beds grouped by subject. -->
       <div class="flex flex-col gap-5">
-        <section v-for="bed in beds" :key="bed.subject" aria-labelledby="">
+        <section v-for="bed in beds" :key="bed.subject" :aria-label="humanizeSubject(bed.subject)">
           <h3 class="mb-2 text-sm font-bold uppercase tracking-wide text-[var(--color-ink-soft)]">
             {{ humanizeSubject(bed.subject) }}
           </h3>
@@ -146,7 +150,7 @@ function masteryPct(n: TreeNode) {
             <li v-for="n in bed.items" :key="n.concept_id">
               <button
                 type="button"
-                class="sa-tree__node sa-card flex w-full flex-col items-center gap-1 p-3 text-center"
+                class="sa-tree__node sa-card flex w-full flex-col items-center gap-1 p-2.5 text-center"
                 :class="[`sa-tree__node--${n.state}`, { 'sa-tree__node--selected': selected?.concept_id === n.concept_id }]"
                 :aria-pressed="selected?.concept_id === n.concept_id"
                 :aria-label="`${n.title} — ${stateLabel(n.state)}, ${masteryPct(n)}%`"
@@ -156,10 +160,7 @@ function masteryPct(n: TreeNode) {
                   {{ STATE_META[n.state].glyph }}
                 </span>
                 <span class="line-clamp-2 text-sm font-semibold leading-tight">{{ n.title }}</span>
-                <span
-                  class="text-[0.7rem] font-semibold"
-                  :style="{ color: STATE_META[n.state].tone }"
-                >
+                <span class="text-[0.7rem] font-semibold text-[var(--color-ink)]">
                   {{ stateLabel(n.state) }}
                 </span>
                 <!-- Slim mastery bar (also numeric in aria-label). -->
@@ -191,7 +192,7 @@ function masteryPct(n: TreeNode) {
           </span>
           <div class="min-w-0 flex-1">
             <h4 class="text-lg font-bold leading-tight">{{ selected.title }}</h4>
-            <p class="text-sm font-semibold" :style="{ color: STATE_META[selected.state].tone }">
+            <p class="text-sm font-semibold text-[var(--color-ink)]">
               {{ stateLabel(selected.state) }} · {{ masteryPct(selected) }}%
             </p>
             <!-- needs_review framed as gentle care, never punitive. -->

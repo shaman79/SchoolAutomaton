@@ -12,6 +12,7 @@ import { useI18n } from 'vue-i18n'
 
 import BadgeCard from './BadgeCard.vue'
 import type { BadgeInfo } from './types'
+import EmptyState from '@/components/common/EmptyState.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 
 const props = withDefaults(
@@ -64,18 +65,25 @@ const detailDate = computed(() => {
 
 <template>
   <div>
-    <p class="mb-3 text-sm font-semibold text-[var(--color-ink-soft)]">
+    <p v-if="badges.length" class="mb-3 text-sm font-semibold text-[var(--color-ink-soft)]">
       {{ t('gamification.badges_progress', { unlocked: unlockedCount, total: badges.length }) }}
     </p>
 
     <ul
       v-if="badges.length"
-      class="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3"
+      class="grid list-none grid-cols-2 gap-3 p-0 lg:grid-cols-3"
     >
       <li v-for="b in ordered" :key="b.code">
         <BadgeCard :badge="b" :compact="compact" interactive @select="open" />
       </li>
     </ul>
+
+    <EmptyState
+      v-else
+      icon="trophy"
+      :title="t('gamification.badges_empty_title')"
+      :description="t('gamification.badges_empty_desc')"
+    />
 
     <!-- Detail sheet -->
     <Teleport to="body">

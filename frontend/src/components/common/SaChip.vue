@@ -63,15 +63,15 @@ const toneClass = computed(() => `sa-chip--${props.tone}`)
 }
 .sa-chip--warning {
   background: color-mix(in srgb, var(--color-sun) 26%, var(--color-surface));
-  color: #6a4a00;
+  color: var(--color-ink);
 }
 .sa-chip--danger {
   background: color-mix(in srgb, var(--color-coral) 16%, var(--color-surface));
-  color: #8a0f1f;
+  color: var(--color-ink);
 }
 .sa-chip--info {
   background: color-mix(in srgb, var(--color-sky) 18%, var(--color-surface));
-  color: #0a4d6e;
+  color: var(--color-ink);
 }
 :root[data-reduced-motion='true'] .sa-chip--clickable {
   transition: none;

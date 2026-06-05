@@ -101,8 +101,8 @@ onMounted(async () => {
     <header class="sa-review__header">
       <h1 class="sa-review__title">{{ review.title }}</h1>
       <p class="sa-review__score">
-        {{ t('review.correct_of', { correct: review.correct_count, total: review.total }) }}
-        · {{ accuracyPct }}%
+        <span class="sa-review__pct">{{ accuracyPct }}%</span>
+        <span class="sa-review__count">{{ t('review.correct_of', { correct: review.correct_count, total: review.total }) }}</span>
       </p>
     </header>
 
@@ -114,11 +114,15 @@ onMounted(async () => {
         <dl class="sa-review__answers">
           <div class="sa-review__answer">
             <dt>{{ t('review.your_answer') }}</dt>
-            <dd :class="{ 'sa-review__bad': !q.is_correct }">{{ formatValue(q.item, q.submitted_value) }}</dd>
+            <dd :class="{ 'sa-review__bad': !q.is_correct }">
+              <span v-if="!q.is_correct" class="sa-review__mark" aria-hidden="true">↻</span>{{ formatValue(q.item, q.submitted_value) }}
+            </dd>
           </div>
           <div v-if="!q.is_correct" class="sa-review__answer">
             <dt>{{ t('review.correct_answer') }}</dt>
-            <dd class="sa-review__good">{{ formatValue(q.item, q.correct_answer) }}</dd>
+            <dd class="sa-review__good">
+              <span class="sa-review__mark" aria-hidden="true">✓</span>{{ formatValue(q.item, q.correct_answer) }}
+            </dd>
           </div>
         </dl>
 
@@ -183,9 +187,22 @@ onMounted(async () => {
   font-weight: 800;
 }
 .sa-review__score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  font-variant-numeric: tabular-nums;
+}
+.sa-review__pct {
+  font-size: 1.9rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-primary-strong);
+}
+.sa-review__count {
+  font-size: 0.85rem;
   font-weight: 700;
   color: var(--color-ink-soft);
-  font-variant-numeric: tabular-nums;
 }
 .sa-review__list {
   list-style: none;
@@ -221,17 +238,23 @@ onMounted(async () => {
 }
 .sa-review__answer {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem 0.5rem;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 .sa-review__answer dt {
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
   color: var(--color-ink-soft);
 }
 .sa-review__answer dd {
   margin: 0;
   font-weight: 600;
+}
+.sa-review__mark {
+  margin-right: 0.3rem;
+  font-weight: 800;
 }
 .sa-review__good {
   color: var(--color-mint, var(--color-primary-strong));

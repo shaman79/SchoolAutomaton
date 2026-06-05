@@ -121,10 +121,11 @@ onMounted(async () => {
       <ul class="sa-results__growth-list">
         <li v-for="m in masteryGains" :key="m.concept_id" class="sa-results__growth-item">
           <span class="sa-results__growth-name">{{ m.name }}</span>
+          <!-- the GAIN this attempt (the section is "What grew"), not just the absolute level -->
+          <span class="sa-results__growth-delta">+{{ Math.max(0, Math.round((m.after - m.before) * 100)) }}%</span>
           <span class="sa-results__growth-bar" aria-hidden="true">
             <span class="sa-results__growth-fill" :style="{ width: `${Math.round(m.after * 100)}%` }" />
           </span>
-          <span class="sa-results__growth-pct">{{ Math.round(m.after * 100) }}%</span>
         </li>
       </ul>
     </div>
@@ -180,7 +181,9 @@ onMounted(async () => {
 }
 .sa-results__stats {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  /* 3-up so the common Score/Accuracy/XP set is one balanced row (no orphaned 3rd card); the rare
+     4-card combo run gets a tidy 2x2 at >=480px below. */
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.6rem;
 }
 .sa-stat {
@@ -216,14 +219,14 @@ onMounted(async () => {
 }
 .sa-results__streak {
   display: flex;
-  justify-content: center;
-  padding: 0.9rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
 }
 .sa-results__badges {
   padding: 0.9rem 1rem;
 }
 .sa-results__h2 {
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 700;
   margin: 0 0 0.5rem;
 }
@@ -266,16 +269,19 @@ onMounted(async () => {
 .sa-results__growth-name {
   font-weight: 600;
   grid-column: 1 / 2;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.sa-results__growth-pct {
+.sa-results__growth-delta {
   grid-column: 2 / 3;
-  grid-row: 1 / 3;
   font-weight: 800;
-  color: var(--color-mint-strong, var(--color-primary-strong));
+  color: color-mix(in srgb, var(--color-mint) 80%, black);
   font-variant-numeric: tabular-nums;
 }
 .sa-results__growth-bar {
-  grid-column: 1 / 2;
+  grid-column: 1 / 3;
   height: 0.5rem;
   border-radius: var(--radius-pill);
   background: var(--color-surface-2);

@@ -264,10 +264,10 @@ onMounted(async () => {
       <section class="sa-lesson__close" role="note">
         <p class="sa-lesson__close-text">{{ t('lesson.closing') }}</p>
         <div class="sa-lesson__close-actions">
-          <SaButton variant="primary" icon="star" :to="{ name: 'stats' }">
+          <SaButton variant="primary" size="lg" block icon="star" :to="{ name: 'stats' }">
             {{ t('results.view_progress') }}
           </SaButton>
-          <SaButton variant="ghost" to="/" icon="sparkle">{{ t('lesson.learn_more') }}</SaButton>
+          <SaButton variant="ghost" block to="/" icon="sparkle">{{ t('lesson.learn_more') }}</SaButton>
         </div>
       </section>
     </template>
@@ -407,9 +407,8 @@ onMounted(async () => {
 }
 .sa-lesson__close-actions {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.6rem;
 }
 .sa-lesson__loading {
   display: grid;

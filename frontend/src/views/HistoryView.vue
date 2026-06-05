@@ -261,7 +261,8 @@ function open(it: LearningSessionSummary) {
   color: var(--color-coral);
 }
 .sa-hist__date {
-  margin-left: auto;
+  /* flow inline with the other meta chips (no margin-left:auto, which stranded it on wrap) */
+  color: var(--color-ink-soft);
 }
 .sa-hist__chevron {
   flex-shrink: 0;

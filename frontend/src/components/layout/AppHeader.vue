@@ -39,40 +39,45 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
       <RouterLink
         v-if="session.gamification"
         :to="{ name: 'stats' }"
-        class="ml-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-pill)] px-1 py-0.5 hover:bg-[var(--color-surface-2)]"
+        class="ml-auto flex min-w-0 items-center gap-1.5 rounded-[var(--radius-pill)] px-1.5 py-1 hover:bg-[var(--color-surface-2)] sm:gap-2.5"
         :aria-label="t('stats.title')"
       >
         <LevelBadge :level="session.level" size="sm" />
-        <StreakFlame :streak="session.gamification.streak" />
+        <!-- Icon + count only here (the textual "N-day streak" label is the width hog on phones and
+             just repeats the count); the full label lives on the /stats screen. -->
+        <StreakFlame :streak="session.gamification.streak" size="sm" :show-label="false" />
         <XpBar
-          class="hidden w-28 sm:block lg:w-40"
+          class="hidden w-24 sm:block lg:w-40"
           :snapshot="session.gamification"
           hide-badge
           size="sm"
         />
       </RouterLink>
 
-      <!-- My lessons (history) — available once a learner has a profile/resume code. -->
-      <RouterLink
-        v-if="session.resumeCode"
-        :to="{ name: 'history' }"
-        class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
-        :class="session.gamification ? 'ml-2' : 'ml-auto'"
-        :aria-label="t('history.title')"
-      >
-        <SaIcon name="books" :size="22" :title="t('history.title')" />
-      </RouterLink>
+      <!-- Trailing icon group: history + settings. One right-push (ml-auto only when the gamification
+           pill isn't there to do it) and one uniform gap, so spacing no longer depends on which
+           optional items are present. -->
+      <div class="flex items-center gap-1" :class="{ 'ml-auto': !session.gamification }">
+        <!-- My lessons (history) — available once a learner has a profile/resume code. -->
+        <RouterLink
+          v-if="session.resumeCode"
+          :to="{ name: 'history' }"
+          class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
+          :aria-label="t('history.title')"
+        >
+          <SaIcon name="books" :size="22" :title="t('history.title')" />
+        </RouterLink>
 
-      <!-- Settings trigger lives in the header on >=sm; on phones the floating FAB (App.vue) is primary. -->
-      <button
-        type="button"
-        class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
-        :class="session.resumeCode ? 'ml-1' : (session.gamification ? 'ml-2' : 'ml-auto')"
-        :aria-label="t('a11y.settings')"
-        @click="emit('open-settings')"
-      >
-        <SaIcon name="settings" :size="22" />
-      </button>
+        <!-- Settings trigger lives in the header on >=sm; on phones the floating FAB (App.vue) is primary. -->
+        <button
+          type="button"
+          class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
+          :aria-label="t('a11y.settings')"
+          @click="emit('open-settings')"
+        >
+          <SaIcon name="settings" :size="22" />
+        </button>
+      </div>
     </div>
   </header>
 </template>

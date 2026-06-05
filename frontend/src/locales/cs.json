@@ -68,6 +68,7 @@
   },
   "stats": {
     "title": "Můj pokrok",
+    "today_title": "Dnes",
     "no_profile": "Začni se učit a tvůj pokrok se objeví tady.",
     "badges_title": "Odznaky",
     "tree_title": "Tvoje zahrada vědomostí"
@@ -108,11 +109,14 @@
     "badge_progress_label": "Pokrok",
     "badge_unlocked": "Odemčeno!",
     "badges_progress": "{unlocked} z {total} odznaků",
+    "badges_empty_title": "Zatím žádné odznaky",
+    "badges_empty_desc": "Uč se dál — tvůj první odznak je na cestě!",
     "combo_a11y": "Násobitel komba {mult}",
     "combo_max": "Maximální kombo",
     "daily_goal_a11y": "Denní cíl: {earned} z {goal} XP",
     "daily_goal_done": "Denní cíl splněn!",
     "streak_count": "{count} dní v řadě",
+    "streak_longest": "Nejdelší: {n}",
     "streak_protected": "Série je chráněná",
     "streak_protected_a11y": "Série je chráněná na {count} dnech",
     "streak_start": "Začni sérii!",
