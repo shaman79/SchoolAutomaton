@@ -8,6 +8,7 @@ is persisted as a shared :class:`Item` (server-only correctness) plus an ordered
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlalchemy import select
@@ -29,6 +30,8 @@ from .lesson_generator import (
     _upsert_concept,
 )
 
+logger = logging.getLogger("schoolautomaton.generation")
+
 _QUIZ_MAX_TOKENS = 16000
 
 
@@ -48,8 +51,16 @@ async def _persist_quiz_item(
     quiz: Quiz,
     concept_cache: dict[str, Concept],
     misconception_cache: dict[tuple[int, str], int],
-) -> Item:
-    """Persist one quiz question as a shared Item, mapping distractor misconceptions to ids."""
+) -> Item | None:
+    """Persist one quiz question as a shared Item, mapping distractor misconceptions to ids.
+
+    Returns None (persists nothing) for an unanswerable/ungradeable payload so the question is
+    dropped instead of stranding the learner."""
+    payload = coerce_payload(gen.item_type, gen.payload)
+    if payload is None:
+        logger.warning("Dropping unanswerable %s quiz item (quiz %s)", gen.item_type.value, quiz.id)
+        return None
+
     slug = _slugify(gen.concept_slug)
     concept = concept_cache.get(slug)
     if concept is None:
@@ -77,7 +88,7 @@ async def _persist_quiz_item(
         item_difficulty=max(1, min(5, gen.item_difficulty)),
         language=quiz.language,
         stem_markdown=gen.stem_markdown,
-        payload_json=coerce_payload(gen.item_type, gen.payload) or (gen.payload or {}),
+        payload_json=payload,
         expected_answer=gen.expected_answer,
         accepted_variants_json=gen.accepted_variants or None,
         distractors_json=distractors or None,
@@ -157,7 +168,8 @@ async def generate_quiz(
 
     concept_cache: dict[str, Concept] = {primary_concept.slug: primary_concept}
     misconception_cache: dict[tuple[int, str], int] = {}
-    for ordinal, gi in enumerate(gen_quiz.questions):
+    ordinal = 0  # consecutive (dropped/unanswerable items leave no gap in the question order)
+    for gi in gen_quiz.questions:
         item = await _persist_quiz_item(
             db,
             gi,
@@ -165,13 +177,16 @@ async def generate_quiz(
             concept_cache=concept_cache,
             misconception_cache=misconception_cache,
         )
+        if item is None:
+            continue
         db.add(
             QuizQuestion(quiz_id=quiz.id, item_id=item.id, ordinal=ordinal, points=gi.points or 10)
         )
+        ordinal += 1
     await db.flush()
     await task_registry.publish(
         request_id,
         "section",
-        {"ordinal": 0, "kind": "quiz", "title": quiz.title, "questions": len(gen_quiz.questions)},
+        {"ordinal": 0, "kind": "quiz", "title": quiz.title, "questions": ordinal},
     )
     return quiz

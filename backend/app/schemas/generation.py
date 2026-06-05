@@ -137,18 +137,58 @@ _PAYLOAD_MODELS: dict[ItemType, type[StrictModel]] = {
 }
 
 
+def _is_answerable(item_type: ItemType, d: dict[str, Any]) -> bool:
+    """Semantic integrity: can a learner ANSWER this item AND can we GRADE it correctly?
+
+    The schema is loosened (free-form dict) to keep the structured-output grammar small, which lets
+    the model emit incomplete payloads — an MCQ with no option marked is_correct (everything grades
+    wrong), a match with fewer right tokens than left prompts (impossible to complete), an order whose
+    correct_order isn't a permutation of its tokens (never gradeable correct). We reject those so a
+    broken item is dropped rather than shown to a learner."""
+    if item_type == ItemType.MCQ:
+        opts = d.get("options") or []
+        return len(opts) >= 2 and any(o.get("is_correct") for o in opts)
+    if item_type == ItemType.CLOZE:
+        blanks = d.get("blanks") or []
+        return bool(blanks) and all(str(b.get("answer") or "").strip() for b in blanks)
+    if item_type == ItemType.MATCH:
+        left, right, correct = d.get("left") or [], d.get("right") or [], d.get("correct") or []
+        left_ids = {x.get("id") for x in left}
+        right_ids = {x.get("id") for x in right}
+        if len(left) < 1 or len(right) < len(left) or not correct:
+            return False  # need at least one token per prompt to be completable
+        covered: set = set()
+        for p in correct:
+            if p.get("left_id") not in left_ids or p.get("right_id") not in right_ids:
+                return False  # correct pair references a non-existent id → ungradeable
+            covered.add(p.get("left_id"))
+        return covered == left_ids  # every prompt has a correct match
+    if item_type == ItemType.ORDER:
+        toks = [t.get("id") for t in (d.get("tokens") or [])]
+        order = d.get("correct_order") or []
+        return len(toks) >= 2 and set(order) == set(toks) and len(order) == len(toks)
+    if item_type == ItemType.HOTSPOT:
+        regions = d.get("regions") or []
+        return bool(regions) and any(r.get("is_correct") for r in regions) and bool(d.get("image_request"))
+    # true_false (answer is a required field) and numeric (answer required) are validated by the
+    # schema above; short_answer is graded against the item's expected_answer / the LLM grader.
+    return True
+
+
 def coerce_payload(item_type: ItemType, payload: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Validate + canonicalize a model-produced payload against the typed model for its item_type.
-    Returns the canonical dict, or None if it can't be coerced (caller falls back to the raw dict)."""
+    """Validate + canonicalize a model payload, returning the canonical dict — or None if it is
+    malformed OR not answerable/gradeable (the caller then DROPS the item rather than ship a broken
+    question the learner can't answer or that grades a correct answer wrong)."""
     data = dict(payload or {})
     data.setdefault("kind", item_type.value)
     model = _PAYLOAD_MODELS.get(item_type)
     if model is None:
         return data or None
     try:
-        return model.model_validate(data).model_dump(mode="json")
-    except Exception:  # noqa: BLE001 — rare malformed payload; caller keeps the raw dict + logs
+        canonical = model.model_validate(data).model_dump(mode="json")
+    except Exception:  # noqa: BLE001 — malformed payload
         return None
+    return canonical if _is_answerable(item_type, canonical) else None
 
 
 # --------------------------------------------------------------------------- lesson generation

@@ -86,7 +86,7 @@ function submit() {
       </label>
     </fieldset>
 
-    <button class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
+    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
       {{ t('common.check') }}
     </button>
 

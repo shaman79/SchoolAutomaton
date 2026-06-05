@@ -267,7 +267,9 @@
     "badge_unlocked": "Badge unlocked: {title}!",
     "grade_error": "We couldn't check that answer. Please try again.",
     "load_error_title": "We couldn't load this test",
-    "load_error_body": "Something went wrong fetching your quiz. Let's head back and try again."
+    "load_error_body": "Something went wrong fetching your quiz. Let's head back and try again.",
+    "skip": "Skip for now",
+    "skip_finish": "Finish without answering"
   },
   "q": {
     "mcq": {

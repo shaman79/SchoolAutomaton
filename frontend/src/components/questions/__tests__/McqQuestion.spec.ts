@@ -128,6 +128,7 @@ describe('McqQuestion', () => {
     expect(status.attributes('aria-live')).toBe('polite')
     // never color-only: an icon glyph accompanies the text
     expect(status.find('.sa-feedback__icon').exists()).toBe(true)
-    expect((w.find('.sa-q__check').element as HTMLButtonElement).disabled).toBe(true)
+    // Once graded, the Check button is removed (replaced by the consumer's Next) — not just disabled.
+    expect(w.find('.sa-q__check').exists()).toBe(false)
   })
 })

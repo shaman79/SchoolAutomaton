@@ -210,8 +210,19 @@ async def _persist_item(
     section: LessonSection,
     concept_cache: dict[str, Concept],
     misconception_cache: dict[tuple[int, str], int],
-) -> Item:
-    """Persist one GenItem, mapping distractor misconceptions to Misconception ids."""
+) -> Item | None:
+    """Persist one GenItem, mapping distractor misconceptions to Misconception ids.
+
+    Returns None (and persists nothing) when the payload isn't answerable/gradeable — a broken item
+    is dropped rather than shown to a learner (SPEC: never strand the learner on an unanswerable item)."""
+    payload = coerce_payload(gen.item_type, gen.payload)
+    if payload is None:
+        logger.warning(
+            "Dropping unanswerable %s item (lesson %s, section %s)",
+            gen.item_type.value, lesson.id, section.id,
+        )
+        return None
+
     concept = concept_cache.get(_slugify(gen.concept_slug))
     if concept is None:
         concept = await _upsert_concept(
@@ -238,7 +249,7 @@ async def _persist_item(
         item_difficulty=max(1, min(5, gen.item_difficulty)),
         language=lesson.detected_language,
         stem_markdown=gen.stem_markdown,
-        payload_json=coerce_payload(gen.item_type, gen.payload) or (gen.payload or {}),
+        payload_json=payload,
         expected_answer=gen.expected_answer,
         accepted_variants_json=gen.accepted_variants or None,
         distractors_json=distractors or None,

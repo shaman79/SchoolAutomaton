@@ -74,8 +74,7 @@ async function onAnswer(e: AnswerEvent) {
   }
 }
 
-async function onNext() {
-  if (!answeredCurrent.value) return
+async function advance() {
   if (isLast.value) {
     finishing.value = true
     try {
@@ -89,6 +88,18 @@ async function onNext() {
     return
   }
   test.next()
+}
+
+async function onNext() {
+  if (!answeredCurrent.value) return
+  await advance()
+}
+
+// Escape hatch: a learner can always move on, even if a question can't be answered — they're never
+// stranded (the backend also drops unanswerable items, so this is a rare safety net).
+function onSkip() {
+  if (submitting.value || finishing.value) return
+  void advance()
 }
 
 onMounted(async () => {
@@ -140,20 +151,24 @@ onMounted(async () => {
       />
     </div>
 
-    <!-- Advance: enabled only once the current question has been graded. -->
+    <!-- One action at a time: Check lives in the question; once graded it's replaced by Next/Finish.
+         Before answering, only a subtle Skip is offered so the learner is never stuck. -->
     <div class="sa-test__footer safe-bottom">
       <SaButton
+        v-if="answeredCurrent"
         variant="primary"
         size="lg"
         block
         :icon="isLast ? 'trophy' : 'sparkle'"
         :icon-right="!isLast"
-        :disabled="!answeredCurrent"
         :loading="finishing"
         @click="onNext"
       >
         {{ isLast ? t('test.finish') : t('common.next') }}
       </SaButton>
+      <button v-else type="button" class="sa-test__skip" @click="onSkip">
+        {{ isLast ? t('test.skip_finish') : t('test.skip') }}
+      </button>
     </div>
   </section>
 
@@ -218,6 +233,17 @@ onMounted(async () => {
 .sa-test__footer {
   margin-top: auto;
   padding-top: 0.5rem;
+}
+.sa-test__skip {
+  display: block;
+  margin: 0 auto;
+  min-height: var(--tap-min);
+  padding: 0.5rem 1rem;
+  color: var(--color-ink-soft);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
 }
 .sa-test__loading {
   display: grid;

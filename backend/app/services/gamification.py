@@ -419,7 +419,9 @@ async def grade_and_reward(
     """Grade one answer and apply all reward/scheduling side-effects. Returns the public GradeResult
     (reveals the correct answer here, never at delivery)."""
     now = now or datetime.now(UTC)
-    language = profile.primary_language or "en"
+    # Feedback should match the CONTENT language (a Czech lesson gets Czech feedback), falling back
+    # to the learner's UI language, then English.
+    language = item.language or profile.primary_language or "en"
     item_type = item.item_type
 
     # 1) Grade (deterministic for closed-form; LLM for free-text/explain).

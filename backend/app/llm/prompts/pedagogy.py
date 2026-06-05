@@ -218,6 +218,14 @@ ordering.
 hotspot: an image_request describing a kid-safe figure and labeled regions, each with coordinates and
 whether it is_correct. The region geometry must match the described figure.
 
+INTEGRITY (mandatory — an item that fails this is discarded, so the learner loses it): every item
+must be answerable and gradeable exactly as written. mcq: at least one option has is_correct=true.
+true_false: set answer to the boolean that makes the statement correct. match: provide at least as
+many right tokens as there are left prompts, and a correct pair for EVERY left id; all left_id/right_id
+values must reference ids you actually defined. order: correct_order must list every token id exactly
+once (a permutation of the tokens). hotspot: include image_request and mark the correct region(s).
+Reuse id strings consistently within a payload.
+
 ## Hint ladders and worked solutions (stable)
 A hint_ladder has 1 to 3 rungs, ordered from gentle nudge to near-answer. The first rung points at
 the relevant idea or where to look; the middle rung narrows the approach; only the last rung may come
@@ -424,6 +432,14 @@ nejednoznačnému párování, pokud není zamýšleno.
 order: seznam tokenů a correct_order jejich id; posloupnost musí mít jediné obhajitelné pořadí.
 hotspot: image_request popisující bezpečný obrázek a označené oblasti, každou se souřadnicemi a údajem
 is_correct. Geometrie oblastí musí odpovídat popsanému obrázku.
+
+INTEGRITA (povinné — položka, která to nesplní, se zahodí a žák o ni přijde): každá položka musí být
+přesně tak, jak je napsaná, zodpověditelná a hodnotitelná. mcq: aspoň jedna možnost má is_correct=true.
+true_false: nastav answer na pravdivostní hodnotu, při které je tvrzení správné. match: uveď aspoň
+tolik pravých tokenů, kolik je levých zadání, a správnou dvojici pro KAŽDÉ levé id; všechny hodnoty
+left_id/right_id musí odkazovat na id, která jsi opravdu definoval. order: correct_order musí obsahovat
+každé id tokenu právě jednou (permutace tokenů). hotspot: uveď image_request a označ správné oblasti.
+Stejné řetězce id používej v rámci payloadu konzistentně.
 
 ## Žebříčky nápověd a řešení (neměnné)
 hint_ladder má 1 až 3 stupně od jemného popostrčení po téměř-odpověď. První stupeň ukáže na podstatnou

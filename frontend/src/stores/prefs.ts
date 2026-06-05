@@ -3,6 +3,8 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
+import { setLocale } from '@/i18n'
+
 export type ThemeName = 'default' | 'highcontrast' | 'dyslexia'
 export type FontName = 'lexend' | 'atkinson' | 'opendyslexic'
 export type DailyGoal = 'casual' | 'regular' | 'serious' | 'intense'
@@ -61,6 +63,9 @@ export const usePrefsStore = defineStore(
     }
 
     watch([theme, font, fontScale, reducedMotion], applyToDom)
+    // The UI locale ALWAYS follows the stored preference — on boot (persisted), on a settings change,
+    // and after hydrateFromServer (resume). Fixes the locale resetting to English on reload/resume.
+    watch(locale, (l) => setLocale(l), { immediate: true })
 
     return {
       theme,

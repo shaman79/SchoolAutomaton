@@ -267,7 +267,9 @@
     "badge_unlocked": "Odemčen odznak: {title}!",
     "grade_error": "Tuto odpověď se nám nepodařilo zkontrolovat. Zkus to prosím znovu.",
     "load_error_title": "Tento test se nám nepodařilo načíst",
-    "load_error_body": "Při načítání tvého kvízu se něco pokazilo. Vraťme se zpět a zkusme to znovu."
+    "load_error_body": "Při načítání tvého kvízu se něco pokazilo. Vraťme se zpět a zkusme to znovu.",
+    "skip": "Přeskočit",
+    "skip_finish": "Dokončit bez odpovědi"
   },
   "q": {
     "mcq": {

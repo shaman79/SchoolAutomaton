@@ -98,7 +98,9 @@ function onSlotChange(leftId: string, list: MatchSide[]) {
 const allPlaced = computed(() =>
   payload.value.left.every((l) => placed.value[l.id] != null),
 )
-const canSubmit = computed(() => allPlaced.value && !locked.value)
+// Submittable once every prompt is matched OR there are no tokens left to place — so the learner is
+// never stuck (defensive: a malformed payload with fewer tokens than prompts would otherwise lock).
+const canSubmit = computed(() => !locked.value && (allPlaced.value || pool.value.length === 0))
 
 function submit() {
   if (!canSubmit.value) return
@@ -178,7 +180,7 @@ function submit() {
       </draggable>
     </div>
 
-    <button class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
+    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
       {{ t('common.check') }}
     </button>
 

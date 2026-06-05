@@ -121,7 +121,7 @@ function submit() {
       </template>
     </draggable>
 
-    <button class="sa-btn sa-btn-primary sa-q__check" :disabled="locked" @click="submit">
+    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="locked" @click="submit">
       {{ t('common.check') }}
     </button>
 
