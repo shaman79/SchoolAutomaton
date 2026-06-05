@@ -160,46 +160,66 @@ def _canned_grader() -> GraderOutput:
 # --------------------------------------------------------------------------- mock client
 
 
+def _fake_usage() -> SimpleNamespace:
+    # cache_read > 0 makes prompt caching observable (SPEC invariant #4).
+    return SimpleNamespace(
+        input_tokens=120, cache_creation_input_tokens=0, cache_read_input_tokens=4096,
+        output_tokens=300,
+    )
+
+
 class _FakeParsed:
     def __init__(self, parsed):
         self.parsed_output = parsed
         self.stop_reason = "end_turn"
         self.id = "msg_test_123"
-        # cache_read > 0 makes prompt caching observable (SPEC invariant #4).
-        self.usage = SimpleNamespace(
-            input_tokens=120,
-            cache_creation_input_tokens=0,
-            cache_read_input_tokens=4096,
-            output_tokens=300,
-        )
+        self.usage = _fake_usage()
         self.content = []
 
 
+class _FakeText:
+    """A JSON-mode response: the canned object serialized into a single text block."""
+
+    def __init__(self, obj):
+        self.parsed_output = None
+        self.stop_reason = "end_turn"
+        self.id = "msg_test_123"
+        self.usage = _fake_usage()
+        self.content = [SimpleNamespace(type="text", text=obj.model_dump_json())]
+
+
+def _section_kind_from(user: str) -> SectionKind:
+    for k in LESSON_SKELETON:
+        if f"section_kind: {k.value}" in user:
+            return k
+    return SectionKind.EXPLANATION
+
+
 def _make_mock_client():
-    """A mock AsyncAnthropic whose messages.parse returns the canned output for the requested model."""
+    """Mock AsyncAnthropic: JSON-mode calls (lesson plan/section, quiz) return the canned object as a
+    text block via messages.create; parse (grader + small schemas) returns the canned parsed output."""
 
     async def _parse(**kwargs):
         fmt = kwargs.get("output_format")
-        if fmt is LessonPlan:
-            return _FakeParsed(_canned_plan())
-        if fmt is GenSection:
-            # Derive the section kind from the user message so each call gets the right body.
-            user = kwargs["messages"][0]["content"]
-            kind = SectionKind.EXPLANATION
-            for k in LESSON_SKELETON:
-                if f"section_kind: {k.value}" in user:
-                    kind = k
-                    break
-            return _FakeParsed(_canned_section(kind))
-        if fmt is GenQuiz:
-            return _FakeParsed(_canned_quiz())
         if fmt is GraderOutput:
             return _FakeParsed(_canned_grader())
         # Visual-spec batch container (only used if sections request no inline visuals).
         return _FakeParsed(fmt(visuals=[]))
 
+    async def _create(**kwargs):
+        user = kwargs["messages"][0]["content"]
+        if '"title":"GenQuiz"' in user:
+            return _FakeText(_canned_quiz())
+        if '"title":"GenSection"' in user:
+            return _FakeText(_canned_section(_section_kind_from(user)))
+        if '"title":"LessonPlan"' in user:
+            return _FakeText(_canned_plan())
+        raise AssertionError("unexpected messages.create() call in mock")
+
     client = SimpleNamespace()
-    client.messages = SimpleNamespace(parse=AsyncMock(side_effect=_parse))
+    client.messages = SimpleNamespace(
+        parse=AsyncMock(side_effect=_parse), create=AsyncMock(side_effect=_create)
+    )
     return client
 
 
@@ -462,15 +482,17 @@ async def test_edges_persisted_when_planned(db):
     plan.concept_edges = [GenConceptEdge(from_slug="light", to_slug="photosynthesis",
                                          edge_type="prerequisite")]
 
-    async def _parse(**kwargs):
-        fmt = kwargs.get("output_format")
-        if fmt is LessonPlan:
-            return _FakeParsed(plan)
-        if fmt is GenSection:
-            return _FakeParsed(_canned_section(SectionKind.EXPLANATION))
-        return _FakeParsed(fmt(visuals=[]))
+    async def _create(**kwargs):
+        user = kwargs["messages"][0]["content"]
+        if '"title":"GenSection"' in user:
+            return _FakeText(_canned_section(_section_kind_from(user)))
+        if '"title":"LessonPlan"' in user:
+            return _FakeText(plan)  # plan carries the concept edge
+        if '"title":"GenQuiz"' in user:
+            return _FakeText(_canned_quiz())
+        raise AssertionError("unexpected create() call")
 
-    client.messages.parse = AsyncMock(side_effect=_parse)
+    client.messages.create = AsyncMock(side_effect=_create)
     lr = await _seed_request(db, Mode.STUDY)
     await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
     await db.flush()

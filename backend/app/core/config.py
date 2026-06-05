@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # ---- Models ----
     model_id: str = Field(default="claude-opus-4-8", alias="SA_MODEL_ID")
     sanitizer_model_id: str = Field(default="claude-haiku-4-5", alias="SA_SANITIZER_MODEL_ID")
+    # Per-request timeout (seconds) for any single LLM call, so one call can't hang generation.
+    llm_request_timeout_s: float = Field(default=120.0, alias="SA_LLM_TIMEOUT_S")
+    # Wall-clock budget (seconds) for the whole image phase; past it the lesson is served without
+    # the remaining images (they degrade to alt text) rather than making the learner wait.
+    visual_phase_budget_s: float = Field(default=75.0, alias="SA_VISUAL_BUDGET_S")
+    per_visual_timeout_s: float = Field(default=45.0, alias="SA_PER_VISUAL_TIMEOUT_S")
 
     # ---- Secrets / admin ----
     app_secret: str = Field(default=_DEV_SECRET, alias="APP_SECRET")

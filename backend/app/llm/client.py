@@ -22,6 +22,7 @@ so generators are unit-testable with a mock — no network, no key.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,11 +49,15 @@ def set_client(client: anthropic.AsyncAnthropic | None) -> None:
 
 
 def get_client() -> anthropic.AsyncAnthropic:
-    """Lazily construct the shared AsyncAnthropic client (max_retries=5 auto-retries 429/5xx/529)."""
+    """Lazily construct the shared AsyncAnthropic client (max_retries=5 auto-retries 429/5xx/529).
+
+    A request timeout is set so a single call can never hang the generation pipeline indefinitely."""
     global _client
     if _client is None:
         _client = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key or "missing-key", max_retries=5
+            api_key=settings.anthropic_api_key or "missing-key",
+            max_retries=5,
+            timeout=settings.llm_request_timeout_s,
         )
     return _client
 
@@ -198,10 +203,17 @@ def _is_thinking_unsupported(exc: Exception) -> bool:
 
 
 async def _provider_call(
-    cli, *, model, max_tokens, system, messages, effort, output_model, use_tools, send_thinking
+    cli, *, model, max_tokens, system, messages, effort, output_model, mode, send_thinking
 ):
-    """One provider call. Tool-use path (most widely supported, used for the Haiku classifier) or the
-    native structured-output parse path. ``thinking`` is only sent when ``send_thinking``."""
+    """One provider call. ``mode`` selects the output strategy:
+
+    * ``"json"`` — plain message; the model returns JSON (the schema is in the prompt). NO grammar is
+      compiled, so this is the only viable mode for big/nested content schemas (lesson/quiz) whose
+      constrained-decoding grammar would exceed Anthropic's size/time cap.
+    * ``"tools"`` — tool-use structured output (widely supported; used for the Haiku classifier).
+    * ``"parse"`` — native structured-output parse (grammar-constrained); fine for small schemas.
+
+    ``thinking`` is only sent when ``send_thinking``."""
     common: dict[str, Any] = {
         "model": model,
         "max_tokens": max_tokens,
@@ -210,7 +222,9 @@ async def _provider_call(
     }
     if send_thinking:
         common["thinking"] = ADAPTIVE_THINKING
-    if use_tools:
+    if mode == "json":
+        return await cli.messages.create(**common)
+    if mode == "tools":
         tool = _tool_for(output_model)
         return await cli.messages.create(
             tools=[tool], tool_choice={"type": "tool", "name": tool["name"]}, **common
@@ -218,6 +232,24 @@ async def _provider_call(
     return await cli.messages.parse(
         output_config={"effort": effort}, output_format=output_model, **common
     )
+
+
+def _extract_json_text(message: Any) -> str:
+    """Concatenate text blocks and isolate the JSON object/array (tolerant of fences / stray prose)."""
+    parts = [
+        getattr(b, "text", "") or ""
+        for b in (getattr(message, "content", []) or [])
+        if getattr(b, "type", None) == "text"
+    ]
+    text = "".join(parts).strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    # Isolate the outermost JSON object (the model occasionally adds a lead-in sentence).
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        return text[start : end + 1]
+    return text
 
 
 async def generate_structured[OutputT: BaseModel](
@@ -234,12 +266,17 @@ async def generate_structured[OutputT: BaseModel](
     client: anthropic.AsyncAnthropic | None = None,
     use_tools_fallback: bool = False,
     use_thinking: bool = True,
+    use_json_mode: bool = False,
 ) -> tuple[OutputT, Usage]:
     """Run one structured Opus 4.8 call and parse it into ``output_model``.
 
     Retries up to ``MAX_VALIDATION_RETRIES`` on Pydantic validation failure, appending a corrective
     instruction that restates the bounds (since 4.8 strips schema min/max). Returns the validated
     model and normalized :class:`Usage`. Caching is asserted observable and logged.
+
+    ``use_json_mode`` skips grammar-constrained decoding entirely (the schema goes in the prompt and
+    we validate the returned JSON in Python). Use it for big/nested content schemas whose compiled
+    grammar would exceed Anthropic's cap; keep the default (parse) for small schemas.
     """
     # Fail fast with a clear, actionable error only when there is genuinely no client available:
     # no explicit client arg, no injected singleton (tests use set_client), and no API key.
@@ -251,12 +288,26 @@ async def generate_structured[OutputT: BaseModel](
     cli = client or get_client()
     model = model or settings.model_id
     system = _system_blocks(system_blocks)
+    mode = "json" if use_json_mode else ("tools" if use_tools_fallback else "parse")
+
+    # In JSON mode the schema lives in the prompt (no grammar compiled). Keep it stable across the
+    # cached system prefix by putting it in the user message.
+    json_suffix = ""
+    if mode == "json":
+        schema = json.dumps(output_model.model_json_schema(), separators=(",", ":"))
+        json_suffix = (
+            "\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Output "
+            "raw JSON with no markdown fences and no prose before or after it.\nJSON Schema:\n"
+            + schema
+        )
 
     last_error: Exception | None = None
     correction = ""
 
     for _attempt in range(MAX_VALIDATION_RETRIES + 1):
-        user_text = user if not correction else f"{user}\n\n{correction}"
+        user_text = f"{user}{json_suffix}"
+        if correction:
+            user_text = f"{user_text}\n\n{correction}"
         messages = [{"role": "user", "content": user_text}]
 
         try:
@@ -266,7 +317,7 @@ async def generate_structured[OutputT: BaseModel](
             send_thinking = use_thinking and model not in _thinking_unsupported
             call_kwargs = {
                 "model": model, "max_tokens": max_tokens, "system": system, "messages": messages,
-                "effort": effort, "output_model": output_model, "use_tools": use_tools_fallback,
+                "effort": effort, "output_model": output_model, "mode": mode,
             }
             try:
                 message = await _provider_call(cli, send_thinking=send_thinking, **call_kwargs)
@@ -287,7 +338,12 @@ async def generate_structured[OutputT: BaseModel](
 
             _check_stop_reason(getattr(message, "stop_reason", None))
 
-            if use_tools_fallback:
+            if mode == "json":
+                text = _extract_json_text(message)
+                if not text:
+                    raise GenerationError("Empty response in JSON mode.")
+                result = output_model.model_validate_json(text)
+            elif mode == "tools":
                 payload = _extract_tool_payload(message)
                 if payload is None:
                     raise GenerationError("No tool_use block in response.")

@@ -21,6 +21,7 @@ All rows stamp MODEL_ID / PROMPT_VERSION. Concepts are upserted INSERT-OR-IGNORE
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import Any
 
@@ -53,6 +54,8 @@ from ..schemas.generation import (
 from ..schemas.intent import StructuredIntent
 from . import prompts
 from .client import generate_structured, usage_row
+
+logger = logging.getLogger("schoolautomaton.generation")
 
 _SECTION_CONCURRENCY = 4
 _PLAN_MAX_TOKENS = 16000
@@ -182,8 +185,11 @@ async def _realize_hotspot_image(
     try:
         from ..visuals import ensure_visual  # lazy, mirrors _attach_visuals
 
-        asset = await ensure_visual(db, spec, language=language, grade_band=grade_band)
-    except Exception:  # noqa: BLE001 - degrade gracefully; never break generation
+        asset = await asyncio.wait_for(
+            ensure_visual(db, spec, language=language, grade_band=grade_band),
+            timeout=settings.per_visual_timeout_s,
+        )
+    except Exception:  # noqa: BLE001 - timeout or any error: degrade gracefully, never break generation
         return
     db.add(
         AssetsRef(
@@ -290,6 +296,7 @@ async def _generate_section(
                 model=settings.model_id,
                 max_tokens=_SECTION_MAX_TOKENS,
                 effort="medium",
+                use_json_mode=True,  # nested item lists exceed the constrained-decoding grammar cap
                 db=None,  # logged serially by the caller (gather is not session-safe)
                 request_id=request_id,
                 client=client,
@@ -326,19 +333,32 @@ async def _attach_visuals(
         return 0
     from ..visuals import ensure_visual  # lazy: avoids import cycle + concurrent-module incompleteness
 
+    # Images must never block the lesson forever: each is bounded by a per-visual timeout, and the
+    # whole phase by a wall-clock budget. Past the budget we serve the lesson with whatever images
+    # finished; the rest degrade to their alt text (never a stuck "Adding pictures…" screen).
+    deadline = asyncio.get_event_loop().time() + settings.visual_phase_budget_s
     attached = 0
     for spec in specs:
         idx = spec.section_ordinal
         if idx < 0 or idx >= len(ordered_sections):
             continue
+        if asyncio.get_event_loop().time() >= deadline:
+            logger.warning("Visual budget (%ss) reached; serving lesson without remaining images",
+                           settings.visual_phase_budget_s)
+            break
         section = ordered_sections[idx]
         # Route hint stays in the spec; ensure_visual decides SVG vs raster by visual_kind.
         try:
-            asset = await ensure_visual(
-                db, spec, language=intent.language, grade_band=intent.grade_band.value
+            asset = await asyncio.wait_for(
+                ensure_visual(db, spec, language=intent.language,
+                              grade_band=intent.grade_band.value),
+                timeout=settings.per_visual_timeout_s,
             )
         except NotImplementedError:
             # B3 not yet landed in this process — skip visuals, lesson still valid.
+            continue
+        except Exception:  # noqa: BLE001 — timeout or any error: a visual must never fail the lesson
+            logger.warning("Visual generation skipped (timeout/error) for %s", spec.visual_kind.value)
             continue
         db.add(
             AssetsRef(
@@ -379,6 +399,7 @@ async def generate_lesson(
         model=settings.model_id,
         max_tokens=_PLAN_MAX_TOKENS,
         effort="high",
+        use_json_mode=True,  # nested objectives/sections exceed the constrained-decoding grammar cap
         db=db,
         request_id=request_id,
         client=client,
