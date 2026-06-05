@@ -98,7 +98,7 @@ function submit() {
 
     <p class="sa-cloze" :aria-label="t('q.cloze.legend')">
       <template v-for="(seg, i) in segments" :key="i">
-        <SafeContent v-if="seg.type === 'text'" :markdown="seg.text" tag="span" />
+        <SafeContent v-if="seg.type === 'text'" :markdown="seg.text" tag="span" inline />
         <template v-else>
           <!-- choices present => select-to-fill (keyboard friendly) -->
           <select

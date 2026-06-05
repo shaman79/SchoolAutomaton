@@ -168,6 +168,19 @@ export function renderMarkdown(input: string): string {
   return DOMPurify.sanitize(withMath, MD_PURIFY_CONFIG)
 }
 
+/**
+ * Render untrusted markdown as INLINE content — no wrapping block `<p>` — for flowing a snippet
+ * inside a sentence (e.g. cloze fill-in text segments around the input boxes). Same sanitization.
+ */
+export function renderMarkdownInline(input: string): string {
+  if (!input) return ''
+  installHooks()
+  const { text, math } = extractMath(input)
+  const rendered = md.renderInline(text)
+  const withMath = restoreMath(rendered, math)
+  return DOMPurify.sanitize(withMath, MD_PURIFY_CONFIG)
+}
+
 /** Render untrusted SVG markup to sanitized SVG safe for v-html (script/foreignObject/on* stripped). */
 export function renderSvg(input: string): string {
   if (!input) return ''

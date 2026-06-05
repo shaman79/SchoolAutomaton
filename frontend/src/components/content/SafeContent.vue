@@ -6,7 +6,7 @@
  */
 import { computed } from 'vue'
 
-import { renderMarkdown, renderSvg } from '@/lib/safeContent'
+import { renderMarkdown, renderMarkdownInline, renderSvg } from '@/lib/safeContent'
 
 const props = withDefaults(
   defineProps<{
@@ -18,13 +18,17 @@ const props = withDefaults(
     tag?: string
     /** Adds the readable-measure prose class for long lesson prose. */
     prose?: boolean
+    /** Render markdown inline (no wrapping <p>) so it flows within a sentence (e.g. cloze text). */
+    inline?: boolean
   }>(),
-  { markdown: null, svg: null, tag: 'div', prose: false },
+  { markdown: null, svg: null, tag: 'div', prose: false, inline: false },
 )
 
 const html = computed(() => {
   if (props.svg != null) return renderSvg(props.svg)
-  if (props.markdown != null) return renderMarkdown(props.markdown)
+  if (props.markdown != null) {
+    return props.inline ? renderMarkdownInline(props.markdown) : renderMarkdown(props.markdown)
+  }
   return ''
 })
 
