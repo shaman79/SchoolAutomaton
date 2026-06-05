@@ -21,8 +21,9 @@ const props = withDefaults(
     disabled?: boolean
     feedback?: GradeResult | null
     sound?: boolean
+    managed?: boolean
   }>(),
-  { disabled: false, feedback: null, sound: false },
+  { disabled: false, feedback: null, sound: false, managed: false },
 )
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
@@ -42,6 +43,9 @@ watch(
 )
 
 const locked = computed(() => props.disabled || !!props.feedback)
+// An arrangement is always submittable (you can always reorder), so readiness == not locked.
+const canSubmit = computed(() => !locked.value)
+defineExpose({ submit, canSubmit })
 
 function move(index: number, dir: -1 | 1) {
   if (locked.value) return
@@ -121,7 +125,7 @@ function submit() {
       </template>
     </draggable>
 
-    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="locked" @click="submit">
+    <button v-if="!feedback && !managed" class="sa-btn sa-btn-primary sa-q__check" :disabled="locked" @click="submit">
       {{ t('common.check') }}
     </button>
 

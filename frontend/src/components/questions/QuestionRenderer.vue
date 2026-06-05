@@ -4,7 +4,7 @@
  * item_types) and re-emits the normalized AnswerEvent. F3 views (TestRunner / LessonReader)
  * render <QuestionRenderer :item> and listen for @answer.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 import FillBlankQuestion from '@/components/questions/FillBlankQuestion.vue'
 import HotspotQuestion from '@/components/questions/HotspotQuestion.vue'
@@ -23,8 +23,9 @@ const props = withDefaults(
     disabled?: boolean
     feedback?: GradeResult | null
     sound?: boolean
+    managed?: boolean
   }>(),
-  { disabled: false, feedback: null, sound: false },
+  { disabled: false, feedback: null, sound: false, managed: false },
 )
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
@@ -43,6 +44,14 @@ const COMPONENT: Record<ItemType, unknown> = {
 
 const resolved = computed(() => COMPONENT[props.item.item_type])
 
+// Ref to the active question component so a "managed" consumer (the quiz) can drive a single
+// external Check/Next button: it reads canSubmit (reactive) and calls submit().
+const inner = ref<{ submit?: () => void; canSubmit?: boolean } | null>(null)
+defineExpose({
+  submit: () => inner.value?.submit?.(),
+  canSubmit: computed(() => Boolean(inner.value?.canSubmit)),
+})
+
 function onAnswer(payload: AnswerEvent) {
   emit('answer', payload)
 }
@@ -52,10 +61,12 @@ function onAnswer(payload: AnswerEvent) {
   <component
     :is="resolved"
     v-if="resolved"
+    ref="inner"
     :item="item"
     :disabled="disabled"
     :feedback="feedback"
     :sound="sound"
+    :managed="managed"
     @answer="onAnswer"
   />
   <div v-else class="sa-card sa-q-unknown" role="alert">

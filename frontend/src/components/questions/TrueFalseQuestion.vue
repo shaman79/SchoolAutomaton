@@ -18,8 +18,9 @@ const props = withDefaults(
     disabled?: boolean
     feedback?: GradeResult | null
     sound?: boolean
+    managed?: boolean
   }>(),
-  { disabled: false, feedback: null, sound: false },
+  { disabled: false, feedback: null, sound: false, managed: false },
 )
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
@@ -45,6 +46,7 @@ function pick(v: boolean) {
 }
 
 const canSubmit = computed(() => choice.value !== null && !locked.value)
+defineExpose({ submit, canSubmit })
 function submit() {
   if (!canSubmit.value) return
   emit('answer', timing.buildEvent(choice.value as boolean))
@@ -84,7 +86,7 @@ function submit() {
       </button>
     </div>
 
-    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
+    <button v-if="!feedback && !managed" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
       {{ t('common.check') }}
     </button>
 

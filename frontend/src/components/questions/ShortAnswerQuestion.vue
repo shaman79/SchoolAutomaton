@@ -19,8 +19,9 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     multiline?: boolean
+    managed?: boolean
   }>(),
-  { disabled: false, feedback: null, sound: false, multiline: false },
+  { disabled: false, feedback: null, sound: false, multiline: false, managed: false },
 )
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
@@ -40,6 +41,7 @@ watch(
 
 const locked = computed(() => props.disabled || !!props.feedback)
 const canSubmit = computed(() => text.value.trim().length > 0 && !locked.value)
+defineExpose({ submit, canSubmit })
 
 function submit() {
   if (!canSubmit.value) return
@@ -71,7 +73,7 @@ function submit() {
       @keyup.enter="submit"
     />
 
-    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
+    <button v-if="!feedback && !managed" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
       {{ t('common.check') }}
     </button>
 

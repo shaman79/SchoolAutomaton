@@ -49,6 +49,15 @@ const currentFeedback = computed(() => {
 const answeredCurrent = computed(() => currentFeedback.value != null)
 const isLast = computed(() => test.currentIndex >= total.value - 1)
 
+// Single morphing CTA: the footer button is "Check" (drives the question's submit) until graded,
+// then becomes "Next"/"Finish". The question component hides its own Check in managed mode.
+const qr = ref<{ submit?: () => void; canSubmit?: boolean } | null>(null)
+const checkReady = computed(() => Boolean(qr.value?.canSubmit))
+function onCheck() {
+  if (submitting.value || !checkReady.value) return
+  qr.value?.submit?.()
+}
+
 async function onAnswer(e: AnswerEvent) {
   if (submitting.value || answeredCurrent.value) return
   submitting.value = true
@@ -143,16 +152,18 @@ onMounted(async () => {
         {{ t('test.points', { n: current.points }) }}
       </p>
       <QuestionRenderer
+        ref="qr"
         :item="current.item"
         :feedback="currentFeedback"
         :disabled="answeredCurrent || submitting"
         :sound="prefs.sound"
+        managed
         @answer="onAnswer"
       />
     </div>
 
-    <!-- One action at a time: Check lives in the question; once graded it's replaced by Next/Finish.
-         Before answering, only a subtle Skip is offered so the learner is never stuck. -->
+    <!-- Single morphing CTA: Check (until graded) → Next/Finish. A subtle Skip is offered while
+         unanswered so the learner is never stuck. -->
     <div class="sa-test__footer safe-bottom">
       <SaButton
         v-if="answeredCurrent"
@@ -166,7 +177,19 @@ onMounted(async () => {
       >
         {{ isLast ? t('test.finish') : t('common.next') }}
       </SaButton>
-      <button v-else type="button" class="sa-test__skip" @click="onSkip">
+      <SaButton
+        v-else
+        variant="primary"
+        size="lg"
+        block
+        icon="check"
+        :disabled="!checkReady"
+        :loading="submitting"
+        @click="onCheck"
+      >
+        {{ t('common.check') }}
+      </SaButton>
+      <button v-if="!answeredCurrent" type="button" class="sa-test__skip" @click="onSkip">
         {{ isLast ? t('test.skip_finish') : t('test.skip') }}
       </button>
     </div>

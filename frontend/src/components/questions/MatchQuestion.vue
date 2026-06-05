@@ -22,8 +22,9 @@ const props = withDefaults(
     disabled?: boolean
     feedback?: GradeResult | null
     sound?: boolean
+    managed?: boolean
   }>(),
-  { disabled: false, feedback: null, sound: false },
+  { disabled: false, feedback: null, sound: false, managed: false },
 )
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
@@ -101,6 +102,7 @@ const allPlaced = computed(() =>
 // Submittable once every prompt is matched OR there are no tokens left to place — so the learner is
 // never stuck (defensive: a malformed payload with fewer tokens than prompts would otherwise lock).
 const canSubmit = computed(() => !locked.value && (allPlaced.value || pool.value.length === 0))
+defineExpose({ submit, canSubmit })
 
 function submit() {
   if (!canSubmit.value) return
@@ -180,7 +182,7 @@ function submit() {
       </draggable>
     </div>
 
-    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
+    <button v-if="!feedback && !managed" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
       {{ t('common.check') }}
     </button>
 

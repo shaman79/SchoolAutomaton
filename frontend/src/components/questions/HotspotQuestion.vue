@@ -25,8 +25,9 @@ const props = withDefaults(
     disabled?: boolean
     feedback?: GradeResult | null
     sound?: boolean
+    managed?: boolean
   }>(),
-  { disabled: false, feedback: null, sound: false },
+  { disabled: false, feedback: null, sound: false, managed: false },
 )
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
@@ -106,6 +107,7 @@ function pick(region: HotspotRegion) {
 }
 
 const canSubmit = computed(() => selected.value !== null && !locked.value)
+defineExpose({ submit, canSubmit })
 function submit() {
   if (!canSubmit.value || selected.value === null) return
   emit('answer', timing.buildEvent(selected.value))
@@ -141,7 +143,7 @@ function regionLabel(region: HotspotRegion, i: number) {
       </button>
     </div>
 
-    <button v-if="!feedback" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
+    <button v-if="!feedback && !managed" class="sa-btn sa-btn-primary sa-q__check" :disabled="!canSubmit" @click="submit">
       {{ t('common.check') }}
     </button>
 
