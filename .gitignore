@@ -55,3 +55,6 @@ Thumbs.db
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Claude Code transient/local files
+.claude/
