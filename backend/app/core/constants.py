@@ -154,11 +154,10 @@ REPLICATE_NEGATIVE_CLAUSE = (
 )
 
 # ---------------------------------------------------------------------------
-# i18n — UI locales shipped at launch. Generation auto-detects any language.
-# Native pedagogy cached prefixes are built for these; others fall back to English + "respond in X".
+# i18n — UI locales shipped at launch. Generation auto-detects any language (a single English
+# pedagogy prefix serves all; the output language is pinned by a directive in the user message).
 # ---------------------------------------------------------------------------
 SHIPPED_UI_LOCALES = ("en", "cs")
-NATIVE_PEDAGOGY_LANGUAGES = ("en", "cs")
 DEFAULT_LOCALE = "en"
 
 # Mastery-anchored badge codes (definitions seeded from app/data/badges.yaml).

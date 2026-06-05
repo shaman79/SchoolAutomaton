@@ -1,8 +1,7 @@
 """Prompt assembly for the LLM generation layer.
 
-* :func:`system_pedagogy` returns the byte-identical cached SYSTEM_PEDAGOGY prefix for a language
-  (native ``en``/``cs``; any other language reuses the English prefix and the caller appends a
-  "respond entirely in {language}" line to the trailing user message).
+* :func:`system_pedagogy` returns the byte-identical cached English SYSTEM_PEDAGOGY prefix (same for
+  every language; the output language is pinned by :func:`language_directive` in the user message).
 * The ``build_*`` helpers assemble the VOLATILE trailing user message for each generation step. All
   volatile data (topic, language, mastery, grade band, date) lives here only — never in the cached
   prefix.
@@ -12,19 +11,14 @@ from __future__ import annotations
 
 import json
 
-from ...core.constants import (
-    NATIVE_PEDAGOGY_LANGUAGES,
-    READABILITY_TARGETS,
-    TARGET_SUCCESS_RATE,
-)
+from ...core.constants import READABILITY_TARGETS, TARGET_SUCCESS_RATE
 from ...schemas.enums import LESSON_SKELETON
 from ...schemas.intent import StructuredIntent
-from .pedagogy import SYSTEM_PEDAGOGY, SYSTEM_PEDAGOGY_CS, SYSTEM_PEDAGOGY_EN
+from .pedagogy import SYSTEM_PEDAGOGY, SYSTEM_PEDAGOGY_EN
 
 __all__ = [
     "SYSTEM_PEDAGOGY",
     "SYSTEM_PEDAGOGY_EN",
-    "SYSTEM_PEDAGOGY_CS",
     "system_pedagogy",
     "language_directive",
     "build_lesson_plan_user",
@@ -35,21 +29,19 @@ __all__ = [
 ]
 
 
-def system_pedagogy(language: str) -> str:
-    """Return the cached system prefix for ``language`` (English fallback for non-native languages).
+def system_pedagogy(language: str) -> str:  # noqa: ARG001 — language is pinned in the user message
+    """Return the byte-identical cached English system prefix (same for every output language).
 
-    The returned string is byte-identical for a given language across all calls, so the ephemeral
-    cache prefix stays warm (SPEC invariant #4).
+    Kept byte-identical across all calls so the ephemeral cache prefix stays warm (SPEC invariant #4).
+    The requested output language is applied via :func:`language_directive` in the volatile tail.
     """
-    lang = (language or "en").strip().lower()[:2]
-    return SYSTEM_PEDAGOGY.get(lang, SYSTEM_PEDAGOGY_EN)
+    return SYSTEM_PEDAGOGY_EN
 
 
 def language_directive(language: str) -> str:
-    """A one-line instruction appended to the VOLATILE tail for non-native-prefix languages."""
+    """One-line instruction (volatile tail) pinning the OUTPUT language. The cached system prefix is
+    always English, so the language is requested here for every language including English."""
     lang = (language or "en").strip().lower()
-    if lang[:2] in NATIVE_PEDAGOGY_LANGUAGES:
-        return f"Respond entirely in {lang}. All student-facing values must be in {lang}."
     return (
         f"Respond entirely in '{lang}'. Write every student-facing value in '{lang}'. "
         "JSON keys stay English."
