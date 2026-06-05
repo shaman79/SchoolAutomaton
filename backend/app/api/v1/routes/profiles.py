@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import LearningRequest, Lesson, Profile, Quiz
+from ....models import Answer, LearningRequest, Lesson, Profile, Quiz, QuizAttempt
 from ....schemas.gamification import GamificationSnapshot, TreeResponse
 from ....schemas.profile import (
     CreateProfileIn,
@@ -77,6 +77,18 @@ async def list_my_requests(
             .limit(limit)
         )
     ).all()
+    # Which quizzes this learner has a graded attempt for — so the UI only offers "Review" where there
+    # is something to review (avoids a dead-end empty screen).
+    attempted_quiz_ids = set(
+        (
+            await db.execute(
+                select(QuizAttempt.quiz_id)
+                .join(Answer, Answer.attempt_id == QuizAttempt.id)
+                .where(QuizAttempt.profile_id == profile.id)
+                .distinct()
+            )
+        ).scalars().all()
+    )
     return [
         LearningSessionSummary(
             request_id=lr.request_id,
@@ -87,6 +99,7 @@ async def list_my_requests(
             title=(lesson.topic if lesson else (quiz.title if quiz else None)),
             subject=(lesson.subject if lesson else (quiz.subject if quiz else None)),
             created_at=lr.created_at,
+            attempted=(lr.quiz_id is not None and lr.quiz_id in attempted_quiz_ids),
         )
         for lr, lesson, quiz in rows
     ]

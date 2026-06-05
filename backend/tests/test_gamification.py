@@ -451,6 +451,103 @@ async def test_finalize_attempt_summary(db):
     assert len(summary.mastery_changes) == 1
 
 
+@pytest.mark.asyncio
+async def test_skipped_questions_count_against_accuracy(db):
+    """A skipped question (no Answer row) must count as incorrect: accuracy denominator is the whole
+    quiz, not just the answered subset."""
+    from app.models import Quiz, QuizAttempt, QuizQuestion
+
+    profile = await _make_profile(db)
+    concept = await _make_concept(db)
+    quiz = Quiz(request_id="r", title="t", language="en", grade_band="G3-5", subject="science",
+                model_id="m", prompt_version="v")
+    db.add(quiz)
+    await db.flush()
+
+    payload = {"kind": "mcq", "options": [{"id": "a", "text": "x", "is_correct": True}]}
+    items = []
+    for i in range(3):
+        it = await _make_item(db, concept.id, "mcq", payload)
+        db.add(QuizQuestion(quiz_id=quiz.id, item_id=it.id, ordinal=i + 1, points=10))
+        items.append(it)
+    await db.flush()
+
+    attempt = QuizAttempt(profile_id=profile.id, quiz_id=quiz.id)
+    db.add(attempt)
+    await db.flush()
+
+    # Answer ONLY the first question (correctly); skip the other two.
+    await gamification.grade_and_reward(
+        db, profile, items[0],
+        AnswerIn(item_id=items[0].id, attempt_id=attempt.id, submitted_value="a", latency_ms=4000),
+        attempt.id,
+    )
+
+    summary = await gamification.finalize_attempt(db, profile, attempt.id)
+    assert summary.accuracy == pytest.approx(1 / 3, abs=1e-3)  # 1 of 3 — NOT 1 of 1
+    assert summary.score == 1
+    assert summary.max_score == 3
+
+
+@pytest.mark.asyncio
+async def test_empty_free_text_is_graded_incorrect_without_llm(db):
+    """A blank short_answer is wrong by definition and must not reach (or be talked-up by) the LLM
+    grader — no network needed for this test, proving the short-circuit."""
+    profile = await _make_profile(db)
+    concept = await _make_concept(db)
+    item = await _make_item(
+        db, concept.id, "short_answer", {"kind": "short_answer", "placeholder": "p"},
+        expected_answer="paris",
+    )
+    res = await gamification.grade_and_reward(
+        db, profile, item,
+        AnswerIn(item_id=item.id, attempt_id=None, submitted_value="   ", latency_ms=1000),
+        None,
+    )
+    assert res.is_correct is False
+    assert res.xp_awarded == 0
+
+
+@pytest.mark.asyncio
+async def test_mcq_options_shuffled_at_delivery_and_stable(db):
+    """Delivered MCQ options are reordered (the correct one isn't pinned first) yet byte-stable across
+    re-delivery so a progress refresh sees the same order. Grading is by id, so it stays correct."""
+    from app.api.v1.serializers import item_public
+
+    concept = await _make_concept(db)
+    first_positions = []
+    sample = None
+    for _ in range(6):
+        opts = [{"id": f"o{i}", "text": str(i), "is_correct": i == 0} for i in range(8)]
+        item = await _make_item(db, concept.id, "mcq", {"kind": "mcq", "options": opts})
+        pub = await item_public(db, item)
+        ids = [o.id for o in pub.payload.options]
+        assert sorted(ids) == sorted(f"o{i}" for i in range(8))  # no option dropped/duplicated
+        first_positions.append(ids.index("o0"))
+        sample = item
+    assert any(pos != 0 for pos in first_positions)  # correct option not always first
+    a = [o.id for o in (await item_public(db, sample)).payload.options]
+    b = [o.id for o in (await item_public(db, sample)).payload.options]
+    assert a == b  # deterministic / stable
+
+
+@pytest.mark.asyncio
+async def test_order_tokens_never_delivered_pre_solved(db):
+    """Order tokens are delivered shuffled and never in the correct sequence (else a no-op submit
+    would score 100%)."""
+    from app.api.v1.serializers import item_public
+
+    concept = await _make_concept(db)
+    toks = [{"id": f"t{i}", "text": str(i)} for i in range(5)]
+    correct = [f"t{i}" for i in range(5)]
+    item = await _make_item(
+        db, concept.id, "order", {"kind": "order", "tokens": toks, "correct_order": correct}
+    )
+    delivered = [t.id for t in (await item_public(db, item)).payload.tokens]
+    assert sorted(delivered) == sorted(correct)
+    assert delivered != correct
+
+
 # --------------------------------------------------------------------------- accepted variants
 @pytest.mark.asyncio
 async def test_short_answer_accepts_documented_variant_on_fallback(db):

@@ -340,6 +340,7 @@
     "hotspot": {
       "instructions": "Klepni na správné místo na obrázku.",
       "image_alt": "Obrázek s volitelnými oblastmi",
+      "image_unavailable": "Obrázek není dostupný — vyber označenou možnost.",
       "region_n": "Oblast {n}"
     }
   },

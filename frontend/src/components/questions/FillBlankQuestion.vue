@@ -59,8 +59,21 @@ const segments = computed<Segment[]>(() => {
     last = re.lastIndex
   }
   if (last < tpl.length) out.push({ type: 'text', text: tpl.slice(last) })
+  // Salvage: if the template carries no {{id}} markers (a malformed/legacy item) but blanks are
+  // declared, append one input per blank so the learner isn't stranded on an unanswerable question.
+  if (!out.some((s) => s.type === 'blank')) {
+    for (const b of payload.value.blanks ?? []) out.push({ type: 'blank', id: b.id })
+  }
   return out
 })
+
+// Blank ids that ACTUALLY render an input — submission gates on these, never on declared-but-unrendered
+// blanks (an orphan blank id with no marker must not lock the Check button forever).
+const renderedIds = computed(() =>
+  segments.value
+    .filter((s): s is { type: 'blank'; id: string } => s.type === 'blank')
+    .map((s) => s.id),
+)
 
 function blankDef(id: string) {
   return payload.value.blanks.find((b) => b.id === id) ?? null
@@ -79,15 +92,16 @@ const blankNumbers = computed<Record<string, number>>(() => {
 const canSubmit = computed(
   () =>
     !locked.value &&
-    payload.value.blanks.every((b) => (answers.value[b.id] ?? '').trim().length > 0),
+    renderedIds.value.length > 0 &&
+    renderedIds.value.every((id) => (answers.value[id] ?? '').trim().length > 0),
 )
 defineExpose({ submit, canSubmit })
 
 function submit() {
   if (!canSubmit.value) return
-  // Trim values into the Record<blankId,string> the backend expects.
+  // Trim values into the Record<blankId,string> the backend expects (only the rendered blanks).
   const value: Record<string, string> = {}
-  for (const b of payload.value.blanks) value[b.id] = (answers.value[b.id] ?? '').trim()
+  for (const id of renderedIds.value) value[id] = (answers.value[id] ?? '').trim()
   emit('answer', timing.buildEvent(value))
 }
 </script>
@@ -100,9 +114,9 @@ function submit() {
       <template v-for="(seg, i) in segments" :key="i">
         <SafeContent v-if="seg.type === 'text'" :markdown="seg.text" tag="span" inline />
         <template v-else>
-          <!-- choices present => select-to-fill (keyboard friendly) -->
+          <!-- non-empty choices => select-to-fill (keyboard friendly); empty/absent => type-in -->
           <select
-            v-if="blankDef(seg.id)?.choices"
+            v-if="blankDef(seg.id)?.choices?.length"
             v-model="answers[seg.id]"
             class="sa-cloze__select"
             :disabled="locked"

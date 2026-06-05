@@ -7,6 +7,7 @@ correctness before delivery. All inherit ``StrictModel`` → ``additionalPropert
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import Field
@@ -150,7 +151,14 @@ def _is_answerable(item_type: ItemType, d: dict[str, Any]) -> bool:
         return len(opts) >= 2 and any(o.get("is_correct") for o in opts)
     if item_type == ItemType.CLOZE:
         blanks = d.get("blanks") or []
-        return bool(blanks) and all(str(b.get("answer") or "").strip() for b in blanks)
+        if not blanks or not all(str(b.get("answer") or "").strip() for b in blanks):
+            return False
+        # The template MUST mark every blank with a {{blank_id}} placeholder (and no stray markers),
+        # mirroring the frontend regex — otherwise the blank renders no input and the learner is stuck
+        # on an unanswerable question. Drop the item rather than ship it broken.
+        markers = set(re.findall(r"\{\{\s*([\w-]+)\s*\}\}", str(d.get("text_template") or "")))
+        ids = {str(b.get("id")) for b in blanks}
+        return bool(markers) and markers == ids
     if item_type == ItemType.MATCH:
         left, right, correct = d.get("left") or [], d.get("right") or [], d.get("correct") or []
         left_ids = {x.get("id") for x in left}

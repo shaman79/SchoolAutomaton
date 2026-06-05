@@ -123,15 +123,21 @@ function regionLabel(region: HotspotRegion, i: number) {
     <SafeContent :markdown="item.stem_markdown" prose class="sa-q__stem" />
     <p class="sa-q__hint">{{ t('q.hotspot.instructions') }}</p>
 
-    <div class="sa-hotspot">
-      <img :src="imageSrc" :alt="t('q.hotspot.image_alt')" class="sa-hotspot__img" />
+    <div class="sa-hotspot" :class="{ 'sa-hotspot--noimg': !imageSrc }">
+      <img v-if="imageSrc" :src="imageSrc" :alt="t('q.hotspot.image_alt')" class="sa-hotspot__img" />
+      <!-- Image failed/unavailable: fall back to a legible labelled list so the learner can still
+           choose (overlay pins over no image would just stack on top of each other). -->
+      <p v-else class="sa-hotspot__noimg-msg" role="note">{{ t('q.hotspot.image_unavailable') }}</p>
       <button
         v-for="(region, i) in payload.regions"
         :key="region.id"
         type="button"
         class="sa-hotspot__region"
-        :class="{ 'sa-hotspot__region--selected': selected === region.id }"
-        :style="boxStyle(region)"
+        :class="{
+          'sa-hotspot__region--selected': selected === region.id,
+          'sa-hotspot__region--static': !imageSrc,
+        }"
+        :style="imageSrc ? boxStyle(region) : undefined"
         :aria-pressed="selected === region.id"
         :aria-label="regionLabel(region, i)"
         :disabled="locked"
@@ -140,6 +146,7 @@ function regionLabel(region: HotspotRegion, i: number) {
         <span class="sa-hotspot__pin" aria-hidden="true">
           {{ selected === region.id ? '✓' : i + 1 }}
         </span>
+        <span v-if="!imageSrc" class="sa-hotspot__region-label">{{ regionLabel(region, i) }}</span>
       </button>
     </div>
 
@@ -182,6 +189,29 @@ function regionLabel(region: HotspotRegion, i: number) {
   display: block;
   width: 100%;
   height: auto;
+}
+/* No-image fallback: stack the regions as a normal labelled list. */
+.sa-hotspot--noimg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem;
+}
+.sa-hotspot__noimg-msg {
+  margin: 0;
+  color: var(--color-ink-soft);
+  font-size: 0.9rem;
+}
+.sa-hotspot__region--static {
+  position: static;
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-btn);
+}
+.sa-hotspot__region-label {
+  font-weight: 600;
 }
 .sa-hotspot__region {
   position: absolute;

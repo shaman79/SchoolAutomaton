@@ -37,8 +37,10 @@ const accuracyPct = computed(() =>
 const subPar = computed(() => summary.value != null && summary.value.accuracy < 0.6)
 
 const newBadges = computed(() => summary.value?.new_badges ?? [])
+// Only genuine gains (the backend already restricts mastery_changes to concepts answered correctly
+// with positive movement; this drops any flat/rounding-equal entries defensively).
 const masteryGains = computed(() =>
-  (summary.value?.mastery_changes ?? []).filter((m) => m.after >= m.before),
+  (summary.value?.mastery_changes ?? []).filter((m) => m.after > m.before),
 )
 
 const streak = computed(() => session.gamification?.streak ?? null)

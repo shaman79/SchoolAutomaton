@@ -124,6 +124,8 @@ export interface LearningSessionSummary {
   title: string | null
   subject: string | null
   created_at: string | null
+  /** Quiz only: the learner has a graded attempt, so a review screen has content. */
+  attempted?: boolean
 }
 
 export interface FeedbackBlock {

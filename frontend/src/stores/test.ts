@@ -12,6 +12,8 @@ import { useSessionStore } from './session'
 export const useTestStore = defineStore('test', () => {
   const quiz = ref<Quiz | null>(null)
   const attemptId = ref<number | null>(null)
+  // The quiz id the persisted attempt belongs to — used to validate a restored attempt on resume.
+  const quizId = ref<number | null>(null)
   const currentIndex = ref(0)
   const results = ref<Record<number, GradeResult>>({})
   const summary = ref<unknown | null>(null)
@@ -24,12 +26,23 @@ export const useTestStore = defineStore('test', () => {
   const finished = computed(() => total.value > 0 && answeredCount.value >= total.value)
 
   async function load(id: number): Promise<void> {
+    // Resume an in-progress attempt for the SAME quiz (restored from localStorage on refresh) instead
+    // of restarting: keeps answers/position AND avoids minting a duplicate server attempt.
+    if (
+      quizId.value === id &&
+      attemptId.value != null &&
+      summary.value == null &&
+      quiz.value?.id === id
+    ) {
+      return
+    }
     loading.value = true
     error.value = null
     try {
       quiz.value = await api.getQuiz(id)
       const started = await api.startAttempt(id)
       attemptId.value = started.attempt_id
+      quizId.value = id
       currentIndex.value = 0
       results.value = {}
       summary.value = null
@@ -56,12 +69,17 @@ export const useTestStore = defineStore('test', () => {
     if (attemptId.value == null) return null
     summary.value = await api.completeAttempt(attemptId.value)
     await useSessionStore().refreshGamification()
+    // Release the resumable attempt so a FINISHED quiz isn't auto-resumed on a later visit (the
+    // summary stays persisted for the results screen).
+    attemptId.value = null
+    quizId.value = null
     return summary.value
   }
 
   return {
     quiz,
     attemptId,
+    quizId,
     currentIndex,
     results,
     summary,
@@ -76,4 +94,8 @@ export const useTestStore = defineStore('test', () => {
     next,
     complete,
   }
+}, {
+  // Survive a mid-quiz page refresh: restore the quiz, attempt, position and per-question results.
+  // (loading/error are intentionally excluded so a refresh can't restore a stuck spinner.)
+  persist: { pick: ['quiz', 'quizId', 'attemptId', 'currentIndex', 'results', 'summary'] },
 })

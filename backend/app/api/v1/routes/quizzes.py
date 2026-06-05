@@ -35,6 +35,20 @@ async def start_attempt(
     quiz = await db.get(Quiz, quiz_id)
     if quiz is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz not found")
+    # Idempotent: if the learner already has an open (uncompleted) attempt for this quiz, resume it
+    # instead of minting a duplicate. This is the server-side anchor for resume-after-refresh and
+    # stops orphaned attempts skewing stats.
+    existing = await db.scalar(
+        select(QuizAttempt)
+        .where(
+            QuizAttempt.profile_id == profile.id,
+            QuizAttempt.quiz_id == quiz_id,
+            QuizAttempt.completed_at.is_(None),
+        )
+        .order_by(QuizAttempt.id.desc())
+    )
+    if existing is not None:
+        return AttemptStartOut(attempt_id=existing.id, started_at=existing.started_at)
     max_score = await db.scalar(
         select(func.coalesce(func.sum(QuizQuestion.points), 0)).where(QuizQuestion.quiz_id == quiz_id)
     )

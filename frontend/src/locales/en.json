@@ -340,6 +340,7 @@
     "hotspot": {
       "instructions": "Tap the correct spot on the picture.",
       "image_alt": "Image with selectable regions",
+      "image_unavailable": "Picture unavailable — pick the labelled option.",
       "region_n": "Region {n}"
     }
   },

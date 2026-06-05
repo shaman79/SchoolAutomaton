@@ -33,9 +33,11 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
         <span class="hidden text-lg sm:inline">{{ t('app.name') }}</span>
       </RouterLink>
 
-      <!-- Compact gamification bar: authenticated learners only. Taps through to full progress. -->
+      <!-- Compact gamification bar → full progress. Gated on the snapshot being loaded (which on app
+           boot is hydrated from the cached resume code), NOT on a fully-loaded profile — otherwise a
+           returning learner sees the data nowhere to tap until they submit a prompt. -->
       <RouterLink
-        v-if="session.isAuthenticated && session.gamification"
+        v-if="session.gamification"
         :to="{ name: 'stats' }"
         class="ml-auto flex min-w-0 items-center gap-2 rounded-[var(--radius-pill)] px-1 py-0.5 hover:bg-[var(--color-surface-2)]"
         :aria-label="t('stats.title')"
@@ -55,7 +57,7 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
         v-if="session.resumeCode"
         :to="{ name: 'history' }"
         class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
-        :class="session.isAuthenticated && session.gamification ? 'ml-2' : 'ml-auto'"
+        :class="session.gamification ? 'ml-2' : 'ml-auto'"
         :aria-label="t('history.title')"
       >
         <SaIcon name="books" :size="22" :title="t('history.title')" />
@@ -65,7 +67,7 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
       <button
         type="button"
         class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"
-        :class="session.resumeCode ? 'ml-1' : (session.isAuthenticated && session.gamification ? 'ml-2' : 'ml-auto')"
+        :class="session.resumeCode ? 'ml-1' : (session.gamification ? 'ml-2' : 'ml-auto')"
         :aria-label="t('a11y.settings')"
         @click="emit('open-settings')"
       >

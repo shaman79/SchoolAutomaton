@@ -110,9 +110,9 @@ function open(it: LearningSessionSummary) {
           </span>
           <SaIcon v-if="targetOf(it)" name="back" :size="18" class="sa-hist__chevron" aria-hidden="true" />
         </component>
-        <!-- Review a completed quiz anytime (gracefully shows "no attempt" if never taken). -->
+        <!-- Review a completed quiz — only when there's actually a graded attempt to review. -->
         <RouterLink
-          v-if="it.mode === 'test' && it.status === 'ready'"
+          v-if="it.mode === 'test' && it.status === 'ready' && it.attempted"
           :to="{ name: 'review', params: { sessionId: it.request_id } }"
           class="sa-hist__review"
         >

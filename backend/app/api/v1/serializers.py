@@ -5,6 +5,8 @@ correct / correct_order / tolerance reaches the client. Grading reveals the corr
 
 from __future__ import annotations
 
+import random
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,39 +29,67 @@ from ...schemas.questions import ItemPublic
 from ...schemas.quiz import QuizPublic, QuizQuestionPublic
 
 
-def _strip_payload(item_type: str, payload: dict) -> dict:
-    """Project a stored (full, with-correctness) payload to its public wire shape."""
+def _seeded_shuffle(seq: list, seed) -> list:
+    """Deterministic shuffle keyed by ``seed`` (the item id). Deterministic ⇒ the delivered order is
+    byte-stable across refetches (needed for client-side progress restore) yet independent of the
+    stored/correct order, so the correct answer is not always in its authored (often first) slot."""
+    out = list(seq)
+    if seed is not None and len(out) > 1:
+        random.Random(seed).shuffle(out)
+    return out
+
+
+def _strip_payload(item_type: str, payload: dict, item_id: int | None = None) -> dict:
+    """Project a stored (full, with-correctness) payload to its public wire shape.
+
+    Ordered-option types (mcq / cloze-choices / match-right / order) are shuffled deterministically by
+    item id at delivery so the answer's position is not a giveaway. Correctness is keyed by id
+    throughout, so grading and answer-reveal are unaffected by the reorder."""
     payload = payload or {}
     kind = payload.get("kind", item_type)
     if kind == "mcq":
+        opts = [{"id": o["id"], "text": o["text"]} for o in payload.get("options", [])]
         return {
             "kind": "mcq",
-            "options": [{"id": o["id"], "text": o["text"]} for o in payload.get("options", [])],
+            "options": _seeded_shuffle(opts, item_id),
             "multiple": payload.get("multiple", False),
         }
     if kind == "true_false":
         return {"kind": "true_false", "statement": payload.get("statement")}
     if kind == "cloze":
+        blanks = []
+        for b in payload.get("blanks", []):
+            # Empty (but present) choices => no real options; treat as a free type-in (None), not an
+            # empty <select>. Real choice lists are shuffled per blank so the answer isn't always first.
+            choices = b.get("choices") or None
+            if choices:
+                choices = _seeded_shuffle(choices, f"{item_id}:{b['id']}" if item_id is not None else None)
+            blanks.append({"id": b["id"], "choices": choices})
         return {
             "kind": "cloze",
             "text_template": payload.get("text_template", ""),
-            "blanks": [{"id": b["id"], "choices": b.get("choices")} for b in payload.get("blanks", [])],
+            "blanks": blanks,
         }
     if kind == "short_answer":
         return {"kind": "short_answer", "placeholder": payload.get("placeholder")}
     if kind == "numeric":
         return {"kind": "numeric", "unit": payload.get("unit")}
     if kind == "match":
+        # Shuffle only the right column; left rows stay aligned with the prompts.
+        right = [{"id": s["id"], "text": s["text"]} for s in payload.get("right", [])]
         return {
             "kind": "match",
             "left": [{"id": s["id"], "text": s["text"]} for s in payload.get("left", [])],
-            "right": [{"id": s["id"], "text": s["text"]} for s in payload.get("right", [])],
+            "right": _seeded_shuffle(right, f"{item_id}:r" if item_id is not None else None),
         }
     if kind == "order":
-        return {
-            "kind": "order",
-            "tokens": [{"id": t["id"], "text": t["text"]} for t in payload.get("tokens", [])],
-        }
+        toks = [{"id": t["id"], "text": t["text"]} for t in payload.get("tokens", [])]
+        shuffled = _seeded_shuffle(toks, item_id)
+        # Never deliver the tokens already in the correct sequence (the learner could submit untouched).
+        correct = [str(c) for c in payload.get("correct_order", [])]
+        if len(shuffled) > 1 and [str(t["id"]) for t in shuffled] == correct:
+            shuffled.append(shuffled.pop(0))
+        return {"kind": "order", "tokens": shuffled}
     if kind == "hotspot":
         return {
             "kind": "hotspot",
@@ -102,7 +132,7 @@ async def _assets_for(
 
 
 async def item_public(db: AsyncSession, item: Item, *, with_assets: bool = True) -> ItemPublic:
-    payload = _strip_payload(item.item_type, item.payload_json)
+    payload = _strip_payload(item.item_type, item.payload_json, item.id)
     if item.item_type == "hotspot" and with_assets:
         assets = await _assets_for(db, item_id=item.id)
         if assets and not payload.get("image_url"):

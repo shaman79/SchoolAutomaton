@@ -205,8 +205,10 @@ says multiple-select. Keep options parallel in length and grammar so length is n
 options sensibly (numeric ascending, otherwise no fixed pattern).
 true_false: a single declarative statement and a boolean answer; avoid absolutes ("always",
 "never") unless they are the point of the item.
-cloze: a text_template with one or more blanks; each blank has an id and an answer, optionally a list
-of choices. Place blanks on the load-bearing word, not a trivial function word.
+cloze: a text_template with one or more blanks. Mark EACH blank in the template with a {{blank_id}}
+placeholder — double curly braces around the blank's id, e.g. "I {{b1}} like to eat" — never write a
+gap as ___ or [blank]; only the {{id}} form renders an input box. Each blank has a matching id and an
+answer, optionally a list of choices. Place blanks on the load-bearing word, not a trivial function word.
 short_answer: a stem plus an optional placeholder; provide expected_answer and accepted_variants so
 the grader can credit equivalent phrasings. Keep the expected answer short and unambiguous.
 numeric: a stem plus a numeric answer, a tolerance, and an optional unit. State the unit in the stem
@@ -220,10 +222,12 @@ whether it is_correct. The region geometry must match the described figure.
 
 INTEGRITY (mandatory — an item that fails this is discarded, so the learner loses it): every item
 must be answerable and gradeable exactly as written. mcq: at least one option has is_correct=true.
-true_false: set answer to the boolean that makes the statement correct. match: provide at least as
-many right tokens as there are left prompts, and a correct pair for EVERY left id; all left_id/right_id
-values must reference ids you actually defined. order: correct_order must list every token id exactly
-once (a permutation of the tokens). hotspot: include image_request and mark the correct region(s).
+true_false: set answer to the boolean that makes the statement correct. cloze: the text_template must
+contain a {{id}} marker for EVERY blank id (and no markers for ids you did not define). match: provide
+at least as many right tokens as there are left prompts, and a correct pair for EVERY left id; all
+left_id/right_id values must reference ids you actually defined. order: correct_order must list every
+token id exactly once (a permutation of the tokens). hotspot: include image_request and mark the
+correct region(s).
 Reuse id strings consistently within a payload.
 
 ## Hint ladders and worked solutions (stable)
@@ -421,8 +425,10 @@ jde o výběr více možností. Možnosti drž podobně dlouhé a gramaticky sou
 nápovědou. Řaď je smysluplně (čísla vzestupně, jinak bez pevného vzoru).
 true_false: jediné oznamovací tvrzení a logická odpověď; vyhýbej se absolutním slovům („vždy",
 „nikdy"), pokud nejsou jádrem úlohy.
-cloze: text_template s jedním či více vynechanými místy; každé má id a answer, volitelně seznam
-choices. Vynechávej nosné slovo, ne triviální spojku.
+cloze: text_template s jedním či více vynechanými místy. KAŽDÉ vynechané místo označ v šabloně
+zástupcem {{blank_id}} — dvojité složené závorky kolem id daného místa, např. „Slunce dává {{b1}}." —
+nikdy nepiš mezeru jako ___ ani [blank]; vstupní pole se vykreslí jen pro tvar {{id}}. Každé místo má
+odpovídající id a answer, volitelně seznam choices. Vynechávej nosné slovo, ne triviální spojku.
 short_answer: zadání a volitelný placeholder; uveď expected_answer a accepted_variants, aby hodnotič
 uznal rovnocenné formulace. Očekávanou odpověď drž krátkou a jednoznačnou.
 numeric: zadání, číselnou odpověď, toleranci a volitelnou jednotku. Jednotku uveď v zadání i v poli
@@ -435,8 +441,9 @@ is_correct. Geometrie oblastí musí odpovídat popsanému obrázku.
 
 INTEGRITA (povinné — položka, která to nesplní, se zahodí a žák o ni přijde): každá položka musí být
 přesně tak, jak je napsaná, zodpověditelná a hodnotitelná. mcq: aspoň jedna možnost má is_correct=true.
-true_false: nastav answer na pravdivostní hodnotu, při které je tvrzení správné. match: uveď aspoň
-tolik pravých tokenů, kolik je levých zadání, a správnou dvojici pro KAŽDÉ levé id; všechny hodnoty
+true_false: nastav answer na pravdivostní hodnotu, při které je tvrzení správné. cloze: text_template
+musí obsahovat zástupce {{id}} pro KAŽDÉ id místa (a žádné zástupce pro id, která jsi nedefinoval).
+match: uveď aspoň tolik pravých tokenů, kolik je levých zadání, a správnou dvojici pro KAŽDÉ levé id; všechny hodnoty
 left_id/right_id musí odkazovat na id, která jsi opravdu definoval. order: correct_order musí obsahovat
 každé id tokenu právě jednou (permutace tokenů). hotspot: uveď image_request a označ správné oblasti.
 Stejné řetězce id používej v rámci payloadu konzistentně.

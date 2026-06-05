@@ -83,3 +83,4 @@ class LearningSessionSummary(AppModel):
     title: str | None = None  # lesson topic or quiz title
     subject: str | None = None
     created_at: datetime | None = None
+    attempted: bool = False  # quiz only: the learner has a graded attempt (so "Review" has content)

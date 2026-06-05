@@ -11,7 +11,7 @@ from __future__ import annotations
 # Versioning — stamped on every generated row for audit + cache-busting.
 # Bump PROMPT_VERSION whenever a cached system prefix or generation prompt changes.
 # ---------------------------------------------------------------------------
-PROMPT_VERSION = "2026.06.01"
+PROMPT_VERSION = "2026.06.05"
 
 # ---------------------------------------------------------------------------
 # Readability targets per grade band: (target_FKGL, lexile_band, max_words_per_sentence, max_new_terms)

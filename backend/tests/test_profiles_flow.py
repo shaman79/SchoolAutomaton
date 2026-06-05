@@ -252,6 +252,64 @@ async def test_quiz_review_reveals_answers(client):
 
 
 @pytest.mark.asyncio
+async def test_answer_endpoint_validates_attempt_ownership(client):
+    code_a = (await client.post("/api/v1/profiles", json={})).json()["resume_code"]
+    code_b = (await client.post("/api/v1/profiles", json={})).json()["resume_code"]
+    pid_a = (await client.get("/api/v1/profiles/me", headers={"X-Resume-Code": code_a})).json()["profile"]["id"]
+
+    from app.db.session import SessionLocal
+    from app.models import Concept, Item, Quiz, QuizAttempt, QuizQuestion
+
+    def _mcq():
+        return Item(
+            concept_id=concept.id, item_type="mcq", bloom_tier=2, difficulty="medium",
+            item_difficulty=3, language="en", stem_markdown="q", model_id="m", prompt_version="v",
+            payload_json={"kind": "mcq", "multiple": False,
+                          "options": [{"id": "a", "text": "A", "is_correct": True}]},
+        )
+
+    async with SessionLocal() as db:
+        concept = Concept(slug="s", name="S", subject="science")
+        db.add(concept)
+        await db.flush()
+        i1 = _mcq()
+        i2 = _mcq()  # NOT part of the quiz
+        db.add_all([i1, i2])
+        await db.flush()
+        quiz = Quiz(request_id="aq", title="Q", language="en", grade_band="G3-5", subject="science",
+                    model_id="m", prompt_version="v")
+        db.add(quiz)
+        await db.flush()
+        db.add(QuizQuestion(quiz_id=quiz.id, item_id=i1.id, ordinal=1, points=10))
+        attempt = QuizAttempt(profile_id=pid_a, quiz_id=quiz.id)
+        db.add(attempt)
+        await db.flush()
+        i1_id, i2_id, attempt_id = i1.id, i2.id, attempt.id
+        await db.commit()
+
+    def _answer(item_id):
+        return {"item_id": item_id, "attempt_id": attempt_id, "submitted_value": "a"}
+
+    # Another learner cannot answer into A's attempt.
+    r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_b}, json=_answer(i1_id))
+    assert r.status_code == 404, r.text
+
+    # An item that isn't part of the attempt's quiz is rejected.
+    r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_a}, json=_answer(i2_id))
+    assert r.status_code == 400, r.text
+
+    # The owner answering a legitimate item succeeds.
+    r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_a}, json=_answer(i1_id))
+    assert r.status_code == 200, r.text
+
+    # After completion, further writes to the attempt are blocked.
+    r = await client.post(f"/api/v1/attempts/{attempt_id}/complete", headers={"X-Resume-Code": code_a}, json={})
+    assert r.status_code == 200, r.text
+    r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_a}, json=_answer(i1_id))
+    assert r.status_code == 409, r.text
+
+
+@pytest.mark.asyncio
 async def test_resume_normalization(client):
     r = await client.post("/api/v1/profiles", json={})
     code = r.json()["resume_code"]

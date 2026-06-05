@@ -17,6 +17,7 @@ import CrisisCard from '@/components/CrisisCard.vue'
 import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
+import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
@@ -224,6 +225,13 @@ function applyRedirect(suggestion: string) {
       <!-- Pick up where you left off (returning learners). -->
       <SuggestionsStrip :items="suggestions" :title="t('home.continue_title')" />
 
+      <!-- Always-available progress entry for anyone with a profile (the header cluster only appears
+           once the gamification snapshot has loaded). -->
+      <RouterLink v-if="session.resumeCode" :to="{ name: 'stats' }" class="sa-home__progress">
+        <SaIcon name="star" :size="18" aria-hidden="true" />
+        {{ t('stats.title') }}
+      </RouterLink>
+
       <!-- Once a profile exists, show the learner THEIR code to save; otherwise offer to enter one. -->
       <ResumeCodeCard v-if="session.resumeCode" />
       <RouterLink v-else to="/resume" class="sa-home__resume">
@@ -328,6 +336,17 @@ function applyRedirect(suggestion: string) {
   min-height: var(--tap-min);
   display: inline-flex;
   align-items: center;
+}
+.sa-home__progress {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--tap-min);
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 @keyframes sa-rise {
   from {

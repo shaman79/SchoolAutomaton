@@ -34,6 +34,7 @@ from ..models import (
     Profile,
     ProfileSettings,
     QuizAttempt,
+    QuizQuestion,
     SkillMastery,
     StreakState,
     XpEvent,
@@ -64,6 +65,16 @@ def _accepted_variants(item: Item) -> set[str]:
     """Normalized set of an item's documented accepted answer variants (alternate correct forms)."""
     raw = getattr(item, "accepted_variants_json", None) or []
     return {_norm_text(v) for v in raw if v is not None}
+
+
+def _is_blank_submission(value: Any) -> bool:
+    """A genuinely empty answer (None or whitespace-only string). Note: numeric 0 / False are NOT
+    blank — only missing or empty text — so a valid 0 still gets graded."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    return False
 
 
 def _grade_deterministic(item: Item, submitted: Any) -> tuple[bool, float, str | None]:
@@ -427,9 +438,16 @@ async def grade_and_reward(
     # 1) Grade (deterministic for closed-form; LLM for free-text/explain).
     misconception_text: str | None = None
     if item_type in _LLM_GRADED:
-        is_correct, partial, misconception_text, explanation, focus = await _grade_free_text(
-            item, answer.submitted_value, language
-        )
+        # A blank/whitespace submission is wrong by definition — short-circuit so an empty answer can
+        # never be talked into "correct" by the generous LLM grader (and we skip a wasted call).
+        if _is_blank_submission(answer.submitted_value):
+            is_correct, partial, misconception_text, explanation, focus = (
+                False, 0.0, None, item.explanation or "", "strategy"
+            )
+        else:
+            is_correct, partial, misconception_text, explanation, focus = await _grade_free_text(
+                item, answer.submitted_value, language
+            )
     else:
         is_correct, partial, distractor_text = _grade_deterministic(item, answer.submitted_value)
         explanation = item.explanation or ""
@@ -739,32 +757,62 @@ async def finalize_attempt(db: AsyncSession, profile: Profile, attempt_id: int) 
         )
     ).all()
 
-    correct = sum(1 for a, _ in rows if a.is_correct)
-    total = len(rows)
+    # Dedup to the LATEST answer per item: a refresh/resume can append a second Answer row for the
+    # same item, which must not double-count toward accuracy/score/mastery. rows are ordered by
+    # Answer.id asc, so the last write per item wins.
+    latest: dict[int, tuple[Answer, Item]] = {}
+    for a, it in rows:
+        latest[a.item_id] = (a, it)
+    deduped = sorted(latest.values(), key=lambda r: r[0].id)
+
+    # Accuracy/score denominator is the WHOLE quiz so SKIPPED questions count as incorrect (this is
+    # what the /review endpoint already does). Fall back to the answered count when the quiz has no
+    # registered questions (e.g. unit-test fixtures that don't create QuizQuestion rows).
+    q_total = (
+        await db.scalar(
+            select(func.count())
+            .select_from(QuizQuestion)
+            .where(QuizQuestion.quiz_id == attempt.quiz_id)
+        )
+    ) or 0
+    correct = sum(1 for a, _ in deduped if a.is_correct)
+    total = q_total or len(deduped)
     accuracy = round(correct / total, 4) if total else 0.0
-    score = sum(a.xp_awarded for a, _ in rows)
-    xp_awarded = sum(a.xp_awarded for a, _ in rows)
+    # Score is "questions correct out of total" — SAME unit as max_score, so the score/max fraction is
+    # meaningful. The XP total (combo- and bonus-scaled, a different unit) is surfaced separately.
+    score = correct
+    max_score = total
+    xp_awarded = sum(a.xp_awarded for a, _ in rows)  # all rows: mirrors what was added to total_xp
 
     # Max combo of consecutive first-try-correct within the attempt.
     combo_max = 0
     run = 0
-    for a, _ in rows:
+    for a, _ in deduped:
         if a.is_correct and not a.used_hint and a.is_first_try:
             run += 1
             combo_max = max(combo_max, run)
         else:
             run = 0
 
-    # Sum the per-answer mastery movement keyed by concept so `before` reflects pre-attempt mastery.
+    # Per-concept mastery movement (deduped so a re-answer doesn't double-sum the delta), plus whether
+    # the concept was ever answered correctly this attempt.
     delta_by_concept: dict[int, float] = {}
-    for a, it in rows:
+    correct_by_concept: dict[int, bool] = {}
+    for a, it in deduped:
         delta_by_concept[it.concept_id] = delta_by_concept.get(it.concept_id, 0.0) + (
             a.mastery_delta or 0.0
         )
+        correct_by_concept[it.concept_id] = correct_by_concept.get(it.concept_id, False) or bool(
+            a.is_correct
+        )
 
-    # Per-concept mastery changes touched by this attempt (before = after - aggregated delta).
+    # "What grew" = concepts the learner actually answered correctly AND whose mastery rose this
+    # attempt. Without this gate a WRONG answer would masquerade as growth: any answer creates an FSRS
+    # card whose retrievability ≈ 1.0 right after review, so before≈0 → after≈1 even for a miss.
     mastery_changes: list[MasteryChange] = []
-    for cid in dict.fromkeys(it.concept_id for _, it in rows):
+    for cid in dict.fromkeys(it.concept_id for _, it in deduped):
+        if not correct_by_concept.get(cid) or delta_by_concept.get(cid, 0.0) <= 1e-4:
+            continue
         sm = await db.scalar(
             select(SkillMastery).where(
                 SkillMastery.profile_id == profile.id, SkillMastery.concept_id == cid
@@ -786,7 +834,7 @@ async def finalize_attempt(db: AsyncSession, profile: Profile, attempt_id: int) 
 
     attempt.completed_at = now
     attempt.score = score
-    attempt.max_score = attempt.max_score or score
+    attempt.max_score = max_score
     attempt.accuracy = accuracy
     attempt.xp_awarded = xp_awarded
     attempt.combo_max = combo_max

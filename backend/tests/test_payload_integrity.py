@@ -69,6 +69,21 @@ def test_hotspot_requires_image_and_a_correct_region():
     assert coerce_payload(ItemType.HOTSPOT, good) is not None
 
 
+def test_cloze_requires_blank_markers_in_template():
+    # No {{id}} markers in the template => the blank renders no input => unanswerable => rejected.
+    markerless = {"text_template": "I ___ like to eat", "blanks": [{"id": "b1", "answer": "would"}]}
+    assert coerce_payload(ItemType.CLOZE, markerless) is None
+    # Marker id that doesn't match the declared blank => rejected.
+    mismatch = {"text_template": "I {{x}} like to eat", "blanks": [{"id": "b1", "answer": "would"}]}
+    assert coerce_payload(ItemType.CLOZE, mismatch) is None
+    # A template that marks every blank with {{id}} => accepted.
+    good = {"text_template": "I {{b1}} like to eat", "blanks": [{"id": "b1", "answer": "would"}]}
+    assert coerce_payload(ItemType.CLOZE, good) is not None
+    # Missing answer is still rejected even with a marker present.
+    no_answer = {"text_template": "I {{b1}} eat", "blanks": [{"id": "b1", "answer": ""}]}
+    assert coerce_payload(ItemType.CLOZE, no_answer) is None
+
+
 def test_valid_simple_types_pass():
     assert coerce_payload(ItemType.NUMERIC, {"answer": 42.0, "tolerance": 0.5}) is not None
     assert coerce_payload(ItemType.SHORT_ANSWER, {"placeholder": "your answer"}) is not None
