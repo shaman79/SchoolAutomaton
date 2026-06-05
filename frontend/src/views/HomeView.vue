@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import CrisisCard from '@/components/CrisisCard.vue'
+import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
@@ -206,7 +207,9 @@ function applyRedirect(suggestion: string) {
         </div>
       </div>
 
-      <RouterLink to="/resume" class="sa-home__resume">
+      <!-- Once a profile exists, show the learner THEIR code to save; otherwise offer to enter one. -->
+      <ResumeCodeCard v-if="session.resumeCode" />
+      <RouterLink v-else to="/resume" class="sa-home__resume">
         {{ t('home.have_code') }}
       </RouterLink>
     </template>

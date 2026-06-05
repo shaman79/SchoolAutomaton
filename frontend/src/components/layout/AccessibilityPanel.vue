@@ -14,6 +14,7 @@ import { useEventListener } from '@vueuse/core'
 import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
@@ -136,6 +137,9 @@ watch(
             </header>
 
             <div class="flex flex-col gap-6 overflow-y-auto pb-2">
+              <!-- Your code to continue (anonymous; no account) -->
+              <ResumeCodeCard v-if="session.resumeCode" />
+
               <!-- Language -->
               <fieldset class="flex flex-col gap-2">
                 <legend class="mb-1 font-semibold">{{ t('a11y.language') }}</legend>

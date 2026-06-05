@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
 import SaIcon from '@/components/common/SaIcon.vue'
 import ToastHost from '@/components/common/ToastHost.vue'
+import { toast } from '@/components/common/useToasts'
 import AccessibilityPanel from '@/components/layout/AccessibilityPanel.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
@@ -13,6 +14,15 @@ import { useSessionStore } from '@/stores/session'
 const { t } = useI18n()
 const session = useSessionStore()
 const panelOpen = ref(false)
+
+// When a brand-new anonymous profile is created, nudge the learner to save their continuation code
+// (they typically navigate straight into a lesson, so a sticky-ish toast catches the moment).
+watch(
+  () => session.lastResumeCodeForDisplay,
+  (code) => {
+    if (code) toast.info(t('resume.created_toast', { code }), { timeout: 12000, icon: 'sparkle' })
+  },
+)
 
 /**
  * We do NOT call ensureProfile here (it's lazy at the first prompt — SPEC flow).

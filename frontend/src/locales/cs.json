@@ -1,5 +1,8 @@
 {
-  "app": { "name": "SchoolAutomaton", "tagline": "Nauč se cokoliv, po svém." },
+  "app": {
+    "name": "SchoolAutomaton",
+    "tagline": "Nauč se cokoliv, po svém."
+  },
   "home": {
     "prompt_label": "Co se chceš naučit?",
     "prompt_placeholder": "např. Chci se naučit o fotosyntéze na úrovni 5. třídy",
@@ -64,7 +67,9 @@
     "save_hint": "Ulož si tento kód, abys mohl pokračovat na jakémkoli zařízení. Nechceme žádné osobní údaje.",
     "not_found": "Tento kód se nám nepodařilo najít. Zkontroluj ho prosím a zkus to znovu.",
     "copy": "Kopírovat kód",
-    "copied": "Kód zkopírován!"
+    "copied": "Kód zkopírován!",
+    "created_toast": "Postup uložen! Tvůj kód pro pokračování je {code} — ulož si ho (najdeš ho v ⚙ Nastavení).",
+    "copy_failed": "Nepodařilo se zkopírovat — kód vyber podržením a zkopíruj."
   },
   "gamification": {
     "level": "Úroveň",

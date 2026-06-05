@@ -1,5 +1,8 @@
 {
-  "app": { "name": "SchoolAutomaton", "tagline": "Learn anything, your way." },
+  "app": {
+    "name": "SchoolAutomaton",
+    "tagline": "Learn anything, your way."
+  },
   "home": {
     "prompt_label": "What would you like to learn?",
     "prompt_placeholder": "e.g. I want to learn about photosynthesis at 5th grade level",
@@ -64,7 +67,9 @@
     "save_hint": "Save this code to continue on any device. We don't ask for any personal details.",
     "not_found": "We couldn't find that code. Please check it and try again.",
     "copy": "Copy code",
-    "copied": "Code copied!"
+    "copied": "Code copied!",
+    "created_toast": "Progress saved! Your code to continue is {code} — keep it safe (find it under ⚙ Settings).",
+    "copy_failed": "Couldn't copy — long-press or select the code to copy it."
   },
   "gamification": {
     "level": "Level",
