@@ -15,4 +15,6 @@ echo "Recreating containers (data volume preserved)..."
 docker compose up -d
 
 docker image prune -f >/dev/null
-echo "Update complete. App: http://localhost:8080"
+
+PORT="8080"; [ -f .env ] && PORT="$(grep -E '^SA_HTTP_PORT=' .env | cut -d= -f2 | tr -d '[:space:]')"; PORT="${PORT:-8080}"
+echo "Update complete. Local origin: http://127.0.0.1:${PORT} (served publicly via your Cloudflare tunnel)."

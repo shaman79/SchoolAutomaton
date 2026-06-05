@@ -46,11 +46,14 @@ working agreement / invariants.
 ```bash
 cp .env.example .env          # then set ANTHROPIC_API_KEY, REPLICATE_API_TOKEN, APP_SECRET, ADMIN_*
 docker compose up --build
-# App:   http://localhost:8080
+# App:   http://localhost:8080   (port configurable via SA_HTTP_PORT)
 # Admin: http://localhost:8080/admin/login
 ```
 Or use the scripts: `infra/scripts/deploy.ps1` (Windows) / `infra/scripts/deploy.sh` (Linux/macOS),
 and `update.ps1` / `update.sh` to redeploy.
+
+**Deploying on a server** (Docker Compose behind a Cloudflare tunnel, configurable port): see
+**[DEPLOY.md](DEPLOY.md)** for the step-by-step guide.
 
 ### Local dev
 ```bash

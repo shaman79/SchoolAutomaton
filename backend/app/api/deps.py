@@ -31,7 +31,12 @@ async def get_session(db: AsyncSession = Depends(get_db)) -> AsyncSession:
 
 
 def get_client_ip(request: Request) -> str:
-    """Best-effort client IP, honouring a single reverse proxy (nginx) X-Forwarded-For."""
+    """Best-effort real client IP. Behind Cloudflare the true visitor IP is in CF-Connecting-IP
+    (X-Forwarded-For would otherwise collapse many users onto a Cloudflare edge IP and blur
+    per-user rate limits). Falls back to X-Forwarded-For (nginx) then the socket peer."""
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()
     xff = request.headers.get("x-forwarded-for")
     if xff:
         return xff.split(",")[0].strip()
