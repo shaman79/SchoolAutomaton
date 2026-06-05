@@ -102,8 +102,8 @@ class Settings(BaseSettings):
             problems: list[str] = []
             if self.app_secret == _DEV_SECRET or len(self.app_secret) < 32:
                 problems.append("APP_SECRET must be set to a strong (>=32 char) non-default value")
-            if self.admin_password == "admin":
-                problems.append("ADMIN_PASSWORD must be set to a non-default value")
+            if self.admin_password in ("", "admin", "change-me-too") or len(self.admin_password) < 8:
+                problems.append("ADMIN_PASSWORD must be a strong (>=8 char) non-default value")
             if problems:
                 raise ValueError("Insecure production config: " + "; ".join(problems))
         return self

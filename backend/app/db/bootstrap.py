@@ -6,27 +6,35 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
-from ..core.security import hash_password
+from ..core.security import hash_password, verify_password
 from ..models import AdminUser, BadgeDefinition
 
 _BADGES_YAML = Path(__file__).resolve().parent.parent / "data" / "badges.yaml"
 
 
 async def bootstrap_admin(db: AsyncSession) -> None:
-    count = await db.scalar(select(func.count()).select_from(AdminUser))
-    if count:
-        return
-    db.add(
-        AdminUser(
-            username=settings.admin_username,
-            password_hash=hash_password(settings.admin_password),
-            role="admin",
-        )
+    """Ensure the env-specified admin exists with the env password — env is the source of truth, so
+    re-deploying with a changed ADMIN_PASSWORD actually rotates it (instead of a silent no-op)."""
+    admin = await db.scalar(
+        select(AdminUser).where(AdminUser.username == settings.admin_username)
     )
+    if admin is None:
+        db.add(
+            AdminUser(
+                username=settings.admin_username,
+                password_hash=hash_password(settings.admin_password),
+                role="admin",
+            )
+        )
+        return
+    # Reconcile: only rehash when the configured password actually changed.
+    if not verify_password(settings.admin_password, admin.password_hash):
+        admin.password_hash = hash_password(settings.admin_password)
+    admin.is_active = True
 
 
 def _as_i18n(value) -> dict:

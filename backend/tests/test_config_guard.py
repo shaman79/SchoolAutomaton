@@ -27,6 +27,17 @@ def test_production_rejects_default_admin_password():
         Settings(SA_ENV="production", APP_SECRET=_STRONG, ADMIN_PASSWORD="admin")
 
 
+def test_production_rejects_empty_admin_password():
+    # The critical case: a non-interactive deploy must never boot with an empty admin password.
+    with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
+        Settings(SA_ENV="production", APP_SECRET=_STRONG, ADMIN_PASSWORD="")
+
+
+def test_production_rejects_short_admin_password():
+    with pytest.raises(ValueError, match="ADMIN_PASSWORD"):
+        Settings(SA_ENV="production", APP_SECRET=_STRONG, ADMIN_PASSWORD="short7x")  # 7 chars
+
+
 def test_production_accepts_strong_config():
     s = Settings(SA_ENV="production", APP_SECRET=_STRONG, ADMIN_PASSWORD="strongpw")
     assert s.is_production is True

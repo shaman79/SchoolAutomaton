@@ -1,5 +1,7 @@
 # SchoolAutomaton — full stack. `docker compose up --build` brings up backend + frontend(nginx).
 # SQLite DB and the content-hashed visual cache live on the named volume `sa-data` (survives redeploys).
+# Project name is pinned so the volume is always `schoolautomaton_sa-data` regardless of folder name.
+name: schoolautomaton
 
 services:
   backend:
@@ -36,9 +38,8 @@ services:
       backend:
         condition: service_started
     # Published host port is configurable via .env. Bound to 127.0.0.1 by default so only the
-    # local host (or a Cloudflare tunnel running on this machine) can reach it — set
-    # SA_HTTP_BIND=0.0.0.0 for direct LAN/public access. With the bundled cloudflared service
-    # (docker-compose.cloudflared.yml) you don't need this published port at all.
+    # local host (and the Cloudflare tunnel running on this machine) can reach it — set
+    # SA_HTTP_BIND=0.0.0.0 for direct LAN/public access without a tunnel.
     ports:
       - "${SA_HTTP_BIND:-127.0.0.1}:${SA_HTTP_PORT:-8080}:80"
     restart: unless-stopped

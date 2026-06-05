@@ -15,6 +15,7 @@
 #  Serve it publicly by pointing your Cloudflare tunnel at http://localhost:<port>.
 # ============================================================================
 set -euo pipefail
+umask 077                    # files we create (.env, temp copies) are owner-only
 cd "$(dirname "$0")/../.."   # repo root
 
 # ---------- pretty output ----------
@@ -47,7 +48,8 @@ ensure_docker() {
   c_say "Installing Docker Engine (this can take a minute)..."
   curl -fsSL https://get.docker.com | $SUDO sh
   $SUDO systemctl enable --now docker >/dev/null 2>&1 || true
-  [ "$(id -u)" -eq 0 ] || $SUDO usermod -aG docker "$USER" >/dev/null 2>&1 || true
+  _user="${SUDO_USER:-${USER:-$(id -un)}}"
+  [ "$(id -u)" -eq 0 ] || $SUDO usermod -aG docker "$_user" >/dev/null 2>&1 || true
   if docker info >/dev/null 2>&1; then DOCKER=(docker)
   elif [ -n "$SUDO" ] && $SUDO docker info >/dev/null 2>&1; then DOCKER=("$SUDO" docker)
   else c_die "Docker installed but not usable yet — log out/in (for the docker group) and re-run."; fi
@@ -112,12 +114,21 @@ ask url  "Public URL" "$def_url"
 ask aun  "Admin username" "$def_aun"
 
 apw="$def_apw"
-while is_tty; do
-  ask_secret apw "Admin password" "$def_apw"
-  case "$apw" in ""|admin|change-me-too) c_warn "Choose a real admin password (not blank/admin)."; continue;; esac
-  break
-done
-[ -n "$apw" ] || c_warn "Admin password is empty — set ADMIN_PASSWORD in .env before exposing the app."
+if is_tty; then
+  while :; do
+    ask_secret apw "Admin password (min 8 chars)" "$def_apw"
+    case "$apw" in
+      ""|admin|change-me-too) c_warn "Choose a real admin password (not blank/admin).";;
+      ?|??|???|????|?????|??????|???????) c_warn "Use at least 8 characters.";;
+      *) break;;
+    esac
+  done
+else
+  # Non-interactive: never silently deploy a weak/empty admin (the prod guard + tunnel exposure).
+  case "$apw" in
+    ""|admin|change-me-too) c_die "Set a strong ADMIN_PASSWORD in .env before a non-interactive deploy (cannot prompt).";;
+  esac
+fi
 
 ask_secret akey "Anthropic API key (blank = skip; generation stays off)" "$def_akey"
 ask_secret rkey "Replicate API token (blank = skip; illustrations stay off)" "$def_rkey"
@@ -129,6 +140,8 @@ setkv ADMIN_USERNAME "$aun"
 setkv ADMIN_PASSWORD "$apw"
 setkv ANTHROPIC_API_KEY "$akey"
 setkv REPLICATE_API_TOKEN "$rkey"
+setkv SA_ENV production   # reflect the real runtime in .env (compose also enforces this)
+setkv SA_DEBUG false
 c_ok "Wrote .env (chmod 600)."
 
 # ---------- 3. build + run ----------
@@ -141,14 +154,20 @@ dc up -d
 c_say "Verifying the backend is healthy..."
 cid="$(dc ps -q backend || true)"
 healthy=0
-for ((i = 1; i <= 40; i++)); do
-  status="$("${DOCKER[@]}" inspect -f '{{ if .State.Health }}{{ .State.Health.Status }}{{ else }}none{{ end }}' "$cid" 2>/dev/null || echo unknown)"
-  if [ "$status" = healthy ]; then healthy=1; break; fi
-  if [ "$status" = none ] || [ "$status" = unknown ]; then
-    if "${DOCKER[@]}" inspect -f '{{.State.Running}}' "$cid" 2>/dev/null | grep -q true; then healthy=1; break; fi
-  fi
-  sleep 3
-done
+if [ -z "$cid" ]; then
+  c_warn "Backend container not found — check: docker compose ps && docker compose logs backend"
+else
+  for ((i = 1; i <= 40; i++)); do
+    status="$("${DOCKER[@]}" inspect -f '{{ if .State.Health }}{{ .State.Health.Status }}{{ else }}none{{ end }}' "$cid" 2>/dev/null || echo unknown)"
+    if [ "$status" = healthy ]; then healthy=1; break; fi
+    # No healthcheck defined? accept a running container.
+    if [ "$status" = none ]; then
+      if "${DOCKER[@]}" inspect -f '{{.State.Running}}' "$cid" 2>/dev/null | grep -q true; then healthy=1; break; fi
+    fi
+    if [ $((i % 5)) -eq 0 ]; then printf '  … still starting (%ss elapsed)\n' "$((i * 3))"; fi
+    sleep 3
+  done
+fi
 if [ "$healthy" = 1 ]; then c_ok "Backend is up."; else c_warn "Backend not healthy yet — check: docker compose logs backend"; fi
 
 web_ok=0
@@ -160,13 +179,14 @@ fi
 if [ "$web_ok" = 1 ]; then c_ok "Web app responds on 127.0.0.1:${port}."; else c_warn "Could not confirm the web port locally (it may still be fine via the tunnel)."; fi
 
 # ---------- done ----------
+pub="${url%%,*}"   # first origin if SA_CORS_ORIGINS holds a comma-separated list
 cat <<EOF
 
 $(printf '\033[1;32m✔ SchoolAutomaton is deployed.\033[0m')
 
   Local origin :  http://${bind}:${port}      <-- point your Cloudflare tunnel here
-  Public URL   :  ${url}
-  Admin login  :  ${url%/}/admin/login   (user: ${aun})
+  Public URL   :  ${pub}
+  Admin login  :  ${pub%/}/admin/login   (user: ${aun})
 
   Cloudflare tunnel ingress (match the port):
       hostname: schoolautomaton.avercode.com
