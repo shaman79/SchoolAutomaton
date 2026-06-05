@@ -24,6 +24,7 @@ import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
+import { humanizeSubject } from '@/lib/format'
 import { useGenerationStore } from '@/stores/generation'
 import { useLessonStore } from '@/stores/lesson'
 import { usePrefsStore } from '@/stores/prefs'
@@ -149,7 +150,7 @@ onMounted(async () => {
     <!-- Header -->
     <header class="sa-lesson__header">
       <p class="sa-lesson__crumbs">
-        {{ lesson.subject }} · {{ lesson.grade_band }}
+        {{ humanizeSubject(lesson.subject) }} · {{ lesson.grade_band }}
         <span v-if="lesson.estimated_duration_min">
           · {{ t('lesson.minutes', { n: lesson.estimated_duration_min }) }}
         </span>

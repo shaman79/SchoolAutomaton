@@ -128,7 +128,14 @@
     "legend": "Legenda",
     "locked_hint": "Zvládni dřívější témata, abys tohle odemkl.",
     "other_subject": "Ostatní",
-    "water_hint": "Čas tohle zalít — krátké opakování to udrží silné."
+    "water_hint": "Čas tohle zalít — krátké opakování to udrží silné.",
+    "state": {
+      "mastered": "Zvládnuto",
+      "learning": "Učím se",
+      "needs_review": "K opakování",
+      "available": "Připraveno",
+      "locked": "Zamčeno"
+    }
   },
   "footer": {
     "ai_disclosure": "Lekce a kvízy generuje AI — důležité informace si ověř.",

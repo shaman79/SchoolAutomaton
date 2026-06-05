@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import SaIcon from '@/components/common/SaIcon.vue'
+import { humanizeSubject } from '@/lib/format'
 import type { LearningSessionSummary } from '@/types/session'
 
 withDefaults(
@@ -64,7 +65,7 @@ function open(it: LearningSessionSummary) {
               <span class="sa-sugg__badge">{{
                 t(it.mode === 'test' ? 'history.mode_test' : 'history.mode_study')
               }}</span>
-              <span v-if="it.subject" class="sa-sugg__sub">{{ it.subject }}</span>
+              <span v-if="it.subject" class="sa-sugg__sub">{{ humanizeSubject(it.subject) }}</span>
             </span>
           </span>
           <SaIcon name="back" :size="16" class="sa-sugg__chevron" aria-hidden="true" />

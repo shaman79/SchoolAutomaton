@@ -20,6 +20,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { KnowledgeTreeData, NodeState, TreeNode } from './types'
 import EmptyState from '@/components/common/EmptyState.vue'
+import { humanizeSubject } from '@/lib/format'
 
 const props = withDefaults(
   defineProps<{
@@ -139,7 +140,7 @@ function masteryPct(n: TreeNode) {
       <div class="flex flex-col gap-5">
         <section v-for="bed in beds" :key="bed.subject" aria-labelledby="">
           <h3 class="mb-2 text-sm font-bold uppercase tracking-wide text-[var(--color-ink-soft)]">
-            {{ bed.subject }}
+            {{ humanizeSubject(bed.subject) }}
           </h3>
           <ul class="grid list-none grid-cols-2 gap-2.5 p-0 sm:grid-cols-3 lg:grid-cols-4">
             <li v-for="n in bed.items" :key="n.concept_id">

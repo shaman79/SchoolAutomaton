@@ -128,7 +128,14 @@
     "legend": "Legend",
     "locked_hint": "Master the earlier topics to unlock this.",
     "other_subject": "Other",
-    "water_hint": "Time to water this — a quick review will keep it strong."
+    "water_hint": "Time to water this — a quick review will keep it strong.",
+    "state": {
+      "mastered": "Mastered",
+      "learning": "Learning",
+      "needs_review": "Review",
+      "available": "Ready",
+      "locked": "Locked"
+    }
   },
   "footer": {
     "ai_disclosure": "Lessons & quizzes are AI-generated — double-check anything important.",

@@ -9,6 +9,7 @@ import { useRouter } from 'vue-router'
 
 import SaIcon from '@/components/common/SaIcon.vue'
 import { api } from '@/lib/api'
+import { humanizeSubject } from '@/lib/format'
 import { useSessionStore } from '@/stores/session'
 import type { LearningSessionSummary } from '@/types/session'
 
@@ -101,7 +102,7 @@ function open(it: LearningSessionSummary) {
             <span class="sa-hist__name">{{ it.title || t('history.untitled') }}</span>
             <span class="sa-hist__meta">
               <span class="sa-hist__badge">{{ t(it.mode === 'test' ? 'history.mode_test' : 'history.mode_study') }}</span>
-              <span v-if="it.subject" class="sa-hist__sub">{{ it.subject }}</span>
+              <span v-if="it.subject" class="sa-hist__sub">{{ humanizeSubject(it.subject) }}</span>
               <span v-if="it.status === 'generating' || it.status === 'queued'" class="sa-hist__status sa-hist__status--gen">{{ t('history.in_progress') }}</span>
               <span v-else-if="it.status === 'error'" class="sa-hist__status sa-hist__status--err">{{ t('history.failed') }}</span>
               <span class="sa-hist__date">{{ dateFmt(it.created_at) }}</span>
