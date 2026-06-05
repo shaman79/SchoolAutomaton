@@ -82,12 +82,13 @@ def _canned_item(slug: str = "photosynthesis") -> GenItem:
         difficulty=Difficulty.MEDIUM,
         item_difficulty=3,
         stem_markdown="What do plants make during photosynthesis?",
+        # payload is a plain dict now (grammar-size fix); shape mirrors GenMcqPayload.
         payload=GenMcqPayload(
             options=[
                 GenMcqOption(id="a", text="Sugar (glucose)", is_correct=True),
                 GenMcqOption(id="b", text="Plastic"),
             ],
-        ),
+        ).model_dump(),
         distractors=[GenDistractor(text="Plastic", misconception="plants make synthetic materials")],
         hint_ladder=["Think about food.", "Plants make their own food."],
         worked_solution_steps=["Light + water + CO2", "produces glucose + oxygen"],

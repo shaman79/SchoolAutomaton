@@ -18,7 +18,7 @@ from ..core.constants import PROMPT_VERSION, TARGET_SUCCESS_RATE
 from ..core.tasks import task_registry
 from ..models import Concept, Item, Misconception, Quiz, QuizQuestion
 from ..schemas.enums import LayoutSlot
-from ..schemas.generation import GenItem, GenQuiz
+from ..schemas.generation import GenItem, GenQuiz, coerce_payload
 from ..schemas.intent import StructuredIntent
 from . import prompts
 from .client import generate_structured
@@ -77,7 +77,7 @@ async def _persist_quiz_item(
         item_difficulty=max(1, min(5, gen.item_difficulty)),
         language=quiz.language,
         stem_markdown=gen.stem_markdown,
-        payload_json=gen.payload.model_dump(mode="json"),
+        payload_json=coerce_payload(gen.item_type, gen.payload) or (gen.payload or {}),
         expected_answer=gen.expected_answer,
         accepted_variants_json=gen.accepted_variants or None,
         distractors_json=distractors or None,

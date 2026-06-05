@@ -7,7 +7,7 @@ correctness before delivery. All inherit ``StrictModel`` → ``additionalPropert
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
@@ -110,7 +110,11 @@ class GenItem(StrictModel):
     difficulty: Difficulty = Difficulty.MEDIUM
     item_difficulty: int = Field(default=3, description="1..5 adaptive difficulty")
     stem_markdown: str
-    payload: GenQuestionPayload
+    # A plain object the model fills per item_type (shapes are described in the prompt). Kept loose
+    # so the structured-output grammar stays small (a discriminated union of 8 payloads × lists made
+    # the compiled grammar exceed Anthropic's size cap). It is validated/canonicalized in Python via
+    # ``coerce_payload`` after generation.
+    payload: dict[str, Any] = Field(default_factory=dict)
     expected_answer: str | None = None        # for short_answer / numeric canonical form
     accepted_variants: list[str] = Field(default_factory=list)
     distractors: list[GenDistractor] = Field(default_factory=list)
@@ -118,6 +122,33 @@ class GenItem(StrictModel):
     worked_solution_steps: list[str] = Field(default_factory=list)
     explanation: str = ""
     points: int = 10
+
+
+# Re-impose the per-type payload shape in Python (the schema is loosened to keep the grammar small).
+_PAYLOAD_MODELS: dict[ItemType, type[StrictModel]] = {
+    ItemType.MCQ: GenMcqPayload,
+    ItemType.TRUE_FALSE: GenTrueFalsePayload,
+    ItemType.CLOZE: GenClozePayload,
+    ItemType.SHORT_ANSWER: GenShortAnswerPayload,
+    ItemType.NUMERIC: GenNumericPayload,
+    ItemType.MATCH: GenMatchPayload,
+    ItemType.ORDER: GenOrderPayload,
+    ItemType.HOTSPOT: GenHotspotPayload,
+}
+
+
+def coerce_payload(item_type: ItemType, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Validate + canonicalize a model-produced payload against the typed model for its item_type.
+    Returns the canonical dict, or None if it can't be coerced (caller falls back to the raw dict)."""
+    data = dict(payload or {})
+    data.setdefault("kind", item_type.value)
+    model = _PAYLOAD_MODELS.get(item_type)
+    if model is None:
+        return data or None
+    try:
+        return model.model_validate(data).model_dump(mode="json")
+    except Exception:  # noqa: BLE001 — rare malformed payload; caller keeps the raw dict + logs
+        return None
 
 
 # --------------------------------------------------------------------------- lesson generation

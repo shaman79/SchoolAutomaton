@@ -41,14 +41,14 @@ from ..models import (
     LessonSection,
     Misconception,
 )
-from ..schemas.enums import LESSON_SKELETON, LayoutSlot, SectionKind, VisualKind
+from ..schemas.enums import LESSON_SKELETON, ItemType, LayoutSlot, SectionKind, VisualKind
 from ..schemas.generation import (
-    GenHotspotPayload,
     GenItem,
     GenSection,
     GenVisualSpec,
     LessonPlan,
     LessonPlanStub,
+    coerce_payload,
 )
 from ..schemas.intent import StructuredIntent
 from . import prompts
@@ -169,14 +169,14 @@ async def _realize_hotspot_image(
     """Realize a hotspot item's ``image_request`` into a visual asset and link it via an item-level
     AssetsRef so the serializer can fill ``image_url``. Guarded like ``_attach_visuals`` so a visuals
     outage never breaks generation. ``item`` must already have an id (flushed)."""
-    payload = gen.payload
-    if not isinstance(payload, GenHotspotPayload) or not payload.image_request:
+    image_request = (gen.payload or {}).get("image_request")
+    if gen.item_type != ItemType.HOTSPOT or not image_request:
         return
     spec = GenVisualSpec(
         section_ordinal=0,
         visual_kind=VisualKind.LABELED_FIGURE,
         layout_slot=layout_slot,
-        image_prompt=payload.image_request,
+        image_prompt=image_request,
         alt_text=(gen.stem_markdown[:200] if gen.stem_markdown else "") or "hotspot image",
     )
     try:
@@ -232,7 +232,7 @@ async def _persist_item(
         item_difficulty=max(1, min(5, gen.item_difficulty)),
         language=lesson.detected_language,
         stem_markdown=gen.stem_markdown,
-        payload_json=gen.payload.model_dump(mode="json"),
+        payload_json=coerce_payload(gen.item_type, gen.payload) or (gen.payload or {}),
         expected_answer=gen.expected_answer,
         accepted_variants_json=gen.accepted_variants or None,
         distractors_json=distractors or None,
