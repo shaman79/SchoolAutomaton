@@ -72,12 +72,19 @@ async def test_my_requests_history(client):
             request_id="hist-clarify", profile_id=pid, decision_type="clarify", mode=None,
             status="ready", structured_intent_json={}, prompt_version="v", model_id="m",
         ))
+        # A failed generation must NOT clutter "My lessons" (it only lingers for Retry).
+        db.add(LearningRequest(
+            request_id="hist-failed", profile_id=pid, decision_type="proceed", mode="study",
+            status="error", structured_intent_json={}, detected_language="cs",
+            grade_band="G6-8", prompt_version="v", model_id="m",
+        ))
         await db.commit()
 
     r = await client.get("/api/v1/profiles/me/requests", headers={"X-Resume-Code": code})
     assert r.status_code == 200, r.text
     items = r.json()
-    assert len(items) == 1  # only the proceed/content request, not the clarify
+    assert len(items) == 1  # only the ready content request — not the clarify, not the failed one
+    assert {it["request_id"] for it in items} == {"hist-1"}
     assert items[0]["request_id"] == "hist-1"
     assert items[0]["mode"] == "study"
     assert items[0]["lesson_id"] == lesson_id

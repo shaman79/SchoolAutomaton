@@ -60,8 +60,9 @@ async def list_my_requests(
 ):
     """The learner's own lesson/quiz history (most recent first) for the 'My lessons' list.
 
-    Only content-bearing requests (decision was 'proceed') that are ready, still generating, or
-    errored — so a learner can re-open a past lesson/quiz or rejoin one that's still building."""
+    Only content-bearing requests (decision was 'proceed') that are ready or still generating — so a
+    learner can re-open a past lesson/quiz or rejoin one that's still building. Failed generations are
+    never surfaced here (they linger only to let the loading screen offer Retry)."""
     rows = (
         await db.execute(
             select(LearningRequest, Lesson, Quiz)
@@ -70,7 +71,7 @@ async def list_my_requests(
             .where(
                 LearningRequest.profile_id == profile.id,
                 LearningRequest.decision_type == "proceed",
-                LearningRequest.status.in_(("ready", "generating", "error")),
+                LearningRequest.status.in_(("ready", "generating")),
             )
             .order_by(LearningRequest.created_at.desc())
             .limit(limit)
