@@ -532,6 +532,36 @@ async def test_mcq_options_shuffled_at_delivery_and_stable(db):
 
 
 @pytest.mark.asyncio
+async def test_mcq_never_delivered_in_stored_correct_first_order(db):
+    """The model authors the correct option(s) FIRST; delivery must never ship that stored order
+    verbatim — for single AND multiple-select — and must not pin a correct option at slot 0."""
+    from app.api.v1.serializers import item_public
+
+    concept = await _make_concept(db)
+
+    # Single-correct, 4 options, correct first in storage.
+    single = [{"id": f"o{i}", "text": str(i), "is_correct": i == 0} for i in range(4)]
+    stored_single = [o["id"] for o in single]
+    first_correct = 0
+    n = 30
+    for _ in range(n):
+        item = await _make_item(db, concept.id, "mcq", {"kind": "mcq", "options": single})
+        ids = [o.id for o in (await item_public(db, item)).payload.options]
+        assert sorted(ids) == sorted(stored_single)  # nothing dropped/duplicated
+        assert ids != stored_single  # never the authored correct-first order
+        first_correct += ids[0] == "o0"
+    assert first_correct <= n * 0.5  # correct option not pinned first (uniform ~1/4)
+
+    # Multiple-select, 2 correct of 4, both authored first in storage.
+    multi = [{"id": f"m{i}", "text": str(i), "is_correct": i < 2} for i in range(4)]
+    stored_multi = [o["id"] for o in multi]
+    for _ in range(20):
+        item = await _make_item(db, concept.id, "mcq", {"kind": "mcq", "multiple": True, "options": multi})
+        ids = [o.id for o in (await item_public(db, item)).payload.options]
+        assert ids != stored_multi  # never the authored (correct-first) order
+
+
+@pytest.mark.asyncio
 async def test_order_tokens_never_delivered_pre_solved(db):
     """Order tokens are delivered shuffled and never in the correct sequence (else a no-op submit
     would score 100%)."""

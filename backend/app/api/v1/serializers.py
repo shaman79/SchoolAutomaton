@@ -39,6 +39,18 @@ def _seeded_shuffle(seq: list, seed) -> list:
     return out
 
 
+def _shuffle_no_identity(seq: list, seed) -> list:
+    """Seeded shuffle that NEVER returns the stored order (for len>1). The model almost always authors
+    the correct option(s) first, so delivering the stored order verbatim is a giveaway — the reported
+    "the correct answer is always first". A uniform shuffle still hits the identity permutation now and
+    then (≈1 in n! ); on that case we rotate by one so the delivered order always differs from storage.
+    Stays deterministic per seed, so client-side progress restore still sees a stable order."""
+    out = _seeded_shuffle(seq, seed)
+    if len(out) > 1 and out == list(seq):
+        out.append(out.pop(0))
+    return out
+
+
 def _strip_payload(item_type: str, payload: dict, item_id: int | None = None) -> dict:
     """Project a stored (full, with-correctness) payload to its public wire shape.
 
@@ -51,7 +63,7 @@ def _strip_payload(item_type: str, payload: dict, item_id: int | None = None) ->
         opts = [{"id": o["id"], "text": o["text"]} for o in payload.get("options", [])]
         return {
             "kind": "mcq",
-            "options": _seeded_shuffle(opts, item_id),
+            "options": _shuffle_no_identity(opts, item_id),
             "multiple": payload.get("multiple", False),
         }
     if kind == "true_false":
@@ -63,7 +75,9 @@ def _strip_payload(item_type: str, payload: dict, item_id: int | None = None) ->
             # empty <select>. Real choice lists are shuffled per blank so the answer isn't always first.
             choices = b.get("choices") or None
             if choices:
-                choices = _seeded_shuffle(choices, f"{item_id}:{b['id']}" if item_id is not None else None)
+                choices = _shuffle_no_identity(
+                    choices, f"{item_id}:{b['id']}" if item_id is not None else None
+                )
             blanks.append({"id": b["id"], "choices": choices})
         return {
             "kind": "cloze",
@@ -80,7 +94,7 @@ def _strip_payload(item_type: str, payload: dict, item_id: int | None = None) ->
         return {
             "kind": "match",
             "left": [{"id": s["id"], "text": s["text"]} for s in payload.get("left", [])],
-            "right": _seeded_shuffle(right, f"{item_id}:r" if item_id is not None else None),
+            "right": _shuffle_no_identity(right, f"{item_id}:r" if item_id is not None else None),
         }
     if kind == "order":
         toks = [{"id": t["id"], "text": t["text"]} for t in payload.get("tokens", [])]
