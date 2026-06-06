@@ -32,7 +32,10 @@ from .lesson_generator import (
 
 logger = logging.getLogger("schoolautomaton.generation")
 
-_QUIZ_MAX_TOKENS = 16000
+# Headroom for a complexity-appropriate question count (up to ~12 rich items) — hitting max_tokens
+# fails the whole generation, so leave margin above the typical quiz size. Stays within the
+# non-streaming budget so the SDK doesn't reject it for an over-long estimate.
+_QUIZ_MAX_TOKENS = 18000
 
 
 async def _known_misconceptions(db: AsyncSession, concept_id: int | None) -> list[str]:

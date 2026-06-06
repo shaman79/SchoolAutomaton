@@ -85,10 +85,10 @@ const flicker = computed(() => isActive.value && !reduced.value)
           stroke-linecap="round"
         />
       </svg>
-      <!-- Active / none: classic flame outline. -->
+      <!-- Active / none: clean, standard flame (filled when the streak is live). -->
       <svg v-else :width="iconPx" :height="iconPx" viewBox="0 0 24 24" fill="none" focusable="false">
         <path
-          d="M12 3c.8 2.6-.5 4-1.8 5.3C8.7 9.8 7.5 11.2 7.5 13.5a4.5 4.5 0 0 0 9 0c0-1.6-.7-2.9-1.6-4 .2 1.2-.3 2.2-1.1 2.6.4-2.4-.8-4.6-1.8-6.1C11.4 5 12 4 12 3Z"
+          d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5Z"
           :fill="isActive ? 'currentColor' : 'none'"
           stroke="currentColor"
           stroke-width="1.6"
