@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....llm.lesson_generator import generate_one_section
 from ....models import LearningRequest, Lesson, LessonSection
+from ....sanitization.ratelimit import rate_limit_dependency
 from ....schemas.content import LessonPublic, LessonSectionPublic
 from ....schemas.intent import StructuredIntent
 from ...deps import get_db
@@ -31,7 +32,13 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
     return await lesson_public(db, lesson)
 
 
-@router.post("/{lesson_id}/sections/{ordinal}/generate", response_model=LessonSectionPublic)
+@router.post(
+    "/{lesson_id}/sections/{ordinal}/generate",
+    response_model=LessonSectionPublic,
+    # Rate-limited: on-demand section fill drives paid Opus generation, so an anonymous caller must
+    # not be able to spam it across arbitrary lesson ids (cost-amplification).
+    dependencies=[Depends(rate_limit_dependency)],
+)
 async def generate_section(
     lesson_id: int, ordinal: int, db: AsyncSession = Depends(get_db)
 ):

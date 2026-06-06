@@ -10,8 +10,10 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -63,6 +65,19 @@ class Answer(Base):
     """Immutable answer log; one row per graded answer (quiz or lesson-embedded practice)."""
 
     __tablename__ = "answers"
+    # One graded answer per (attempt, item) — DB backstop against a concurrent double-submit racing the
+    # route-level idempotency check. Partial (attempt_id NOT NULL) so lesson-embedded practice
+    # (attempt_id NULL, legitimately recurring via FSRS review) is unaffected. The leading column also
+    # gives the attempt_id lookups (combo/finalize/review) an index.
+    __table_args__ = (
+        Index(
+            "uq_answer_attempt_item",
+            "attempt_id",
+            "item_id",
+            unique=True,
+            sqlite_where=text("attempt_id IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     attempt_id: Mapped[int | None] = mapped_column(ForeignKey("quiz_attempts.id"), nullable=True)

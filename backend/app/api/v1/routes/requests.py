@@ -21,6 +21,7 @@ from ....db.session import SessionLocal, get_db
 from ....llm.orchestrator import run_generation
 from ....models import LearningRequest, Profile
 from ....sanitization import sanitize_request
+from ....sanitization.ratelimit import rate_limit_dependency
 from ....schemas.intent import CreateRequestIn, Decision, ProceedDecision
 from ...deps import RequestContext, get_optional_profile, get_request_context
 
@@ -97,7 +98,12 @@ async def _safe_generate(request_id: str) -> None:
         await task_registry.publish(request_id, "failed", {"message": reason})
 
 
-@router.post("/{request_id}/generate", status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/{request_id}/generate",
+    status_code=status.HTTP_202_ACCEPTED,
+    # Rate-limited: this kicks off the full (expensive) Opus generation pipeline.
+    dependencies=[Depends(rate_limit_dependency)],
+)
 async def start_generation(
     request_id: str,
     background: BackgroundTasks,

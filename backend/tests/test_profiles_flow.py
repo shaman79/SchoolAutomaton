@@ -302,11 +302,61 @@ async def test_answer_endpoint_validates_attempt_ownership(client):
     r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_a}, json=_answer(i1_id))
     assert r.status_code == 200, r.text
 
+    # Idempotency (DI-02): the same item can't be answered twice in one attempt (no double XP).
+    r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_a}, json=_answer(i1_id))
+    assert r.status_code == 409, r.text
+
+    # Answer-key oracle (SEC-1): a quiz-bank item cannot be graded via the lesson path (attempt_id
+    # omitted) — that would reveal its correct answer/explanation without a real attempt.
+    r = await client.post(
+        "/api/v1/answers", headers={"X-Resume-Code": code_a},
+        json={"item_id": i1_id, "submitted_value": "a"},
+    )
+    assert r.status_code == 400, r.text
+
     # After completion, further writes to the attempt are blocked.
     r = await client.post(f"/api/v1/attempts/{attempt_id}/complete", headers={"X-Resume-Code": code_a}, json={})
     assert r.status_code == 200, r.text
     r = await client.post("/api/v1/answers", headers={"X-Resume-Code": code_a}, json=_answer(i1_id))
     assert r.status_code == 409, r.text
+
+
+@pytest.mark.asyncio
+async def test_reap_stuck_requests_marks_generating_as_error(client):
+    """A request left 'generating' across a restart (its in-process task + in-memory broker are gone)
+    must be reaped to 'error' so the loading screen can offer Retry instead of hanging."""
+    from sqlalchemy import select
+
+    from app.db.session import SessionLocal
+    from app.main import _reap_stuck_requests
+    from app.models import LearningRequest
+
+    async with SessionLocal() as db:
+        db.add_all([
+            LearningRequest(
+                request_id="stuck-gen", profile_id=None, decision_type="proceed", mode="study",
+                status="generating", structured_intent_json={}, prompt_version="v", model_id="m",
+            ),
+            LearningRequest(
+                request_id="done-ok", profile_id=None, decision_type="proceed", mode="study",
+                status="ready", structured_intent_json={}, prompt_version="v", model_id="m",
+            ),
+        ])
+        await db.commit()
+
+    async with SessionLocal() as db:
+        await _reap_stuck_requests(db)
+        await db.commit()
+
+    async with SessionLocal() as db:
+        stuck = await db.scalar(
+            select(LearningRequest).where(LearningRequest.request_id == "stuck-gen")
+        )
+        done = await db.scalar(
+            select(LearningRequest).where(LearningRequest.request_id == "done-ok")
+        )
+        assert stuck.status == "error" and stuck.error_message  # reaped
+        assert done.status == "ready"  # untouched
 
 
 @pytest.mark.asyncio

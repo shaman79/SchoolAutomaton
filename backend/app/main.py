@@ -12,13 +12,33 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api.v1.router import api_router
 from .core.config import settings
 from .db.bootstrap import bootstrap
 from .db.session import SessionLocal, init_db
+from .models import LearningRequest
 
 logger = logging.getLogger("schoolautomaton")
+
+
+async def _reap_stuck_requests(db: AsyncSession) -> None:
+    """Fail any request still 'queued'/'generating' at boot. Generation runs as an in-process
+    background task with an in-memory progress broker — neither survives a restart, so such a row is
+    orphaned: its loading screen would hang forever. Marking it 'error' lets the SSE/poll fast-path
+    report failure so the learner can retry."""
+    result = await db.execute(
+        update(LearningRequest)
+        .where(LearningRequest.status.in_(("queued", "generating")))
+        .values(
+            status="error",
+            error_message="Generation was interrupted by a server restart. Please try again.",
+        )
+    )
+    if result.rowcount:
+        logger.warning("Reaped %s stuck generation request(s) on startup", result.rowcount)
 
 _DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 _CSP_PROD = (
@@ -37,6 +57,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     async with SessionLocal() as db:
         await bootstrap(db)
+        await _reap_stuck_requests(db)
         await db.commit()
     logger.info("SchoolAutomaton backend ready (env=%s)", settings.env)
     yield

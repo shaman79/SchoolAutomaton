@@ -6,7 +6,10 @@ import { computed, ref } from 'vue'
 import { api, getResumeCode, setResumeCode } from '@/lib/api'
 import type { GamificationSnapshot, ProfilePublic } from '@/types/session'
 
+import { useGenerationStore } from './generation'
+import { useLessonStore } from './lesson'
 import { usePrefsStore } from './prefs'
+import { useTestStore } from './test'
 
 export const useSessionStore = defineStore('session', () => {
   const profile = ref<ProfilePublic | null>(null)
@@ -24,6 +27,20 @@ export const useSessionStore = defineStore('session', () => {
     usePrefsStore().hydrateFromServer(env.settings as Record<string, unknown>)
   }
 
+  /** Purge per-learner content (quiz answers/results, lesson, generation) on an identity change so
+   *  a prior learner's data — including revealed correct answers — never surfaces for the next user
+   *  of a shared device. Prefs are intentionally NOT cleared (they re-hydrate from the new profile). */
+  function clearLearnerContent() {
+    useTestStore().reset()
+    useLessonStore().reset()
+    useGenerationStore().reset()
+    try {
+      sessionStorage.removeItem('test') // the persisted test-store key is the store id
+    } catch {
+      /* storage unavailable — refs were already reset above */
+    }
+  }
+
   /** Ensure we have a profile: load the cached resume code, or create a fresh anonymous profile. */
   async function ensureProfile(): Promise<void> {
     const prefs = usePrefsStore()
@@ -33,6 +50,8 @@ export const useSessionStore = defineStore('session', () => {
         ready.value = true
         return
       } catch {
+        // The cached code is stale → we're about to become a different (fresh) learner.
+        clearLearnerContent()
         setResumeCode(null)
         resumeCode.value = null
       }
@@ -49,6 +68,8 @@ export const useSessionStore = defineStore('session', () => {
 
   async function resumeWithCode(code: string): Promise<void> {
     const env = await api.resumeProfile(code)
+    // A different learner is taking over this device — drop the previous learner's content first.
+    clearLearnerContent()
     setResumeCode(code)
     resumeCode.value = code
     _adopt(env)
@@ -67,6 +88,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   function forget(): void {
+    clearLearnerContent()
     setResumeCode(null)
     resumeCode.value = null
     profile.value = null

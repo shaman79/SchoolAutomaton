@@ -48,5 +48,14 @@ export const useLessonStore = defineStore('lesson', () => {
     }
   }
 
-  return { lesson, loading, error, generatingOrdinal, failedOrdinal, load, generateSection }
+  /** Wipe lesson state on a learner-identity switch (shared-device privacy). */
+  function reset(): void {
+    lesson.value = null
+    loading.value = false
+    error.value = null
+    generatingOrdinal.value = null
+    failedOrdinal.value = null
+  }
+
+  return { lesson, loading, error, generatingOrdinal, failedOrdinal, load, generateSection, reset }
 })

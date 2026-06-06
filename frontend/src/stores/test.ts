@@ -76,6 +76,19 @@ export const useTestStore = defineStore('test', () => {
     return summary.value
   }
 
+  /** Wipe all quiz state — called on a learner-identity switch so a prior learner's answers (and the
+   *  revealed correct answers in `results`) can't surface for the next user of a shared device. */
+  function reset(): void {
+    quiz.value = null
+    attemptId.value = null
+    quizId.value = null
+    currentIndex.value = 0
+    results.value = {}
+    summary.value = null
+    loading.value = false
+    error.value = null
+  }
+
   return {
     quiz,
     attemptId,
@@ -93,9 +106,15 @@ export const useTestStore = defineStore('test', () => {
     submit,
     next,
     complete,
+    reset,
   }
 }, {
-  // Survive a mid-quiz page refresh: restore the quiz, attempt, position and per-question results.
-  // (loading/error are intentionally excluded so a refresh can't restore a stuck spinner.)
-  persist: { pick: ['quiz', 'quizId', 'attemptId', 'currentIndex', 'results', 'summary'] },
+  // Survive a mid-quiz page refresh WITHIN the tab — sessionStorage, NOT localStorage: `results` and
+  // `summary` carry server-revealed correct answers + explanations (SPEC §2), which must not persist
+  // across tabs/restarts or leak to the next anonymous learner on a shared device. (loading/error are
+  // excluded so a refresh can't restore a stuck spinner.)
+  persist: {
+    storage: sessionStorage,
+    pick: ['quiz', 'quizId', 'attemptId', 'currentIndex', 'results', 'summary'],
+  },
 })
