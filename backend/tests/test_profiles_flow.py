@@ -146,10 +146,12 @@ async def test_recommendations_seeded_and_home(client):
     assert r.status_code == 200, r.text
     ids = [it["request_id"] for it in r.json()]
     assert "rec-seed" not in ids
-    assert ids[0] == "rec-a"  # highest topic overlap + same subject
-    assert "rec-b" in ids
+    assert ids[0] == "rec-a"  # highest topic overlap + same subject + same level
+    assert "rec-b" in ids  # same subject + level, kept even without topic overlap
+    # The learner's OWN math lesson must NOT be offered as "related" to a biology seed (the bug).
+    assert "rec-c" not in ids
 
-    # No seed (home screen): the learner's own recent ready sessions.
+    # No seed (home screen): various recent ready content (across subjects), incl. the math one.
     r = await client.get("/api/v1/profiles/me/recommendations", headers={"X-Resume-Code": code})
     assert r.status_code == 200, r.text
     home_ids = {it["request_id"] for it in r.json()}
