@@ -255,7 +255,7 @@ watch(
 .sa-panel {
   position: absolute;
   inset: 0 0 0 auto;
-  width: min(26rem, 100%);
+  width: min(32rem, 100%);
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-card) 0 0 var(--radius-card);

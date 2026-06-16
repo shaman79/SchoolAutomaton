@@ -92,6 +92,9 @@ async function shareLink() {
 
 <style scoped>
 .sa-code {
+  /* Query container: the row/stacked switch below keys on the CARD's width, not the viewport, so it
+     lays out correctly inside a narrow settings panel as well as a wide content column. */
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -132,7 +135,9 @@ async function shareLink() {
 .sa-code__actions > * {
   flex: 1;
 }
-@media (min-width: 40rem) {
+/* Only go side-by-side when the CARD itself is wide enough for the code + both buttons; otherwise the
+   code stays on its own line with the two buttons below (never overflowing a narrow panel). */
+@container (min-width: 33rem) {
   .sa-code__row {
     flex-direction: row;
     align-items: center;
