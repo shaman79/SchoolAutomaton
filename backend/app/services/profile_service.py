@@ -41,7 +41,12 @@ async def _unique_resume_code(db: AsyncSession) -> tuple[str, str]:
 
 
 async def create_profile(
-    db: AsyncSession, *, locale: str = "en", age_band: str = "unknown", display_name: str | None = None
+    db: AsyncSession,
+    *,
+    locale: str = "en",
+    education_locale: str | None = None,
+    age_band: str = "unknown",
+    display_name: str | None = None,
 ) -> tuple[str, Profile]:
     code, code_hash = await _unique_resume_code(db)
     profile = Profile(
@@ -52,7 +57,11 @@ async def create_profile(
     )
     db.add(profile)
     await db.flush()  # assign profile.id
-    db.add(ProfileSettings(profile_id=profile.id, locale=locale or "en"))
+    db.add(
+        ProfileSettings(
+            profile_id=profile.id, locale=locale or "en", education_locale=education_locale
+        )
+    )
     db.add(StreakState(profile_id=profile.id))
     await db.flush()
     return code, profile
@@ -151,6 +160,7 @@ def settings_public(profile: Profile, settings: ProfileSettings) -> ProfileSetti
         reduced_motion=settings.reduced_motion,
         sound=settings.sound,
         locale=settings.locale,
+        education_locale=settings.education_locale,
         daily_goal=settings.daily_goal,
         interleave_strength=settings.interleave_strength,
         rest_days_per_week=settings.rest_days_per_week,

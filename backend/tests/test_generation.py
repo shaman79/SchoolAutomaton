@@ -345,11 +345,15 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_generate_lesson_attaches_visual_asset(db):
+async def test_section_visuals_pending_then_ready(db):
+    """Section visuals are async: filling a section queues a PENDING SectionVisual (placeholder), and
+    realize_section_visuals later flips it to ready with the asset — images never block the section."""
+    from app.api.v1.serializers import lesson_section_public
+    from app.models import SectionVisual
+
     client = _make_mock_client()
 
     async def _fake_ensure_visual(session, spec, *, language, grade_band):
-        # Persist a real VisualAsset so the AssetsRef FK is satisfiable (mirrors B3 behaviour).
         asset = VisualAsset(
             hash="deadbeef", asset_type="svg", model="claude", params_json={},
             prompt="kid-safe diagram", mime="image/svg+xml", svg_inline="<svg/>",
@@ -358,21 +362,90 @@ async def test_generate_lesson_attaches_visual_asset(db):
         await session.flush()
         return asset
 
+    expl_ord = LESSON_SKELETON.index(SectionKind.EXPLANATION)
+    lr = await _seed_request(db, Mode.STUDY)
+    lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+    # The canned EXPLANATION section carries the visual request — generate it on demand.
+    await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), expl_ord, client=client)
+    await db.commit()  # commit so the background realize session (its own session) sees the rows
+
+    section = await db.scalar(
+        select(LessonSection).where(
+            LessonSection.lesson_id == lesson.id, LessonSection.ordinal == expl_ord
+        )
+    )
+    pending = list(
+        await db.scalars(select(SectionVisual).where(SectionVisual.lesson_section_id == section.id))
+    )
+    assert pending and pending[0].status == "pending" and pending[0].visual_asset_hash is None
+    assert pending[0].alt_text
+
+    # Before realization the section serializes the visual as a PENDING placeholder (no url yet).
+    placeholder = await lesson_section_public(db, section)
+    assert placeholder.assets and placeholder.assets[0].status == "pending"
+    assert placeholder.assets[0].url is None and placeholder.assets[0].alt_text
+
+    # Realize in the background (own session); then it becomes ready with the asset.
     import app.visuals as visuals_mod
     orig = visuals_mod.ensure_visual
     visuals_mod.ensure_visual = _fake_ensure_visual
     try:
-        lr = await _seed_request(db, Mode.STUDY)
-        lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
-        # The canned EXPLANATION section carries the visual request — generate it on demand.
-        expl_ord = LESSON_SKELETON.index(SectionKind.EXPLANATION)
-        await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), expl_ord, client=client)
-        await db.flush()
-        refs = list(await db.scalars(select(AssetsRef)))
-        assert refs and refs[0].visual_asset_hash == "deadbeef"
-        assert refs[0].alt_text
+        await lesson_generator.realize_section_visuals(section.id)
     finally:
         visuals_mod.ensure_visual = orig
+
+    async with SessionLocal() as verify:
+        sv = await verify.scalar(
+            select(SectionVisual).where(SectionVisual.lesson_section_id == section.id)
+        )
+        assert sv.status == "ready" and sv.visual_asset_hash == "deadbeef"
+        vsection = await verify.scalar(
+            select(LessonSection).where(LessonSection.id == section.id)
+        )
+        ready = await lesson_section_public(verify, vsection)
+        assert ready.assets and ready.assets[0].status == "ready"
+        assert ready.assets[0].url == "/api/v1/assets/deadbeef"
+
+
+@pytest.mark.asyncio
+async def test_realize_section_visuals_idempotent_claim(db):
+    """A second realize pass over an already-ready section is a no-op (claim guard: only 'pending'
+    rows are processed), so a restart/duplicate worker can't double-spend."""
+    from app.models import SectionVisual
+
+    calls = {"n": 0}
+
+    async def _fake_ensure_visual(session, spec, *, language, grade_band):
+        calls["n"] += 1
+        asset = VisualAsset(
+            hash="cafe", asset_type="svg", model="claude", params_json={},
+            prompt="x", mime="image/svg+xml", svg_inline="<svg/>",
+        )
+        session.add(asset)
+        await session.flush()
+        return asset
+
+    client = _make_mock_client()
+    expl_ord = LESSON_SKELETON.index(SectionKind.EXPLANATION)
+    lr = await _seed_request(db, Mode.STUDY)
+    lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+    await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), expl_ord, client=client)
+    await db.commit()
+    section = await db.scalar(
+        select(LessonSection).where(
+            LessonSection.lesson_id == lesson.id, LessonSection.ordinal == expl_ord
+        )
+    )
+
+    import app.visuals as visuals_mod
+    orig = visuals_mod.ensure_visual
+    visuals_mod.ensure_visual = _fake_ensure_visual
+    try:
+        await lesson_generator.realize_section_visuals(section.id)
+        await lesson_generator.realize_section_visuals(section.id)  # second pass: nothing pending
+    finally:
+        visuals_mod.ensure_visual = orig
+    assert calls["n"] == 1  # generated exactly once
 
 
 @pytest.mark.asyncio

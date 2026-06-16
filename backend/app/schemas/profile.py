@@ -13,6 +13,7 @@ from .gamification import GamificationSnapshot
 
 class CreateProfileIn(StrictModel):
     locale: str = "en"
+    education_locale: str | None = None  # BCP-47 region setting (en-US/en-GB/cs-CZ)
     age_band: AgeBand = AgeBand.UNKNOWN
     display_name: str | None = Field(default=None, max_length=40)
 
@@ -28,6 +29,7 @@ class ProfileSettingsPublic(AppModel):
     reduced_motion: bool = False
     sound: bool = True
     locale: str = "en"
+    education_locale: str | None = None  # BCP-47 (en-US/en-GB/cs-CZ); drives generated content
     daily_goal: DailyGoal = DailyGoal.REGULAR
     interleave_strength: float = 0.30
     rest_days_per_week: int = 0
@@ -41,6 +43,7 @@ class ProfileSettingsUpdate(StrictModel):
     reduced_motion: bool | None = None
     sound: bool | None = None
     locale: str | None = None
+    education_locale: str | None = None
     daily_goal: DailyGoal | None = None
     interleave_strength: float | None = None
     rest_days_per_week: int | None = None

@@ -12,7 +12,7 @@
  *   - a spaced-review preview + a growth-mindset closing message.
  * All LLM output renders via SafeContent / LessonAsset (never raw v-html). WCAG 2.2 AA throughout.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import LessonAsset from '@/components/content/LessonAsset.vue'
@@ -59,17 +59,29 @@ const sortedSections = computed<LessonSection[]>(() =>
   lesson.value ? [...lesson.value.sections].sort((a, b) => a.ordinal - b.ordinal) : [],
 )
 
-// --- progressive (lazy) reveal: show the ready prefix; the first not-ready section is the next to
-// generate on demand (a "Continue" card), so we never pay to build sections the learner won't read.
+// --- progressive reveal with prefetch: the learner reveals one part at a time (`revealedUpTo`); the
+// store silently pre-generates the NEXT part one ahead, so "Continue" is usually instant. A part that
+// has been prefetched but not yet revealed is held back here until the learner advances.
 function isReady(s: LessonSection): boolean {
   return (s.gen_status ?? 'ready') === 'ready'
 }
-const readySections = computed(() => sortedSections.value.filter(isReady))
-const nextPending = computed(() => sortedSections.value.find((s) => !isReady(s)) ?? null)
-const allReady = computed(() => nextPending.value === null)
+const lastOrdinal = computed(() =>
+  sortedSections.value.length ? sortedSections.value[sortedSections.value.length - 1].ordinal : 0,
+)
+const visibleSections = computed(() =>
+  sortedSections.value.filter((s) => s.ordinal <= lessonStore.revealedUpTo && isReady(s)),
+)
+// The next part to reveal (if any) — drives the "Continue" card.
+const nextOrdinal = computed<number | null>(() => {
+  if (!lesson.value) return null
+  const n = lessonStore.revealedUpTo + 1
+  return n <= lastOrdinal.value ? n : null
+})
+const hasNext = computed(() => nextOrdinal.value !== null)
+const allRevealed = computed(() => !hasNext.value && visibleSections.value.length > 0)
 
 function revealNext() {
-  if (nextPending.value) void lessonStore.generateSection(nextPending.value.ordinal)
+  void lessonStore.revealNext()
 }
 
 function isInteractive(s: LessonSection): boolean {
@@ -143,6 +155,9 @@ onMounted(async () => {
     /* recommendations are optional */
   }
 })
+
+// Stop any image-polling timers when leaving the reader (the store is a singleton).
+onUnmounted(() => lessonStore.stopPolls())
 </script>
 
 <template>
@@ -169,9 +184,9 @@ onMounted(async () => {
       </ul>
     </section>
 
-    <!-- Sections in order (only the already-generated prefix; the rest reveal on demand) -->
+    <!-- Sections in order (only the parts the learner has revealed; the next is prefetched ahead) -->
     <section
-      v-for="s in readySections"
+      v-for="s in visibleSections"
       :key="s.ordinal"
       class="sa-card sa-lesson__section"
       :class="{ 'sa-lesson__section--locked': isLocked(s) }"
@@ -196,7 +211,7 @@ onMounted(async () => {
           <div v-if="s.assets.length" class="sa-lesson__assets">
             <LessonAsset
               v-for="(a, ai) in s.assets"
-              :key="a.hash"
+              :key="a.hash ?? `pending-${s.ordinal}-${ai}`"
               :asset="a"
               :eager="s.ordinal <= 2 && ai === 0"
             />
@@ -218,16 +233,16 @@ onMounted(async () => {
       </template>
     </section>
 
-    <!-- Progressive reveal: build the next part on demand (max savings — unread parts never generate). -->
-    <section v-if="nextPending" class="sa-card sa-lesson__next" aria-live="polite">
-      <template v-if="lessonStore.generatingOrdinal === nextPending.ordinal">
+    <!-- Progressive reveal: the next part is prefetched one ahead, so "Continue" is usually instant. -->
+    <section v-if="hasNext" class="sa-card sa-lesson__next" aria-live="polite">
+      <template v-if="lessonStore.generatingOrdinal === nextOrdinal">
         <LoadingSpinner :size="32" :label="t('lesson.preparing_next')" />
         <p class="sa-lesson__next-hint">{{ t('lesson.preparing_next') }}</p>
       </template>
       <template v-else>
         <p class="sa-lesson__next-hint">{{ t('lesson.more_to_come') }}</p>
         <p
-          v-if="lessonStore.failedOrdinal === nextPending.ordinal"
+          v-if="lessonStore.failedOrdinal === nextOrdinal"
           class="sa-lesson__next-err"
           role="alert"
         >
@@ -240,7 +255,7 @@ onMounted(async () => {
           @click="revealNext"
         >
           {{
-            lessonStore.failedOrdinal === nextPending.ordinal
+            lessonStore.failedOrdinal === nextOrdinal
               ? t('common.retry')
               : t('lesson.continue_next')
           }}
@@ -249,7 +264,7 @@ onMounted(async () => {
     </section>
 
     <!-- Spaced-review preview + closing appear once the whole lesson has been revealed. -->
-    <template v-if="allReady">
+    <template v-if="allRevealed">
       <section class="sa-card sa-lesson__review">
         <h2 class="sa-lesson__h2">
           <span aria-hidden="true">🔁</span> {{ t('lesson.review_title') }}

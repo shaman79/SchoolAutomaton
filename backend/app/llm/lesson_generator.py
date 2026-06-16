@@ -25,7 +25,7 @@ import logging
 import re
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,7 @@ from ..models import (
     LessonConcept,
     LessonSection,
     Misconception,
+    SectionVisual,
 )
 from ..schemas.enums import LESSON_SKELETON, ItemType, LayoutSlot, SectionKind, VisualKind
 from ..schemas.generation import (
@@ -332,57 +333,144 @@ async def _generate_section(
 # --------------------------------------------------------------------------- visuals
 
 
-async def _attach_visuals(
-    db: AsyncSession,
-    specs: list[GenVisualSpec],
-    *,
-    ordered_sections: list[LessonSection],
-    intent: StructuredIntent,
+async def _queue_section_visuals(
+    db: AsyncSession, section: LessonSection, specs: list[GenVisualSpec]
 ) -> int:
-    """Realize each visual spec via the B3 pipeline and record an AssetsRef. Import visuals lazily."""
-    if not specs:
-        return 0
-    from ..visuals import ensure_visual  # lazy: avoids import cycle + concurrent-module incompleteness
-
-    # Images must never block the lesson forever: each is bounded by a per-visual timeout, and the
-    # whole phase by a wall-clock budget. Past the budget we serve the lesson with whatever images
-    # finished; the rest degrade to their alt text (never a stuck "Adding pictures…" screen).
-    deadline = asyncio.get_event_loop().time() + settings.visual_phase_budget_s
-    attached = 0
-    for spec in specs:
-        idx = spec.section_ordinal
-        if idx < 0 or idx >= len(ordered_sections):
-            continue
-        if asyncio.get_event_loop().time() >= deadline:
-            logger.warning("Visual budget (%ss) reached; serving lesson without remaining images",
-                           settings.visual_phase_budget_s)
-            break
-        section = ordered_sections[idx]
-        # Route hint stays in the spec; ensure_visual decides SVG vs raster by visual_kind.
-        try:
-            asset = await asyncio.wait_for(
-                ensure_visual(db, spec, language=intent.language,
-                              grade_band=intent.grade_band.value),
-                timeout=settings.per_visual_timeout_s,
-            )
-        except NotImplementedError:
-            # B3 not yet landed in this process — skip visuals, lesson still valid.
-            continue
-        except Exception:  # noqa: BLE001 — timeout or any error: a visual must never fail the lesson
-            logger.warning("Visual generation skipped (timeout/error) for %s", spec.visual_kind.value)
-            continue
+    """Persist a ``SectionVisual(status='pending')`` per requested visual so the section text can be
+    delivered immediately. The actual images are realized later by ``realize_section_visuals`` (a
+    background task) and the client shows placeholders until they're ready — images NEVER block the
+    section from appearing."""
+    count = 0
+    for i, spec in enumerate(specs):
+        spec_data = spec.model_dump(mode="json")
+        spec_data["section_ordinal"] = 0  # normalized: realized against this single section
         db.add(
-            AssetsRef(
+            SectionVisual(
                 lesson_section_id=section.id,
-                visual_asset_hash=asset.hash,
+                ordinal=i,
+                visual_kind=spec.visual_kind.value,
                 layout_slot=spec.layout_slot.value,
+                alt_text=spec.alt_text or "",
                 caption=spec.caption,
-                alt_text=spec.alt_text,
+                spec_json=spec_data,
+                status="pending",
             )
         )
-        attached += 1
+        count += 1
     await db.flush()
-    return attached
+    return count
+
+
+# Strong references to in-flight visual-realization tasks: a bare ``create_task`` may be GC'd before
+# it runs (the event loop only holds a weak reference). ``task_registry`` is an SSE broker, not a task
+# tracker, so we keep our own set and discard each task when it finishes.
+_visual_tasks: set[asyncio.Task] = set()
+
+
+async def realize_section_visuals(section_id: int) -> None:
+    """Generate the pending visuals for one section in the BACKGROUND (its own DB session), flipping
+    each ``SectionVisual`` ``pending → ready`` (with a hash) or ``failed`` as it finishes.
+
+    Per-asset commits make images appear incrementally and keep the SQLite write lock held only
+    briefly (never across the provider network call — ``ensure_visual`` writes only after generating).
+    Bounded by ``per_visual_timeout_s`` per image and an overall ``visual_phase_budget_s`` wall clock;
+    anything still unfinished past the budget is marked ``failed`` so the reader stops polling it."""
+    from ..db.session import SessionLocal  # lazy: avoid import-time engine coupling
+    from ..visuals import ensure_visual
+
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + settings.visual_phase_budget_s
+    async with SessionLocal() as db:
+        section = await db.get(LessonSection, section_id)
+        if section is None:
+            return
+        lesson = await db.get(Lesson, section.lesson_id)
+        language = lesson.detected_language if lesson else "en"
+        grade_band = lesson.grade_band if lesson else "unknown"
+
+        # Capture the rows as plain tuples up front: a rollback in any iteration expires the loaded
+        # ORM objects, so touching them later would trigger a lazy load (illegal on an async session).
+        # Status transitions below are raw UPDATEs for the same reason.
+        pending = [
+            (sv.id, sv.ordinal, sv.spec_json)
+            for sv in await db.scalars(
+                select(SectionVisual)
+                .where(
+                    SectionVisual.lesson_section_id == section_id,
+                    SectionVisual.status == "pending",
+                )
+                .order_by(SectionVisual.ordinal)
+            )
+        ]
+        for sv_id, ordinal, spec_json in pending:
+            if loop.time() >= deadline:
+                logger.warning(
+                    "Visual budget (%ss) reached; marking section %s visual %s failed",
+                    settings.visual_phase_budget_s, section_id, ordinal,
+                )
+                await db.execute(
+                    update(SectionVisual)
+                    .where(SectionVisual.id == sv_id, SectionVisual.status == "pending")
+                    .values(status="failed")
+                )
+                await db.commit()
+                continue
+            # Atomically claim the row so a duplicate/restart worker can't double-spend (the route's
+            # in-process lock does not cover this background task or a multi-worker deployment).
+            claimed = await db.execute(
+                update(SectionVisual)
+                .where(SectionVisual.id == sv_id, SectionVisual.status == "pending")
+                .values(status="generating")
+            )
+            await db.commit()
+            if not claimed.rowcount:
+                continue
+            spec = GenVisualSpec.model_validate(spec_json)
+            try:
+                asset = await asyncio.wait_for(
+                    ensure_visual(db, spec, language=language, grade_band=grade_band),
+                    timeout=settings.per_visual_timeout_s,
+                )
+                # Persist the asset (from ensure_visual) AND the status flip atomically.
+                await db.execute(
+                    update(SectionVisual)
+                    .where(SectionVisual.id == sv_id)
+                    .values(status="ready", visual_asset_hash=asset.hash)
+                )
+                await db.commit()
+            except Exception:  # noqa: BLE001 — a visual must never strand the section; mark it failed
+                logger.warning(
+                    "Section visual generation failed (section=%s ordinal=%s)",
+                    section_id, ordinal, exc_info=True,
+                )
+                await db.rollback()
+                await db.execute(
+                    update(SectionVisual)
+                    .where(SectionVisual.id == sv_id)
+                    .values(status="failed")
+                )
+                await db.commit()
+
+
+def schedule_section_visuals(section_id: int) -> None:
+    """Fire-and-forget ``realize_section_visuals`` on the running loop (orchestrator path). No-op when
+    there's no loop (sync/test contexts realize explicitly). Errors are swallowed/logged so a visual
+    can never break the surrounding generation."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+
+    async def _safe() -> None:
+        try:
+            await realize_section_visuals(section_id)
+        except Exception:  # noqa: BLE001 — background best-effort; degrade silently
+            logger.warning("Background visual realization failed (section=%s)", section_id,
+                           exc_info=True)
+
+    task = loop.create_task(_safe())
+    _visual_tasks.add(task)
+    task.add_done_callback(_visual_tasks.discard)
 
 
 # --------------------------------------------------------------------------- orchestration
@@ -431,6 +519,7 @@ async def generate_lesson(
         request_id=request_id,
         topic=(intent.topic or plan.topic)[:200],
         detected_language=intent.language,
+        education_locale=intent.education_locale,
         grade_band=intent.grade_band.value,
         subject=intent.subject.value,
         target_fkgl=float(target_band["fkgl"]),
@@ -552,13 +641,10 @@ async def _fill_section(
         )
     await db.flush()
 
-    # Per-section visuals (bounded). Normalize each spec to this single section (ordinal 0 of [row]).
-    specs: list[GenVisualSpec] = []
-    for spec in gen.visual_requests:
-        data = spec.model_dump()
-        data["section_ordinal"] = 0
-        specs.append(GenVisualSpec.model_validate(data))
-    await _attach_visuals(db, specs, ordered_sections=[row], intent=intent)
+    # Queue this section's dual-coding visuals as PENDING (realized later, in the background) so the
+    # section text appears immediately and images fill in as placeholders. The caller schedules
+    # ``realize_section_visuals(row.id)`` AFTER it commits (so the background session sees the rows).
+    await _queue_section_visuals(db, row, gen.visual_requests)
 
     row.gen_status = "ready"
     # Keep the lesson-level readability metric current as explanation sections fill in over time.

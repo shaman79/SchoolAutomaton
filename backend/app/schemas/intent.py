@@ -25,6 +25,10 @@ class StructuredIntent(StrictModel):
     age: int | None = Field(default=None, ge=3, le=120)
     age_band: AgeBand = AgeBand.UNKNOWN
     language: str = Field(default="en", description="ISO-639-1 / BCP-47 of the student's prompt")
+    # Education-system locale (BCP-47, e.g. 'en-US', 'en-GB', 'cs-CZ') selected by the LEARNER's
+    # setting — NOT classified. Set deterministically in validate.py (forced None for anything the
+    # classifier emits); drives the curriculum directive + output language. None = generic.
+    education_locale: str | None = Field(default=None, description="Learner's education-system locale")
     constraints: list[str] = Field(default_factory=list, description="Sanitized extra asks")
     is_educational: bool = True
     off_task: bool = False
@@ -101,3 +105,6 @@ Decision = Annotated[
 class CreateRequestIn(StrictModel):
     prompt: str = Field(min_length=1)
     resume_code: str | None = None
+    # The learner's education-system locale setting (e.g. 'en-US', 'en-GB', 'cs-CZ'). Trusted,
+    # constrained client metadata — whitelisted server-side, never treated as raw prompt text.
+    locale: str | None = None

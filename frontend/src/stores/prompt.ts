@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { api } from '@/lib/api'
+import { usePrefsStore } from '@/stores/prefs'
 import type { Decision, Mode } from '@/types/session'
 
 export const usePromptStore = defineStore('prompt', () => {
@@ -16,7 +17,9 @@ export const usePromptStore = defineStore('prompt', () => {
     submitting.value = true
     error.value = null
     try {
-      const d = await api.submitPrompt(text)
+      // Send the learner's education-system setting so the lesson/quiz follows that curriculum + language.
+      const prefs = usePrefsStore()
+      const d = await api.submitPrompt(text, prefs.educationLocale)
       decision.value = d
       return d
     } catch (e) {

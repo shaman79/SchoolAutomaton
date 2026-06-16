@@ -15,7 +15,6 @@
     "useDefineForClassFields": true,
     "verbatimModuleSyntax": false,
     "types": ["vite/client", "vitest/globals"],
-    "baseUrl": ".",
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.vue", "vite.config.ts"]

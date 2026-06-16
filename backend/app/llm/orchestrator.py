@@ -14,7 +14,7 @@ from sqlalchemy import select
 
 from ..core.tasks import task_registry
 from ..db.session import SessionLocal
-from ..models import LearningRequest
+from ..models import LearningRequest, LessonSection
 from ..schemas.enums import Mode
 from ..schemas.intent import StructuredIntent
 
@@ -60,7 +60,7 @@ async def run_generation(request_id: str) -> None:
                 request_id, "ready", {"mode": "test", "quiz_id": quiz.id}
             )
         else:
-            from .lesson_generator import generate_lesson
+            from .lesson_generator import generate_lesson, schedule_section_visuals
 
             lesson = await generate_lesson(db, lr, intent)
             lr.lesson_id = lesson.id
@@ -70,3 +70,13 @@ async def run_generation(request_id: str) -> None:
             await task_registry.publish(
                 request_id, "ready", {"mode": "study", "lesson_id": lesson.id}
             )
+            # The first section is delivered now; realize its (pending) visuals in the background so
+            # they fill in as placeholders. Scheduled AFTER commit so the background session sees the
+            # SectionVisual rows. A no-op when the first section requested no visuals.
+            section0 = await db.scalar(
+                select(LessonSection).where(
+                    LessonSection.lesson_id == lesson.id, LessonSection.ordinal == 0
+                )
+            )
+            if section0 is not None:
+                schedule_section_visuals(section0.id)

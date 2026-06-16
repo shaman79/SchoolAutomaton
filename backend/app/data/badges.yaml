@@ -1,0 +1,165 @@
+# Mastery-anchored badge definitions (SPEC gamification; design gamification_design).
+# Seeded into badge_definitions by db/bootstrap.seed_badges. Every badge wraps a genuine LEARNING
+# signal — never raw activity counters ("logged in N days", "answered N questions").
+# criterion_key maps to an evaluator in app/services/badges.py; criterion_params tune thresholds.
+# title_i18n / description_i18n ship en + cs (the launch UI locales, SPEC §4 #9).
+badges:
+  - code: first_light
+    criterion_key: first_light
+    tiered: false
+    criterion_params: { count: 1 }
+    title_i18n:
+      en: First Light
+      cs: První světlo
+    description_i18n:
+      en: Master your very first concept.
+      cs: Zvládni svůj úplně první pojem.
+
+  - code: root_system
+    criterion_key: root_system
+    tiered: false
+    title_i18n:
+      en: Root System
+      cs: Kořenový systém
+    description_i18n:
+      en: Master every prerequisite of a concept before tackling it.
+      cs: Zvládni všechny předpoklady pojmu, než se do něj pustíš.
+
+  - code: deep_diver
+    criterion_key: deep_diver
+    tiered: false
+    criterion_params: { mastery: 0.9 }
+    title_i18n:
+      en: Deep Diver
+      cs: Hlubinný potápěč
+    description_i18n:
+      en: Reach 90% mastery on a single concept.
+      cs: Dosáhni 90% zvládnutí jednoho pojmu.
+
+  - code: comeback
+    criterion_key: comeback
+    tiered: false
+    title_i18n:
+      en: Comeback
+      cs: Návrat do hry
+    description_i18n:
+      en: Master a concept you once failed.
+      cs: Zvládni pojem, který se ti kdysi nepovedl.
+
+  - code: spaced_master
+    criterion_key: spaced_master
+    tiered: false
+    criterion_params: { gap_days: 7 }
+    title_i18n:
+      en: Spaced Master
+      cs: Mistr opakování
+    description_i18n:
+      en: Answer correctly after a 7-day gap — proof it really stuck.
+      cs: Odpověz správně po sedmidenní pauze — důkaz, že ti to opravdu utkvělo.
+
+  - code: sharpshooter
+    criterion_key: sharpshooter
+    tiered: false
+    criterion_params: { count: 10 }
+    title_i18n:
+      en: Sharpshooter
+      cs: Ostrostřelec
+    description_i18n:
+      en: Get 10 first-try-correct answers in one session.
+      cs: Měj 10 správných odpovědí na první pokus v jedné relaci.
+
+  - code: honest_explorer
+    criterion_key: honest_explorer
+    tiered: false
+    criterion_params: { count: 5 }
+    title_i18n:
+      en: Honest Explorer
+      cs: Poctivý objevitel
+    description_i18n:
+      en: Use a hint, then answer correctly — knowing what you don't know is a skill.
+      cs: Použij nápovědu a pak odpověz správně — vědět, co neznáš, je dovednost.
+
+  - code: polyglot
+    criterion_key: polyglot
+    tiered: false
+    criterion_params: { languages: 2 }
+    title_i18n:
+      en: Polyglot
+      cs: Polyglot
+    description_i18n:
+      en: Learn in two or more languages.
+      cs: Uč se ve dvou nebo více jazycích.
+
+  - code: cross_pollinator
+    criterion_key: cross_pollinator
+    tiered: false
+    criterion_params: { subjects: 2 }
+    title_i18n:
+      en: Cross-Pollinator
+      cs: Opylovač napříč obory
+    description_i18n:
+      en: Master concepts across two different subject trees.
+      cs: Zvládni pojmy ze dvou různých předmětových stromů.
+
+  - code: curiosity
+    criterion_key: curiosity
+    tiered: false
+    criterion_params: { count: 5 }
+    title_i18n:
+      en: Curiosity
+      cs: Zvídavost
+    description_i18n:
+      en: Ask five follow-up questions to dig deeper.
+      cs: Polož pět doplňujících otázek a jdi víc do hloubky.
+
+  - code: self_beater
+    criterion_key: self_beater
+    tiered: false
+    title_i18n:
+      en: Self-Beater
+      cs: Sám sobě soupeřem
+    description_i18n:
+      en: Beat your own previous accuracy on a retest.
+      cs: Překonej svou předchozí úspěšnost při novém testu.
+
+  - code: tree_grower
+    criterion_key: tree_grower
+    tiered: true
+    criterion_params: { tiers: [0.25, 0.5, 1.0] }
+    title_i18n:
+      en: Tree Grower
+      cs: Pěstitel stromu
+    description_i18n:
+      en: Grow a subject branch — 25%, 50%, then 100% mastered.
+      cs: Vypěstuj větev předmětu — 25 %, 50 %, pak 100 % zvládnuto.
+
+  - code: teacher
+    criterion_key: teacher
+    tiered: false
+    title_i18n:
+      en: Teacher
+      cs: Učitel
+    description_i18n:
+      en: Explain a concept in your own words and get it right.
+      cs: Vysvětli pojem vlastními slovy a měj to správně.
+
+  - code: resilient
+    criterion_key: resilient
+    tiered: false
+    title_i18n:
+      en: Resilient
+      cs: Houževnatý
+    description_i18n:
+      en: Come back and keep learning after a streak break.
+      cs: Vrať se a uč se dál i po přerušení série.
+
+  - code: marathon_of_mastery
+    criterion_key: marathon_of_mastery
+    tiered: false
+    criterion_params: { count: 50 }
+    title_i18n:
+      en: Marathon of Mastery
+      cs: Maraton mistrovství
+    description_i18n:
+      en: Master 50 concepts. A true marathon of learning.
+      cs: Zvládni 50 pojmů. Skutečný maraton učení.

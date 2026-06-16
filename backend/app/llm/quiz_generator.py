@@ -159,6 +159,7 @@ async def generate_quiz(
         request_id=request_id,
         title=(gen_quiz.title or intent.topic or "Quiz")[:200],
         language=intent.language,
+        education_locale=intent.education_locale,
         grade_band=intent.grade_band.value,
         subject=intent.subject.value,
         concept_id=primary_concept.id,

@@ -42,8 +42,15 @@ async def sanitize_request(
     raw_prompt: str,
     ctx: RequestContext,
     request_id: str,
+    *,
+    client_locale: str | None = None,
 ) -> Decision:
     """Run the pipeline and return a routing Decision (proceed | clarify | refuse | crisis).
+
+    ``client_locale`` is the learner's trusted education-system setting (e.g. 'en-GB'). On a proceed
+    it pins the curriculum + output language; it also localizes crisis resources by country. It is a
+    constrained client choice (whitelisted downstream), never raw prompt text — the one-way-flow
+    invariant is preserved.
 
     Raises HTTP 429 (rate limit) or HTTP 503 (assistant unavailable — fail closed, no guessing)."""
     started = time.monotonic()
@@ -60,7 +67,7 @@ async def sanitize_request(
         net_intent = StructuredIntent(
             safety_flags=[SafetyFlag.SELF_HARM], language=lang, is_educational=False
         )
-        decision = validate.build_decision(net_intent, request_id)
+        decision = validate.build_decision(net_intent, request_id, client_locale=client_locale)
         await _audit(db, request_id, ctx, raw_prompt, pre, net_intent, decision, started, flagged=True)
         return decision
 
@@ -75,7 +82,7 @@ async def sanitize_request(
         ) from exc
 
     # L3/L4 — deterministic validate + route (re-validate enums, scrub topic, select crisis resources).
-    decision = validate.build_decision(raw_intent, request_id)
+    decision = validate.build_decision(raw_intent, request_id, client_locale=client_locale)
     validated_intent = validate.revalidate_intent(raw_intent)
 
     if validated_intent.injection_detected:

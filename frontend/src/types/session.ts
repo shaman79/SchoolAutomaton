@@ -49,6 +49,8 @@ export interface ProfileSettings {
   reduced_motion: boolean
   sound: boolean
   locale: string
+  /** BCP-47 education-system locale (en-US/en-GB/cs-CZ) driving generated content. */
+  education_locale: string | null
   daily_goal: 'casual' | 'regular' | 'serious' | 'intense'
   interleave_strength: number
   rest_days_per_week: number
@@ -151,14 +153,17 @@ export interface GradeResult {
 
 // ----- lesson delivery -----
 export interface AssetRef {
-  hash: string
-  url: string
-  asset_type: string
+  /** null while a section visual is still generating (placeholder); set once ready. */
+  hash: string | null
+  url: string | null
+  asset_type: string | null
   layout_slot: string
   alt_text: string
   caption: string | null
   svg_inline: string | null
   label_overlay: unknown[] | null
+  /** 'pending' → render a placeholder; 'ready' → render the asset. Defaults 'ready' (sync paths). */
+  status: 'pending' | 'ready'
 }
 export interface LessonObjective {
   text: string

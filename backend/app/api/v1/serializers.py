@@ -17,6 +17,7 @@ from ...models import (
     LessonSection,
     Quiz,
     QuizQuestion,
+    SectionVisual,
     VisualAsset,
 )
 from ...schemas.content import (
@@ -163,11 +164,49 @@ async def item_public(db: AsyncSession, item: Item, *, with_assets: bool = True)
     )
 
 
+async def _section_visual_assets(db: AsyncSession, section_id: int) -> list[AssetRefPublic]:
+    """Section dual-coding visuals from the async ``SectionVisual`` queue. ``pending``/``generating``
+    rows render as placeholders (status='pending', no url yet); ``ready`` rows carry the real asset;
+    ``failed`` rows are omitted so the learner sees the alt text rather than a broken image."""
+    rows = (
+        await db.execute(
+            select(SectionVisual, VisualAsset)
+            .outerjoin(VisualAsset, VisualAsset.hash == SectionVisual.visual_asset_hash)
+            .where(SectionVisual.lesson_section_id == section_id)
+            .order_by(SectionVisual.ordinal)
+        )
+    ).all()
+    out: list[AssetRefPublic] = []
+    for sv, va in rows:
+        if sv.status == "failed":
+            continue
+        ready = sv.status == "ready" and va is not None
+        out.append(
+            AssetRefPublic(
+                hash=va.hash if ready else None,
+                url=f"/api/v1/assets/{va.hash}" if ready else None,
+                asset_type=va.asset_type if ready else None,
+                layout_slot=sv.layout_slot,
+                alt_text=sv.alt_text,
+                caption=sv.caption,
+                svg_inline=(va.svg_inline if ready and va.asset_type == "svg" else None),
+                status="ready" if ready else "pending",
+            )
+        )
+    return out
+
+
 async def lesson_section_public(db: AsyncSession, s: LessonSection) -> LessonSectionPublic:
-    """Serialize one lesson section (pending sections carry no body/items yet)."""
+    """Serialize one lesson section (pending sections carry no body/items yet).
+
+    Section visuals come from the async ``SectionVisual`` queue (placeholder-aware); legacy
+    ``AssetsRef`` section rows are also read so lessons generated before async visuals keep their
+    images (dual-read transition)."""
     item_rows = (
         await db.execute(select(Item).where(Item.lesson_section_id == s.id).order_by(Item.id))
     ).scalars().all()
+    assets = await _section_visual_assets(db, s.id)
+    assets += await _assets_for(db, section_id=s.id)  # legacy synchronous section visuals
     return LessonSectionPublic(
         ordinal=s.ordinal,
         kind=s.kind,
@@ -175,7 +214,7 @@ async def lesson_section_public(db: AsyncSession, s: LessonSection) -> LessonSec
         body_markdown=s.body_markdown,
         gated=s.gated,
         gen_status=getattr(s, "gen_status", "ready"),
-        assets=await _assets_for(db, section_id=s.id),
+        assets=assets,
         items=[await item_public(db, it) for it in item_rows],
     )
 

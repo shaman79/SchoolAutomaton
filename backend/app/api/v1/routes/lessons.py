@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....llm.lesson_generator import generate_one_section
+from ....llm.lesson_generator import generate_one_section, schedule_section_visuals
 from ....models import LearningRequest, Lesson, LessonSection
 from ....sanitization.ratelimit import rate_limit_dependency
 from ....schemas.content import LessonPublic, LessonSectionPublic
@@ -30,6 +30,20 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
     if lesson is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
     return await lesson_public(db, lesson)
+
+
+@router.get("/{lesson_id}/sections/{ordinal}", response_model=LessonSectionPublic)
+async def get_section(lesson_id: int, ordinal: int, db: AsyncSession = Depends(get_db)):
+    """Fetch one section (incl. current visual statuses). The reader polls this while a delivered
+    section still has pending image placeholders, swapping them in as they finish generating."""
+    section = await db.scalar(
+        select(LessonSection).where(
+            LessonSection.lesson_id == lesson_id, LessonSection.ordinal == ordinal
+        )
+    )
+    if section is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
+    return await lesson_section_public(db, section)
 
 
 @router.post(
@@ -75,6 +89,9 @@ async def generate_section(
         try:
             await generate_one_section(db, lesson, intent, ordinal)
             await db.commit()
+            # The section text + items are ready now; realize its (pending) visuals in the background
+            # so they fill in as placeholders without blocking this response.
+            schedule_section_visuals(section.id)
         except Exception:  # noqa: BLE001 — surface a clean error; mark the section errored
             logger.exception("On-demand section generation failed (lesson=%s ordinal=%s)",
                              lesson_id, ordinal)

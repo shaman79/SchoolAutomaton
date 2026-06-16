@@ -82,8 +82,12 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
 
 // --------------------------------------------------------------------------- profiles
 export const api = {
-  createProfile: (body: { locale?: string; age_band?: string; display_name?: string }) =>
-    request<ProfileCreateOut>('/profiles', { method: 'POST', body }),
+  createProfile: (body: {
+    locale?: string
+    education_locale?: string | null
+    age_band?: string
+    display_name?: string
+  }) => request<ProfileCreateOut>('/profiles', { method: 'POST', body }),
 
   resumeProfile: (code: string) =>
     request<ProfileEnvelope>('/profiles/resume', { method: 'POST', body: { resume_code: code } }),
@@ -112,8 +116,10 @@ export const api = {
     request<unknown>(`/profiles/me/tree${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),
 
   // ------------------------------------------------------------------------- requests / generation
-  submitPrompt: (prompt: string) =>
-    request<Decision>('/requests', { method: 'POST', body: { prompt } }),
+  /** `locale` is the learner's education-system setting (e.g. 'en-GB') — drives the curriculum +
+   *  output language of the generated lesson/quiz. */
+  submitPrompt: (prompt: string, locale?: string | null) =>
+    request<Decision>('/requests', { method: 'POST', body: { prompt, locale } }),
 
   startGeneration: (requestId: string) =>
     request<{ request_id: string; status: string }>(`/requests/${requestId}/generate`, {
@@ -132,6 +138,9 @@ export const api = {
       method: 'POST',
       body: {},
     }),
+  /** Fetch one section (incl. current visual statuses) — used to poll pending image placeholders. */
+  getSection: (lessonId: number, ordinal: number) =>
+    request<LessonSection>(`/lessons/${lessonId}/sections/${ordinal}`),
   getQuiz: (id: number) => request<Quiz>(`/quizzes/${id}`),
 
   startAttempt: (quizId: number) =>

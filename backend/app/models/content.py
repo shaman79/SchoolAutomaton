@@ -61,6 +61,9 @@ class Lesson(Base):
     request_id: Mapped[str] = mapped_column(String(36), index=True)
     topic: Mapped[str] = mapped_column(String(200))
     detected_language: Mapped[str] = mapped_column(String(12))
+    # Learner-selected education-system locale (BCP-47, e.g. 'en-US'); None = generic. Stamped so
+    # re-render / grading reproduce the same curriculum framing the lesson was generated under.
+    education_locale: Mapped[str | None] = mapped_column(String(12), nullable=True)
     grade_band: Mapped[str] = mapped_column(String(12))
     subject: Mapped[str] = mapped_column(String(40))
     target_fkgl: Mapped[float] = mapped_column(Float)
@@ -159,6 +162,34 @@ class ItemFsrsCard(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
     )
+
+
+class SectionVisual(Base):
+    """A lesson section's dual-coding visual, realized ASYNCHRONOUSLY so it never blocks the section
+    text from appearing. Created ``pending`` when the section is filled; a background task generates
+    the image (``ensure_visual``) and flips it to ``ready`` (with ``visual_asset_hash``) or ``failed``.
+
+    The client renders a placeholder (reserved aspect ratio + alt text) while ``pending``/``generating``
+    and swaps in the real asset on ``ready``. Distinct from :class:`AssetsRef`, which stays synchronous
+    for hotspot/item images (a hotspot is unanswerable without its image)."""
+
+    __tablename__ = "section_visuals"
+    __table_args__ = (UniqueConstraint("lesson_section_id", "ordinal"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    lesson_section_id: Mapped[int] = mapped_column(
+        ForeignKey("lesson_sections.id"), index=True
+    )
+    ordinal: Mapped[int] = mapped_column(Integer)  # order of the visual within the section
+    visual_kind: Mapped[str] = mapped_column(String(24))  # VisualKind
+    layout_slot: Mapped[str] = mapped_column(String(24))  # LayoutSlot
+    alt_text: Mapped[str] = mapped_column(Text)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)
+    spec_json: Mapped[dict] = mapped_column(JSON)  # the GenVisualSpec to realize (kid-safe, derived)
+    # pending (queued) | generating (a worker claimed it) | ready (asset linked) | failed
+    status: Mapped[str] = mapped_column(String(12), default="pending")
+    visual_asset_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class AssetsRef(Base):

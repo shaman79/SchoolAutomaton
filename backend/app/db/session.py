@@ -61,6 +61,14 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
         "gen_status",
         "ALTER TABLE lesson_sections ADD COLUMN gen_status VARCHAR(12) NOT NULL DEFAULT 'ready'",
     ),
+    # Education-system locale (nullable → existing rows are generic): generated-content region.
+    ("lessons", "education_locale", "ALTER TABLE lessons ADD COLUMN education_locale VARCHAR(12)"),
+    ("quizzes", "education_locale", "ALTER TABLE quizzes ADD COLUMN education_locale VARCHAR(12)"),
+    (
+        "profile_settings",
+        "education_locale",
+        "ALTER TABLE profile_settings ADD COLUMN education_locale VARCHAR(12)",
+    ),
 )
 
 

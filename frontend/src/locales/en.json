@@ -162,6 +162,7 @@
     "reduced_motion": "Reduce motion",
     "sound": "Sound",
     "language": "Language",
+    "language_hint": "Sets the language and education system new lessons & quizzes follow.",
     "skip_to_content": "Skip to content",
     "synced_hint": "Your preferences are saved and follow your resume code.",
     "theme_default": "Default",

@@ -1,0 +1,60 @@
+# Education-system profiles keyed by BCP-47 locale. The learner picks one (settings); it is a
+# trusted, constrained choice (whitelisted in app/llm/prompts/curriculum.py) — never raw prompt text.
+#
+# Used ONLY to build the volatile trailing user message (curriculum_directive); the cached system
+# prefix (pedagogy.py SYSTEM_PEDAGOGY_EN) is NEVER changed by this. None/unknown locale = generic
+# (today's behavior: no curriculum framing).
+#
+# grade_naming keys are the GradeBand enum values (app/schemas/enums.py): K, G1-2, G3-5, G6-8,
+# G9-12, adult, unknown.
+
+en-US:
+  language: en
+  country: US
+  framework: "the United States K-12 system (Common Core State Standards for English & Math; Next Generation Science Standards for science)"
+  spelling: "American English spelling (color, organize, meter, center, analyze)"
+  units: "US customary units as the primary measure (inches, feet, miles, pounds, ounces, °F, gallons), giving the metric equivalent in parentheses where it aids understanding"
+  currency: "US dollars ($)"
+  date_format: "month day, year (e.g. June 16, 2026)"
+  conventions: "Use US contexts and examples (e.g. grade levels, US place names) where a concrete setting is needed; keep examples globally understandable otherwise."
+  grade_naming:
+    K: "Kindergarten"
+    G1-2: "Grades 1-2"
+    G3-5: "Grades 3-5 (elementary)"
+    G6-8: "Grades 6-8 (middle school)"
+    G9-12: "Grades 9-12 (high school)"
+    adult: "adult learners"
+
+en-GB:
+  language: en
+  country: GB
+  framework: "the National Curriculum for England (organised by Key Stages)"
+  spelling: "British English spelling (colour, organise, metre, centre, analyse)"
+  units: "the metric system as the primary measure (metres, centimetres, kilograms, grams, °C, litres); miles may be used for road distances as in everyday UK usage"
+  currency: "pounds sterling (£)"
+  date_format: "day month year (e.g. 16 June 2026)"
+  conventions: "Use UK contexts and terminology (e.g. 'maths' not 'math', 'Year groups', UK place names) where a concrete setting is needed; keep examples globally understandable otherwise."
+  grade_naming:
+    K: "Reception (EYFS)"
+    G1-2: "Years 1-2 (Key Stage 1)"
+    G3-5: "Years 4-6 (Key Stage 2)"
+    G6-8: "Years 7-9 (Key Stage 3)"
+    G9-12: "Years 10-13 (Key Stages 4-5, GCSE and A-level)"
+    adult: "adult learners"
+
+cs-CZ:
+  language: cs
+  country: CZ
+  framework: "český Rámcový vzdělávací program (RVP)"
+  spelling: "spisovná čeština se správnou diakritikou (háčky a čárky)"
+  units: "metrická soustava (metr, centimetr, kilogram, gram, °C, litr)"
+  currency: "české koruny (Kč)"
+  date_format: "den. měsíc. rok (např. 16. 6. 2026)"
+  conventions: "Používej český kontext a příklady (česká místa, jména) tam, kde je potřeba konkrétní zasazení; jinak udržuj příklady obecně srozumitelné."
+  grade_naming:
+    K: "mateřská škola (předškolní vzdělávání)"
+    G1-2: "1.-2. ročník (1. stupeň ZŠ)"
+    G3-5: "3.-5. ročník (1. stupeň ZŠ)"
+    G6-8: "6.-8. ročník (2. stupeň ZŠ)"
+    G9-12: "9. ročník ZŠ a střední škola (gymnázium / SŠ)"
+    adult: "dospělí studenti"

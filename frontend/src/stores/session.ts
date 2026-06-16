@@ -56,7 +56,10 @@ export const useSessionStore = defineStore('session', () => {
         resumeCode.value = null
       }
     }
-    const created = await api.createProfile({ locale: prefs.locale })
+    const created = await api.createProfile({
+      locale: prefs.locale,
+      education_locale: prefs.educationLocale,
+    })
     setResumeCode(created.resume_code)
     resumeCode.value = created.resume_code
     lastResumeCodeForDisplay.value = created.resume_code

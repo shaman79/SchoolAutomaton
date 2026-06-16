@@ -13,6 +13,7 @@ from .content import (
     LessonConcept,
     LessonSection,
     Misconception,
+    SectionVisual,
 )
 from .gamification import BadgeDefinition, ProfileBadge, SkillMastery, XpEvent
 from .learning import LearningRequest, SanitizationAudit
@@ -33,6 +34,7 @@ __all__ = [
     "LessonConcept",
     "LessonSection",
     "Misconception",
+    "SectionVisual",
     "BadgeDefinition",
     "ProfileBadge",
     "SkillMastery",

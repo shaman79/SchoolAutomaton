@@ -1,0 +1,83 @@
+# Injection / jailbreak heuristic rules (SPEC §5 Layer 1).
+#
+# These rules ONLY raise `suspicion_score` and record a `heuristic_hit_id`; they NEVER block a prompt
+# on their own (adaptive attackers defeat regex-only defenses — the real containment is the
+# deterministic validate.py layer over the classifier verdict). The classifier + validator decide
+# routing; these signals are advisory and audited.
+#
+# Each rule:
+#   id:       stable identifier recorded in the audit row (heuristic_hit_ids).
+#   pattern:  Python `re` regex, applied case-insensitively (re.IGNORECASE) and DOTALL-free.
+#   weight:   contribution to suspicion_score (clamped to 1.0 overall in preprocess.py).
+#   desc:     human note for admin/audit.
+#
+# Patterns are intentionally conservative on legitimate study language ("the system of the body",
+# "ignore the noise in the data") by anchoring on instruction-to-the-assistant phrasing.
+
+version: 1
+
+rules:
+  - id: ignore_previous
+    pattern: '\b(ignore|forget|disregard|overrid\w*|bypass)\b[^.\n]{0,30}\b(all|any|the|your|these|previous|prior|earlier|above|preceding)\b[^.\n]{0,30}\b(instruction|prompt|rule|direction|command|context|message|guideline)s?\b'
+    weight: 0.45
+    desc: "Classic 'ignore previous instructions' override."
+
+  - id: disregard_rules
+    pattern: '\b(disregard|do\s*not\s*follow|stop\s*following|no\s*longer\s*follow)\b[^.\n]{0,40}\b(rule|policy|guideline|restriction|guardrail|safety)s?\b'
+    weight: 0.4
+    desc: "Asks the assistant to drop its rules/guardrails."
+
+  - id: you_are_now
+    pattern: '\byou\s+are\s+(now|from\s+now\s+on|henceforth|going\s+to\s+be)\b'
+    weight: 0.35
+    desc: "Persona / role reassignment ('you are now ...')."
+
+  - id: pretend_roleplay
+    pattern: '\b(pretend|act\s+as|roleplay|role-play|imagine\s+you\s+are|behave\s+as|simulate\s+(being|a))\b'
+    weight: 0.3
+    desc: "Roleplay framing used to elicit out-of-policy behavior."
+
+  - id: system_prompt_probe
+    pattern: '\b(system\s*prompt|your\s+(instructions|system\s+message|guidelines|prompt)|initial\s+prompt|reveal\s+your\s+(prompt|rules|instructions)|repeat\s+the\s+(above|text\s+above))\b'
+    weight: 0.4
+    desc: "Attempt to exfiltrate or override the system prompt."
+
+  - id: dan_jailbreak
+    pattern: '\b(DAN\b|do\s+anything\s+now|developer\s+mode|jailbreak|unfiltered|uncensored|no\s+restrictions|without\s+(any\s+)?(restriction|filter|limitation)s?)\b'
+    weight: 0.5
+    desc: "Named jailbreak personas / 'do anything now'."
+
+  - id: role_markers
+    pattern: '(?m)^\s*(assistant|system|user|human|ai)\s*[:>\]]'
+    weight: 0.4
+    desc: "Leading chat role markers injected to fake a transcript."
+
+  - id: instruction_injection_tags
+    pattern: '(\[/?(INST|SYS|SYSTEM)\]|<\s*/?\s*(system|im_start|im_end|s)\s*>|<\|.{0,20}\|>)'
+    weight: 0.45
+    desc: "Special instruction/template delimiters (Llama/ChatML-style)."
+
+  - id: base64_blob
+    pattern: '\b[A-Za-z0-9+/]{40,}={0,2}\b'
+    weight: 0.3
+    desc: "Long base64-looking blob (possible encoded payload)."
+
+  - id: payload_split
+    pattern: '(\bconcatenat\w+|join\s+the\s+(letters|characters|parts)|first\s+letter\s+of\s+each|decode\s+(the|this)\s+(following|base64|hex)|read\s+(this\s+)?backwards|reverse\s+the\s+(text|string))\b'
+    weight: 0.35
+    desc: "Payload-splitting / obfuscation-by-decode instructions."
+
+  - id: override_safety
+    pattern: '\b(this\s+is\s+(just\s+)?(a\s+)?(hypothetical|fiction|a\s+game|for\s+research)|for\s+educational\s+purposes\s+only,?\s+(ignore|bypass)|in\s+a\s+world\s+where\s+(there\s+are\s+no|rules\s+do\s+not))\b'
+    weight: 0.3
+    desc: "Framing tricks used to neutralize safety ('hypothetically', 'for research')."
+
+  - id: new_instructions
+    pattern: '\b(new|updated|real|actual|true)\s+(instruction|task|directive|objective|prompt)s?\s*[:\-]'
+    weight: 0.35
+    desc: "Tries to inject a 'new task' over the real one."
+
+  - id: end_of_input_spoof
+    pattern: '\b(end\s+of\s+(user|student)\s+(input|message|data)|---\s*end\s*---|<<\s*end\s*>>)\b'
+    weight: 0.35
+    desc: "Spoofs an end-of-input boundary to smuggle trailing instructions."

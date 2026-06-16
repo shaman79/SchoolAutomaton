@@ -1,0 +1,115 @@
+# Crisis resources (SPEC §4 #8, §5 Layer 4). Surfaced ONLY for a self_harm safety flag, as a
+# non-dismissable crisis card. The system performs NO LLM counseling — it shows curated human help
+# lines plus a clear AI-disclosure (CA SB 243 / "SAFE for Bots" style).
+#
+# LEGAL REVIEW PENDING: numbers/links below are best-effort public hotlines for v1 and must be
+# reviewed by counsel + verified before any production launch (admin docs note).
+#
+# Structure:
+#   card:        localized non-dismissable card copy (message + take-a-break nudge) per language.
+#   disclosure:  localized "I'm an AI, not a professional" wording.
+#   countries:   ISO-3166 alpha-2 -> list of resources for that country.
+#   global:      always-appended fallback resources (shown if country unknown or in addition).
+#
+# Language keys are ISO-639-1; "en" is the required fallback for any unlisted language.
+
+version: 1
+
+card:
+  en:
+    title: "You matter, and help is available"
+    message: >-
+      It sounds like you might be going through something really hard right now. You don't have to
+      face it alone. Please reach out to one of the services below — they are free, confidential, and
+      there to listen. If you are in immediate danger, contact your local emergency number now.
+    nudge: "It's okay to take a break. Talking to someone you trust can help."
+  cs:
+    title: "Na tobě záleží a pomoc je dostupná"
+    message: >-
+      Zní to, že teď procházíš něčím opravdu těžkým. Nemusíš na to být sám/sama. Obrať se prosím na
+      některou ze služeb níže — jsou zdarma, důvěrné a jsou tu, aby naslouchaly. Pokud jsi v
+      bezprostředním nebezpečí, zavolej ihned na místní tísňovou linku.
+    nudge: "Je v pořádku dát si pauzu. Promluvit si s někým, komu věříš, může pomoci."
+
+disclosure:
+  en: >-
+    I'm an AI assistant, not a mental-health professional, and I can't provide counseling. Please
+    reach out to the people and services below — they care and can help.
+  cs: >-
+    Jsem AI asistent, nikoli odborník na duševní zdraví, a nemohu poskytovat poradenství. Obrať se
+    prosím na lidi a služby níže — záleží jim na tobě a mohou pomoci.
+
+countries:
+  US:
+    - name: "988 Suicide & Crisis Lifeline"
+      phone: "988"
+      sms: "988"
+      url: "https://988lifeline.org"
+      country: "US"
+      hours: "24/7"
+    - name: "Crisis Text Line"
+      sms: "Text HOME to 741741"
+      url: "https://www.crisistextline.org"
+      country: "US"
+      hours: "24/7"
+  GB:
+    - name: "Samaritans"
+      phone: "116 123"
+      url: "https://www.samaritans.org"
+      country: "GB"
+      hours: "24/7"
+    - name: "Shout"
+      sms: "Text SHOUT to 85258"
+      url: "https://giveusashout.org"
+      country: "GB"
+      hours: "24/7"
+  CZ:
+    - name: "Linka bezpečí (pro děti a mládež)"
+      phone: "116 111"
+      url: "https://www.linkabezpeci.cz"
+      country: "CZ"
+      hours: "24/7"
+    - name: "Linka první psychické pomoci"
+      phone: "116 123"
+      url: "https://www.linkapsychickepomoci.cz"
+      country: "CZ"
+      hours: "24/7"
+  IE:
+    - name: "Samaritans Ireland"
+      phone: "116 123"
+      url: "https://www.samaritans.org"
+      country: "IE"
+      hours: "24/7"
+  AU:
+    - name: "Lifeline Australia"
+      phone: "13 11 14"
+      url: "https://www.lifeline.org.au"
+      country: "AU"
+      hours: "24/7"
+  CA:
+    - name: "Talk Suicide Canada"
+      phone: "1-833-456-4566"
+      url: "https://talksuicide.ca"
+      country: "CA"
+      hours: "24/7"
+
+# Always shown (in addition to / instead of country lines). EU 112 + worldwide directory.
+global:
+  - name: "Emergency services (EU)"
+    phone: "112"
+    country: "GLOBAL"
+    hours: "24/7"
+    url: "https://ec.europa.eu/info/topics/single-emergency-number-112_en"
+  - name: "Befrienders Worldwide (find a helpline near you)"
+    url: "https://www.befrienders.org"
+    country: "GLOBAL"
+    hours: "varies"
+  - name: "International Association for Suicide Prevention — crisis centre directory"
+    url: "https://www.iasp.info/resources/Crisis_Centres/"
+    country: "GLOBAL"
+    hours: "varies"
+
+# Default AI-disclosure also surfaced on a generic AI interaction (Layer 4 helper).
+ai_disclosure:
+  en: "Heads up: you're chatting with an AI study helper, not a human teacher or counselor."
+  cs: "Upozornění: bavíš se s AI pomocníkem na učení, ne s živým učitelem nebo poradcem."

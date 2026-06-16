@@ -19,7 +19,7 @@ from .api.v1.router import api_router
 from .core.config import settings
 from .db.bootstrap import bootstrap
 from .db.session import SessionLocal, init_db
-from .models import LearningRequest
+from .models import LearningRequest, SectionVisual
 
 logger = logging.getLogger("schoolautomaton")
 
@@ -40,6 +40,20 @@ async def _reap_stuck_requests(db: AsyncSession) -> None:
     if result.rowcount:
         logger.warning("Reaped %s stuck generation request(s) on startup", result.rowcount)
 
+
+async def _reap_stuck_visuals(db: AsyncSession) -> None:
+    """Fail any section visual still 'pending'/'generating' at boot. Visual realization is an
+    in-process background task that doesn't survive a restart, so such a row would never finish and
+    the reader would poll its placeholder forever. Marking it 'failed' lets the client fall back to
+    the alt text."""
+    result = await db.execute(
+        update(SectionVisual)
+        .where(SectionVisual.status.in_(("pending", "generating")))
+        .values(status="failed")
+    )
+    if result.rowcount:
+        logger.warning("Reaped %s stuck section visual(s) on startup", result.rowcount)
+
 _DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 _CSP_PROD = (
     "default-src 'self'; "
@@ -58,6 +72,7 @@ async def lifespan(app: FastAPI):
     async with SessionLocal() as db:
         await bootstrap(db)
         await _reap_stuck_requests(db)
+        await _reap_stuck_visuals(db)
         await db.commit()
     logger.info("SchoolAutomaton backend ready (env=%s)", settings.env)
     yield

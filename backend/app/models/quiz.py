@@ -27,6 +27,8 @@ class Quiz(Base):
     request_id: Mapped[str] = mapped_column(String(36), index=True)
     title: Mapped[str] = mapped_column(String(200))
     language: Mapped[str] = mapped_column(String(12))
+    # Learner-selected education-system locale the quiz was generated under (BCP-47); None = generic.
+    education_locale: Mapped[str | None] = mapped_column(String(12), nullable=True)
     grade_band: Mapped[str] = mapped_column(String(12))
     subject: Mapped[str] = mapped_column(String(40))
     concept_id: Mapped[int | None] = mapped_column(ForeignKey("concepts.id"), nullable=True)

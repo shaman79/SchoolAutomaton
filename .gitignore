@@ -19,8 +19,10 @@ dist/
 .eslintcache
 
 # ---- Data / runtime (local DB, generated assets, caches) ----
-data/
-!data/.gitkeep
+# Anchored to the repo-root runtime dir only — must NOT match backend/app/data/, which holds
+# source-controlled config YAMLs (curricula, crisis_resources, badges, injection patterns).
+/data/
+!/data/.gitkeep
 backend/data/
 storage/
 !storage/.gitkeep

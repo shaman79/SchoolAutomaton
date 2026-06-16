@@ -14,6 +14,7 @@ import json
 from ...core.constants import READABILITY_TARGETS, TARGET_SUCCESS_RATE
 from ...schemas.enums import LESSON_SKELETON
 from ...schemas.intent import StructuredIntent
+from .curriculum import curriculum_directive
 from .pedagogy import SYSTEM_PEDAGOGY, SYSTEM_PEDAGOGY_EN
 
 __all__ = [
@@ -49,10 +50,13 @@ def language_directive(language: str) -> str:
 
 
 def _intent_context(intent: StructuredIntent) -> str:
-    """Render the validated-intent context block (volatile; no raw student text)."""
+    """Render the validated-intent context block (volatile; no raw student text).
+
+    Appends the education-system directive when the learner selected a region locale — kept in this
+    volatile tail (never the cached prefix) so the prompt cache stays byte-identical (SPEC §5)."""
     target = READABILITY_TARGETS.get(intent.grade_band.value, READABILITY_TARGETS["unknown"])
     constraints = "; ".join(intent.constraints) if intent.constraints else "(none)"
-    return (
+    block = (
         f"subject: {intent.subject.value}\n"
         f"topic: {intent.topic}\n"
         f"grade_band: {intent.grade_band.value}\n"
@@ -62,6 +66,10 @@ def _intent_context(intent: StructuredIntent) -> str:
         f"max_new_terms: {target['max_new_terms']}\n"
         f"extra_constraints: {constraints}"
     )
+    curriculum = curriculum_directive(intent.education_locale, intent.grade_band)
+    if curriculum:
+        block = f"{block}\n\n{curriculum}"
+    return block
 
 
 def build_lesson_plan_user(intent: StructuredIntent) -> str:

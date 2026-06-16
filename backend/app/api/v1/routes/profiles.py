@@ -27,7 +27,11 @@ router = APIRouter(prefix="/profiles", tags=["profiles"])
 @router.post("", response_model=ProfileCreateOut, status_code=status.HTTP_201_CREATED)
 async def create_profile(body: CreateProfileIn, db: AsyncSession = Depends(get_db)):
     code, profile = await profile_service.create_profile(
-        db, locale=body.locale, age_band=body.age_band.value, display_name=body.display_name
+        db,
+        locale=body.locale,
+        education_locale=body.education_locale,
+        age_band=body.age_band.value,
+        display_name=body.display_name,
     )
     settings = await profile_service._get_settings(db, profile)
     return ProfileCreateOut(

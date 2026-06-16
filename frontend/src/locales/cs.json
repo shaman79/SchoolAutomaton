@@ -162,6 +162,7 @@
     "reduced_motion": "Omezit pohyb",
     "sound": "Zvuk",
     "language": "Jazyk",
+    "language_hint": "Určuje jazyk a vzdělávací systém, podle kterého se tvoří nové lekce a testy.",
     "skip_to_content": "Přeskočit na obsah",
     "synced_hint": "Tvá nastavení jsou uložena a sledují tvůj kód pro pokračování.",
     "theme_default": "Výchozí",

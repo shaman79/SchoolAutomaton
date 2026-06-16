@@ -19,7 +19,7 @@ import SaButton from '@/components/common/SaButton.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { FONT_OPTIONS, FONT_SCALE_STEPS, THEME_OPTIONS } from '@/composables/useTheme'
-import { setLocale, SUPPORTED_LOCALES } from '@/i18n'
+import { baseUiLocale, EDUCATION_LOCALES, setLocale } from '@/i18n'
 import { useSessionStore } from '@/stores/session'
 import { usePrefsStore } from '@/stores/prefs'
 
@@ -35,7 +35,13 @@ const panelRef = ref<HTMLElement | null>(null)
 const closeBtnRef = ref<HTMLElement | null>(null)
 let lastFocused: HTMLElement | null = null
 
-const LOCALE_LABELS: Record<string, string> = { en: 'English', cs: 'Čeština' }
+// Region-qualified options: the choice drives BOTH the generated-content curriculum + language and
+// the UI language (its base language).
+const LOCALE_LABELS: Record<string, string> = {
+  'en-US': 'English (US)',
+  'en-GB': 'English (UK)',
+  'cs-CZ': 'Čeština',
+}
 
 // --- live persistence: apply locally now, sync to server (debounced, best-effort) ---
 let syncTimer: ReturnType<typeof setTimeout> | null = null
@@ -48,9 +54,11 @@ function scheduleSync() {
   }, 500)
 }
 
-function onLocaleChange(loc: string) {
-  prefs.locale = loc
-  setLocale(loc)
+function onLocaleChange(educationLocale: string) {
+  prefs.educationLocale = educationLocale
+  const ui = baseUiLocale(educationLocale)
+  prefs.locale = ui
+  setLocale(ui)
   scheduleSync()
 }
 
@@ -145,17 +153,18 @@ watch(
                 <legend class="mb-1 font-semibold">{{ t('a11y.language') }}</legend>
                 <div class="flex flex-wrap gap-2">
                   <button
-                    v-for="loc in SUPPORTED_LOCALES"
+                    v-for="loc in EDUCATION_LOCALES"
                     :key="loc"
                     type="button"
                     class="sa-opt"
-                    :class="{ 'sa-opt--on': prefs.locale === loc }"
-                    :aria-pressed="prefs.locale === loc"
+                    :class="{ 'sa-opt--on': prefs.educationLocale === loc }"
+                    :aria-pressed="prefs.educationLocale === loc"
                     @click="onLocaleChange(loc)"
                   >
                     {{ LOCALE_LABELS[loc] ?? loc }}
                   </button>
                 </div>
+                <p class="text-xs text-[var(--color-ink-soft)]">{{ t('a11y.language_hint') }}</p>
               </fieldset>
 
               <!-- Theme -->

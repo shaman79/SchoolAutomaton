@@ -13,7 +13,13 @@ import '@fontsource/opendyslexic/700.css'
 import './style/main.css'
 
 import App from './App.vue'
-import { SUPPORTED_LOCALES, i18n, setLocale } from './i18n'
+import {
+  EDUCATION_LOCALES,
+  SUPPORTED_LOCALES,
+  educationLocaleFromBrowser,
+  i18n,
+  setLocale,
+} from './i18n'
 import router from './router'
 import { usePrefsStore } from './stores/prefs'
 
@@ -35,6 +41,14 @@ if (!hadStoredPrefs) {
   if ((SUPPORTED_LOCALES as readonly string[]).includes(browserLang)) {
     prefs.locale = browserLang
   }
+}
+// Ensure a concrete education-system locale (drives generated content). Keep a valid persisted choice;
+// otherwise derive one from the browser (a fresh visit) or from the existing UI locale (an upgrade
+// from before this setting existed, e.g. cs UI → cs-CZ).
+if (!(EDUCATION_LOCALES as readonly string[]).includes(prefs.educationLocale ?? '')) {
+  prefs.educationLocale = hadStoredPrefs
+    ? educationLocaleFromBrowser(prefs.locale)
+    : educationLocaleFromBrowser(navigator.language)
 }
 
 // Apply persisted accessibility prefs to <html> before first paint.

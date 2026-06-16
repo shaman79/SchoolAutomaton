@@ -18,6 +18,9 @@ export const usePrefsStore = defineStore(
     const reducedMotion = ref(false)
     const sound = ref(true)
     const locale = ref('en')
+    // Education-system locale (BCP-47, e.g. 'en-US') — shapes GENERATED content + its language.
+    // Distinct from `locale` (the UI language). null = generic (no curriculum); resolved on boot.
+    const educationLocale = ref<string | null>(null)
     const dailyGoal = ref<DailyGoal>('regular')
 
     function applyToDom() {
@@ -38,6 +41,7 @@ export const usePrefsStore = defineStore(
       reduced_motion: boolean
       sound: boolean
       locale: string
+      education_locale: string | null
       daily_goal: string
     }>) {
       if (s.theme) theme.value = s.theme as ThemeName
@@ -46,6 +50,7 @@ export const usePrefsStore = defineStore(
       if (typeof s.reduced_motion === 'boolean') reducedMotion.value = s.reduced_motion
       if (typeof s.sound === 'boolean') sound.value = s.sound
       if (s.locale) locale.value = s.locale
+      if (s.education_locale) educationLocale.value = s.education_locale
       if (s.daily_goal) dailyGoal.value = s.daily_goal as DailyGoal
       applyToDom()
     }
@@ -58,6 +63,7 @@ export const usePrefsStore = defineStore(
         reduced_motion: reducedMotion.value,
         sound: sound.value,
         locale: locale.value,
+        education_locale: educationLocale.value,
         daily_goal: dailyGoal.value,
       }
     }
@@ -74,6 +80,7 @@ export const usePrefsStore = defineStore(
       reducedMotion,
       sound,
       locale,
+      educationLocale,
       dailyGoal,
       applyToDom,
       hydrateFromServer,

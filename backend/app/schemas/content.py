@@ -8,14 +8,18 @@ from .questions import ItemPublic
 
 
 class AssetRefPublic(AppModel):
-    hash: str
-    url: str                      # /api/v1/assets/{hash}
-    asset_type: str               # svg|raster|svg_icon|video
+    hash: str | None = None       # null while a section visual is still pending/generating
+    url: str | None = None        # /api/v1/assets/{hash}; null until ready
+    asset_type: str | None = None  # svg|raster|svg_icon|video; null until ready
     layout_slot: LayoutSlot
     alt_text: str
     caption: str | None = None
     svg_inline: str | None = None  # present for asset_type=svg (sanitized server-side)
     label_overlay: list | None = None
+    # Async section visuals: 'pending'|'generating' → render a placeholder; 'ready' → render the asset;
+    # 'failed' → fall back to alt text. Defaults 'ready' so synchronous (hotspot/legacy) paths are
+    # unchanged.
+    status: str = "ready"
 
 
 class LessonObjectivePublic(AppModel):

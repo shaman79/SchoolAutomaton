@@ -48,7 +48,10 @@ class ProfileSettings(Base):
     font_scale: Mapped[float] = mapped_column(Float, default=1.0)      # 1.0|1.15|1.3
     reduced_motion: Mapped[bool] = mapped_column(Boolean, default=False)
     sound: Mapped[bool] = mapped_column(Boolean, default=True)
-    locale: Mapped[str] = mapped_column(String(12), default="en")
+    locale: Mapped[str] = mapped_column(String(12), default="en")  # UI language (en|cs)
+    # Education-system locale (BCP-47, e.g. 'en-US'); drives generated-content curriculum + language.
+    # Distinct from `locale` (UI) so the UI stays en/cs while content follows a region. None = generic.
+    education_locale: Mapped[str | None] = mapped_column(String(12), nullable=True)
     daily_goal: Mapped[str] = mapped_column(String(12), default="regular")
     interleave_strength: Mapped[float] = mapped_column(Float, default=INTERLEAVE_STRENGTH_DEFAULT)
     rest_days_per_week: Mapped[int] = mapped_column(Integer, default=REST_DAYS_PER_WEEK_DEFAULT)

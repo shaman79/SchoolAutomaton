@@ -143,6 +143,10 @@ def revalidate_intent(intent: StructuredIntent) -> StructuredIntent:
         age=intent.age,
         age_band=intent.age_band,
         language=intent.language,
+        # education_locale is NOT a classification — it is the learner's setting, admitted only on the
+        # proceed branch of build_decision from the trusted client locale. Force None here so any value
+        # the (tool-use) classifier hallucinated into the schema is dropped.
+        education_locale=None,
         constraints=clean_constraints,
         is_educational=bool(intent.is_educational),
         off_task=bool(intent.off_task),
@@ -157,11 +161,23 @@ def build_decision(
     request_id: str,
     *,
     country: str | None = None,
+    client_locale: str | None = None,
 ) -> Decision:
     """Deterministically route a (raw, unvalidated) classifier verdict to a Decision.
 
-    Always re-validates the intent first. The country hint (optional) localizes crisis resources.
+    Always re-validates the intent first. ``client_locale`` is the learner's trusted education-system
+    setting (e.g. 'en-GB'): on the PROCEED branch it pins ``education_locale`` + the output ``language``
+    (decision 1a). It also derives the crisis-resource ``country`` when not given. It is applied AFTER
+    safety routing so crisis/refuse/clarify copy stays keyed on the genuinely DETECTED language (never
+    mislocalizing a child's crisis resources to the device setting).
     """
+    # Pure helpers live with the curriculum registry; lazy import avoids any import-time coupling.
+    from ..llm.prompts.curriculum import base_language, country_of, normalize_education_locale
+
+    edu_locale = normalize_education_locale(client_locale)
+    if country is None:
+        country = country_of(edu_locale)
+
     clean = revalidate_intent(intent)
 
     # 1) Crisis — self-harm always wins, regardless of anything else.
@@ -217,6 +233,17 @@ def build_decision(
         )
     else:
         proceed_intent = clean
+
+    # Apply the learner's education-system setting (decision 1a: it drives BOTH the curriculum and the
+    # output language). Done here, on the proceed path only, so the override never touches the
+    # crisis/refuse/clarify localization above.
+    if edu_locale:
+        proceed_intent = proceed_intent.model_copy(
+            update={
+                "education_locale": edu_locale,
+                "language": base_language(edu_locale) or proceed_intent.language,
+            }
+        )
 
     return ProceedDecision(
         request_id=request_id,
