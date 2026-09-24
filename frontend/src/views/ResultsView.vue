@@ -33,6 +33,15 @@ const summary = computed<ResultsSummary | null>(() => (test.summary as ResultsSu
 const accuracyPct = computed(() =>
   summary.value ? Math.round(summary.value.accuracy * 100) : null,
 )
+// Growth-mindset headline that fits the run: celebrate a strong one, credit progress otherwise —
+// never a hollow "Great job!" over a 30 % score.
+const titleKey = computed(() => {
+  const acc = summary.value?.accuracy
+  if (acc == null) return 'results.title'
+  if (acc >= 0.8) return 'results.title_great'
+  return acc >= 0.5 ? 'results.title_good' : 'results.title_keep'
+})
+
 // "Sub-par" → surface similar content as a friendly second chance rather than a celebration.
 const subPar = computed(() => summary.value != null && summary.value.accuracy < 0.6)
 
@@ -76,7 +85,7 @@ onMounted(async () => {
       <span class="sa-results__crown" aria-hidden="true">
         <SaIcon name="trophy" :size="40" />
       </span>
-      <h1 class="sa-results__title">{{ t('results.title') }}</h1>
+      <h1 class="sa-results__title">{{ t(titleKey) }}</h1>
     </header>
 
     <!-- Headline stats -->

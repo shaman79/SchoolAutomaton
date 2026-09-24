@@ -10,6 +10,8 @@ export interface StructuredIntent {
   topic: string
   mode: Mode
   grade_band: string
+  /** Exact school year (1 = first grade, 0 = kindergarten) when known; finer than grade_band. */
+  school_year?: number | null
   age: number | null
   age_band: string
   language: string
@@ -51,6 +53,8 @@ export interface ProfileSettings {
   locale: string
   /** BCP-47 education-system locale (en-US/en-GB/cs-CZ) driving generated content. */
   education_locale: string | null
+  /** The learner's class as an exact school year; null = not set. */
+  school_year: number | null
   daily_goal: 'casual' | 'regular' | 'serious' | 'intense'
   interleave_strength: number
   rest_days_per_week: number
@@ -187,6 +191,7 @@ export interface Lesson {
   topic: string
   language: string
   grade_band: string
+  school_year?: number | null
   subject: string
   objectives: LessonObjective[]
   measured_fkgl: number | null
@@ -208,6 +213,7 @@ export interface Quiz {
   title: string
   language: string
   grade_band: string
+  school_year?: number | null
   subject: string
   quiz_type: string
   questions: QuizQuestion[]

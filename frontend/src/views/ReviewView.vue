@@ -15,12 +15,13 @@ import SaButton from '@/components/common/SaButton.vue'
 import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { ApiError, api } from '@/lib/api'
+import { formatNumber } from '@/lib/format'
 import { useGenerationStore } from '@/stores/generation'
 import type { ItemPublic } from '@/types/question'
 import type { QuizReview } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const gen = useGenerationStore()
 
 const review = ref<QuizReview | null>(null)
@@ -53,7 +54,7 @@ function formatValue(item: ItemPublic, value: unknown): string {
     case 'short_answer':
       return String(value)
     case 'numeric':
-      return `${value as number}${p.unit ? ` ${p.unit}` : ''}`
+      return `${typeof value === 'number' ? formatNumber(value, locale.value) : String(value)}${p.unit ? ` ${p.unit}` : ''}`
     case 'match': {
       const pairs = (value as { left_id: string; right_id: string }[]) ?? []
       const left = (id: string) => p.left.find((s) => s.id === id)?.text ?? id

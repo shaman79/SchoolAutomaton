@@ -73,8 +73,14 @@ async function onAnswer(e: AnswerEvent) {
     if (res.level_up) {
       toast.success(t('test.level_up', { level: res.level_up.to_level }), { icon: 'trophy' })
     }
-    for (const b of res.new_badges) {
-      toast.success(t('test.badge_unlocked', { title: b.title }), { icon: 'trophy', timeout: 6000 })
+    // One toast however many badges this answer unlocked — a stack of them hid the Next button.
+    const badges = res.new_badges.map((b) => b.title)
+    if (badges.length) {
+      const msg =
+        badges.length === 1
+          ? t('test.badge_unlocked', { title: badges[0] })
+          : t('test.badges_unlocked', { titles: badges.join(', ') })
+      toast.success(msg, { icon: 'trophy', timeout: 6000 })
     }
   } catch {
     toast.error(t('test.grade_error'))

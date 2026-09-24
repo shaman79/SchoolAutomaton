@@ -24,7 +24,8 @@ import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
-import { humanizeSubject } from '@/lib/format'
+import { subjectLabel } from '@/lib/format'
+import { levelLabel } from '@/lib/grades'
 import { useGenerationStore } from '@/stores/generation'
 import { useLessonStore } from '@/stores/lesson'
 import { usePrefsStore } from '@/stores/prefs'
@@ -123,6 +124,19 @@ function isLocked(s: LessonSection): boolean {
 
 const objectives = computed(() => lesson.value?.objectives ?? [])
 
+// "Matematika · 4. třída · 15 min" — subject and level named the way the learner's school names them.
+const crumbs = computed(() => {
+  const l = lesson.value
+  if (!l) return ''
+  return [
+    subjectLabel(l.subject),
+    levelLabel(l, prefs.educationLocale),
+    l.estimated_duration_min ? t('lesson.minutes', { n: l.estimated_duration_min }) : '',
+  ]
+    .filter(Boolean)
+    .join(' · ')
+})
+
 async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
   if (feedbackByItem.value[e.questionId]) return // already graded
   try {
@@ -164,12 +178,7 @@ onUnmounted(() => lessonStore.stopPolls())
   <article v-if="lesson" class="sa-lesson">
     <!-- Header -->
     <header class="sa-lesson__header">
-      <p class="sa-lesson__crumbs">
-        {{ humanizeSubject(lesson.subject) }} · {{ lesson.grade_band }}
-        <span v-if="lesson.estimated_duration_min">
-          · {{ t('lesson.minutes', { n: lesson.estimated_duration_min }) }}
-        </span>
-      </p>
+      <p class="sa-lesson__crumbs">{{ crumbs }}</p>
       <h1 class="sa-lesson__title">{{ lesson.topic }}</h1>
     </header>
 

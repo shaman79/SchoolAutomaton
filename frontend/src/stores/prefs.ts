@@ -21,6 +21,11 @@ export const usePrefsStore = defineStore(
     // Education-system locale (BCP-47, e.g. 'en-US') — shapes GENERATED content + its language.
     // Distinct from `locale` (the UI language). null = generic (no curriculum); resolved on boot.
     const educationLocale = ref<string | null>(null)
+    // The learner's class as an exact school year (lib/grades: 1 = first grade, 0 = preschool).
+    // Sent with each prompt so content fits the class when the prompt names no level. null = not set.
+    const schoolYear = ref<number | null>(null)
+    // The learner waved off the home "which grade are you in?" card — don't ask again on this device.
+    const gradePromptDismissed = ref(false)
     const dailyGoal = ref<DailyGoal>('regular')
 
     function applyToDom() {
@@ -42,6 +47,7 @@ export const usePrefsStore = defineStore(
       sound: boolean
       locale: string
       education_locale: string | null
+      school_year: number | null
       daily_goal: string
     }>) {
       if (s.theme) theme.value = s.theme as ThemeName
@@ -51,6 +57,9 @@ export const usePrefsStore = defineStore(
       if (typeof s.sound === 'boolean') sound.value = s.sound
       if (s.locale) locale.value = s.locale
       if (s.education_locale) educationLocale.value = s.education_locale
+      // Adopt a server class, but never let an unset server value wipe one chosen on this device
+      // before the profile existed (it is pushed up on the next sync).
+      if (typeof s.school_year === 'number') schoolYear.value = s.school_year
       if (s.daily_goal) dailyGoal.value = s.daily_goal as DailyGoal
       applyToDom()
     }
@@ -64,6 +73,7 @@ export const usePrefsStore = defineStore(
         sound: sound.value,
         locale: locale.value,
         education_locale: educationLocale.value,
+        school_year: schoolYear.value,
         daily_goal: dailyGoal.value,
       }
     }
@@ -81,6 +91,8 @@ export const usePrefsStore = defineStore(
       sound,
       locale,
       educationLocale,
+      schoolYear,
+      gradePromptDismissed,
       dailyGoal,
       applyToDom,
       hydrateFromServer,

@@ -20,7 +20,7 @@ import { useI18n } from 'vue-i18n'
 
 import type { KnowledgeTreeData, NodeState, TreeNode } from './types'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { humanizeSubject } from '@/lib/format'
+import { subjectLabel } from '@/lib/format'
 
 const props = withDefaults(
   defineProps<{
@@ -142,9 +142,9 @@ function masteryPct(n: TreeNode) {
 
       <!-- Garden beds grouped by subject. -->
       <div class="flex flex-col gap-5">
-        <section v-for="bed in beds" :key="bed.subject" :aria-label="humanizeSubject(bed.subject)">
+        <section v-for="bed in beds" :key="bed.subject" :aria-label="subjectLabel(bed.subject)">
           <h3 class="mb-2 text-sm font-bold uppercase tracking-wide text-[var(--color-ink-soft)]">
-            {{ humanizeSubject(bed.subject) }}
+            {{ subjectLabel(bed.subject) }}
           </h3>
           <ul class="grid list-none grid-cols-2 gap-2.5 p-0 sm:grid-cols-3 lg:grid-cols-4">
             <li v-for="n in bed.items" :key="n.concept_id">
@@ -201,6 +201,12 @@ function masteryPct(n: TreeNode) {
               class="mt-1 text-sm text-[var(--color-ink-soft)]"
             >
               {{ t('tree.water_hint') }}
+              <RouterLink
+                :to="{ name: 'daily' }"
+                class="ml-1 inline-flex min-h-[var(--tap-min)] items-center font-semibold text-[var(--color-primary)] underline"
+              >
+                {{ t('daily.cta') }}
+              </RouterLink>
             </p>
             <p
               v-else-if="selected.state === 'locked'"

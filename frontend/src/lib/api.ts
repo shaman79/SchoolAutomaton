@@ -85,6 +85,7 @@ export const api = {
   createProfile: (body: {
     locale?: string
     education_locale?: string | null
+    school_year?: number | null
     age_band?: string
     display_name?: string
   }) => request<ProfileCreateOut>('/profiles', { method: 'POST', body }),
@@ -117,9 +118,13 @@ export const api = {
 
   // ------------------------------------------------------------------------- requests / generation
   /** `locale` is the learner's education-system setting (e.g. 'en-GB') — drives the curriculum +
-   *  output language of the generated lesson/quiz. */
-  submitPrompt: (prompt: string, locale?: string | null) =>
-    request<Decision>('/requests', { method: 'POST', body: { prompt, locale } }),
+   *  output language of the generated lesson/quiz. `schoolYear` is their class setting, used only
+   *  when the prompt itself names no level. */
+  submitPrompt: (prompt: string, locale?: string | null, schoolYear?: number | null) =>
+    request<Decision>('/requests', {
+      method: 'POST',
+      body: { prompt, locale, school_year: schoolYear ?? null },
+    }),
 
   startGeneration: (requestId: string) =>
     request<{ request_id: string; status: string }>(`/requests/${requestId}/generate`, {

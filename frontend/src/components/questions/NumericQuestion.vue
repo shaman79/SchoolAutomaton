@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Numeric answer. inputmode="decimal" => mobile numeric keypad; the field accepts negative
- * and decimal values. Value emitted is a number (null guarded by the submit gate). Optional
+ * and decimal values, a decimal comma ("3,5") and space-grouped thousands ("12 500") as Czech
+ * pupils write them. Value emitted is a number (null guarded by the submit gate). Optional
  * unit is shown beside the field (display only — backend grades the number).
  */
 import { computed, ref, watch } from 'vue'
@@ -10,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { useAnswerTiming } from '@/components/questions/useAnswerTiming'
+import { parseNumericAnswer } from '@/lib/format'
 import type { AnswerEvent, ItemPublic, NumericPayload } from '@/types/question'
 import type { GradeResult } from '@/types/session'
 
@@ -26,11 +28,11 @@ const props = withDefaults(
 
 const emit = defineEmits<{ (e: 'answer', payload: AnswerEvent): void }>()
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const payload = computed(() => props.item.payload as NumericPayload)
 const timing = useAnswerTiming(() => props.item.id)
 
-// Keep as string so we can validate before coercing; supports comma decimal too.
+// Keep as string so we can validate before coercing (decimal comma, spaced thousands).
 const raw = ref('')
 watch(
   () => props.item.id,
@@ -42,12 +44,7 @@ watch(
 
 const locked = computed(() => props.disabled || !!props.feedback)
 
-const parsed = computed<number | null>(() => {
-  const s = raw.value.trim().replace(',', '.')
-  if (s === '' || s === '-' || s === '.' || s === '-.') return null
-  const n = Number(s)
-  return Number.isFinite(n) ? n : null
-})
+const parsed = computed<number | null>(() => parseNumericAnswer(raw.value, locale.value))
 
 const canSubmit = computed(() => parsed.value !== null && !locked.value)
 defineExpose({ submit, canSubmit })

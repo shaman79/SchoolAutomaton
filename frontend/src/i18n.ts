@@ -29,11 +29,23 @@ export function educationLocaleFromBrowser(tag: string | null | undefined): Educ
   return 'en-US' // default English variant
 }
 
+/**
+ * Czech plural forms: 1 → "den", 2-4 → "dny", 0 and 5+ → "dní". Messages list them in that order
+ * ("{count} den | {count} dny | {count} dní"); a two-form message falls back to singular/plural.
+ */
+export function czechPluralRule(choice: number, choicesLength: number): number {
+  const n = Math.abs(choice)
+  if (choicesLength < 3) return n === 1 ? 0 : 1
+  if (n === 1) return 0
+  return n >= 2 && n <= 4 ? 1 : 2
+}
+
 export const i18n = createI18n({
   legacy: false,
   locale: 'en',
   fallbackLocale: 'en',
   messages: { en, cs },
+  pluralRules: { cs: czechPluralRule },
 })
 
 export function setLocale(locale: string): void {

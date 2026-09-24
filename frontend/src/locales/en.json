@@ -22,7 +22,12 @@
       "Explain fractions with pictures, age 9",
       "Help me understand photosynthesis, 5th grade",
       "Test me on Spanish food vocabulary"
-    ]
+    ],
+    "grade_title": "Which grade are you in?",
+    "grade_desc": "Lessons and quizzes will then match what you're learning at school. You can change it any time.",
+    "grade_skip": "Not now",
+    "grade_for": "For: {grade}",
+    "grade_change": "Change grade"
   },
   "loading": {
     "thinking": "Putting your lesson together…",
@@ -55,6 +60,9 @@
   },
   "results": {
     "title": "Nice work!",
+    "title_great": "Great work!",
+    "title_good": "Good progress!",
+    "title_keep": "Every try moves you forward",
     "score": "Score",
     "accuracy": "Accuracy",
     "xp_earned": "XP earned",
@@ -118,7 +126,7 @@
     "streak_count": "{count}-day streak",
     "streak_longest": "Longest: {n}",
     "streak_protected": "Streak protected",
-    "streak_protected_a11y": "Streak protected at {count} days",
+    "streak_protected_a11y": "Streak protected at {count} day | Streak protected at {count} days",
     "streak_start": "Start a streak!",
     "xp_max": "Max level reached",
     "xp_to_next": "{n} XP to next level"
@@ -155,7 +163,7 @@
     "visit": "Open website"
   },
   "a11y": {
-    "settings": "Accessibility settings",
+    "settings": "Settings",
     "theme": "Theme",
     "font": "Font",
     "text_size": "Text size",
@@ -163,6 +171,9 @@
     "sound": "Sound",
     "language": "Language",
     "language_hint": "Sets the language and education system new lessons & quizzes follow.",
+    "school_year": "My grade",
+    "school_year_hint": "Lessons and quizzes are pitched at your grade unless your prompt asks for another.",
+    "school_year_unset": "Not set",
     "skip_to_content": "Skip to content",
     "synced_hint": "Your preferences are saved and follow your resume code.",
     "theme_default": "Default",
@@ -302,6 +313,7 @@
     "finish": "Finish",
     "level_up": "Level up! You're now level {level} 🎉",
     "badge_unlocked": "Badge unlocked: {title}!",
+    "badges_unlocked": "New badges: {titles}!",
     "grade_error": "We couldn't check that answer. Please try again.",
     "load_error_title": "We couldn't load this test",
     "load_error_body": "Something went wrong fetching your quiz. Let's head back and try again.",
@@ -360,5 +372,36 @@
     "mode_test": "Quiz",
     "in_progress": "Preparing…",
     "failed": "Failed"
+  },
+  "daily": {
+    "title": "Water your garden",
+    "cta": "Today's review",
+    "cta_count": "{n} question is ready for review | {n} questions are ready for review",
+    "intro": "A quick review at just the right time helps things stick for good.",
+    "progress_label": "Review progress",
+    "empty_title": "All watered",
+    "empty_body": "Nothing to review right now. When something starts to wilt, you'll find it here.",
+    "done_title": "Garden watered!",
+    "done_body": "{correct} of {total} correct. We'll come back to these in a few days.",
+    "load_error": "Couldn't load your review. Please try again."
+  },
+  "subjects": {
+    "math": "Math",
+    "science": "Science",
+    "biology": "Biology",
+    "chemistry": "Chemistry",
+    "physics": "Physics",
+    "geography": "Geography",
+    "history": "History",
+    "language_arts": "Language Arts",
+    "foreign_language": "Foreign Language",
+    "social_studies": "Social Studies",
+    "computer_science": "Computer Science",
+    "arts": "Art",
+    "music": "Music",
+    "health": "Health",
+    "economics": "Economics",
+    "philosophy": "Philosophy",
+    "other": "Other"
   }
 }

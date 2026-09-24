@@ -8,6 +8,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import DailyReviewCard from '@/components/common/DailyReviewCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import BadgeGrid from '@/components/gamification/BadgeGrid.vue'
 import DailyGoalRing from '@/components/gamification/DailyGoalRing.vue'
@@ -74,7 +75,11 @@ onMounted(async () => {
           <div class="sa-card sa-stats__tile">
             <StreakFlame :streak="gami.streak" size="lg" :show-label="false" />
             <span class="sa-stats__tile-label">
-              {{ gami.streak.current > 0 ? t('gamification.streak') : t('gamification.streak_start') }}
+              {{
+                gami.streak.current > 0
+                  ? t('gamification.streak', gami.streak.current)
+                  : t('gamification.streak_start')
+              }}
             </span>
             <span v-if="gami.streak.longest > 0" class="sa-stats__tile-sub">
               {{ t('gamification.streak_longest', { n: gami.streak.longest }) }}
@@ -84,6 +89,7 @@ onMounted(async () => {
             <DailyGoalRing :snapshot="gami" :size="92" />
           </div>
         </div>
+        <DailyReviewCard class="mt-3" />
       </section>
 
       <!-- Badges -->

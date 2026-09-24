@@ -93,9 +93,15 @@ function onKey(e: KeyboardEvent) {
         <SaIcon v-else-if="unlocked" name="trophy" :size="26" />
         <SaIcon v-else name="lock" :size="22" />
       </span>
-      <div class="min-w-0 flex-1">
+      <div class="min-w-0 flex-1" :class="{ 'w-full': compact }">
         <div class="flex items-center gap-1.5" :class="{ 'justify-center': compact }">
-          <p class="truncate font-bold leading-tight">{{ badge.title }}</p>
+          <!-- Compact cards are narrow: let long titles wrap (and hyphenate) rather than overflow. -->
+          <p
+            class="font-bold leading-tight"
+            :class="compact ? 'sa-badge-card__title--wrap' : 'truncate'"
+          >
+            {{ badge.title }}
+          </p>
         </div>
         <p
           v-if="badge.description && !compact"
@@ -127,6 +133,10 @@ function onKey(e: KeyboardEvent) {
 .sa-badge-card {
   display: block;
   width: 100%;
+}
+.sa-badge-card__title--wrap {
+  overflow-wrap: anywhere;
+  hyphens: auto;
 }
 .sa-badge-card__medal {
   width: 3rem;

@@ -17,9 +17,10 @@ export const usePromptStore = defineStore('prompt', () => {
     submitting.value = true
     error.value = null
     try {
-      // Send the learner's education-system setting so the lesson/quiz follows that curriculum + language.
+      // Send the learner's education-system + class settings so the lesson/quiz follows that
+      // curriculum, language and level.
       const prefs = usePrefsStore()
-      const d = await api.submitPrompt(text, prefs.educationLocale)
+      const d = await api.submitPrompt(text, prefs.educationLocale, prefs.schoolYear)
       decision.value = d
       return d
     } catch (e) {

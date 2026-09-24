@@ -36,13 +36,13 @@ const iconPx = computed(() => ({ sm: 18, md: 24, lg: 34 })[props.size])
 
 const label = computed(() => {
   if (isFrozen.value) return t('gamification.streak_protected')
-  if (count.value > 0) return t('gamification.streak_count', { count: count.value })
+  if (count.value > 0) return t('gamification.streak_count', count.value)
   return t('gamification.streak_start')
 })
 
 const a11yLabel = computed(() => {
-  if (isFrozen.value) return t('gamification.streak_protected_a11y', { count: count.value })
-  if (count.value > 0) return t('gamification.streak_count', { count: count.value })
+  if (isFrozen.value) return t('gamification.streak_protected_a11y', count.value)
+  if (count.value > 0) return t('gamification.streak_count', count.value)
   return t('gamification.streak_start')
 })
 
