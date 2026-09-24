@@ -53,6 +53,17 @@ def normalize_school_year(value: object) -> int | None:
     return year if SCHOOL_YEAR_MIN <= year <= SCHOOL_YEAR_MAX else None
 
 
+def age_band_for_school_year(year: int) -> AgeBand:
+    """The developmental AgeBand of a school year (0-2 early primary … 9+ upper secondary)."""
+    if year <= 2:
+        return AgeBand.EARLY_PRIMARY
+    if year <= 5:
+        return AgeBand.PRIMARY
+    if year <= 8:
+        return AgeBand.LOWER_SECONDARY
+    return AgeBand.UPPER_SECONDARY
+
+
 def grade_band_for_school_year(year: int) -> GradeBand:
     """The coarse GradeBand an exact school year falls in (0=K, 1-2, 3-5, 6-8, 9+ = G9-12)."""
     if year <= 0:

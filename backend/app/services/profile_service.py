@@ -19,7 +19,7 @@ from ..models import (
     StreakState,
     XpEvent,
 )
-from ..schemas.enums import DailyGoal
+from ..schemas.enums import AgeBand, DailyGoal, age_band_for_school_year
 from ..schemas.gamification import BadgeInfo, GamificationSnapshot, StreakInfo
 from ..schemas.profile import (
     ProfileEnvelope,
@@ -31,6 +31,15 @@ from . import leveling
 
 # Settings a PATCH may explicitly reset to null.
 _CLEARABLE_SETTINGS = frozenset({"school_year"})
+
+
+def _age_band_for_class(school_year: int | None) -> str:
+    """The profile age band implied by the learner's class. The app has no other age input, so
+    without this every profile stayed 'unknown' and the young-learner mechanics (smaller daily
+    new-item cap, weekly rest day) never applied."""
+    if school_year is None:
+        return AgeBand.UNKNOWN.value
+    return age_band_for_school_year(school_year).value
 
 
 async def _unique_resume_code(db: AsyncSession) -> tuple[str, str]:
@@ -53,6 +62,8 @@ async def create_profile(
     display_name: str | None = None,
 ) -> tuple[str, Profile]:
     code, code_hash = await _unique_resume_code(db)
+    if age_band == AgeBand.UNKNOWN.value and school_year is not None:
+        age_band = _age_band_for_class(school_year)
     profile = Profile(
         resume_code_hash=code_hash,
         display_name=display_name,
@@ -210,6 +221,8 @@ async def update_settings(
         # null means "unchanged" — except for the nullable class setting, where it means "not set".
         if (value is not None or field in _CLEARABLE_SETTINGS) and hasattr(settings, field):
             setattr(settings, field, value.value if hasattr(value, "value") else value)
+    if "school_year" in data:
+        profile.age_band = _age_band_for_class(settings.school_year)
     if settings.locale:
         profile.primary_language = settings.locale
     await db.flush()

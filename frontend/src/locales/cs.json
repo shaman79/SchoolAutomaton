@@ -404,5 +404,9 @@
     "economics": "Ekonomie a finance",
     "philosophy": "Filozofie",
     "other": "Ostatní"
+  },
+  "not_found": {
+    "title": "Tahle stránka se někam zatoulala.",
+    "back": "Zpět k učení"
   }
 }

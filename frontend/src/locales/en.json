@@ -403,5 +403,9 @@
     "economics": "Economics",
     "philosophy": "Philosophy",
     "other": "Other"
+  },
+  "not_found": {
+    "title": "This page wandered off.",
+    "back": "Back to learning"
   }
 }

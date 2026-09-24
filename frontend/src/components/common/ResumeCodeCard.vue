@@ -80,7 +80,7 @@ async function shareLink() {
       <h2 id="sa-code-title" class="sa-code__title">{{ t('resume.your_code') }}</h2>
     </div>
     <div class="sa-code__row">
-      <code class="sa-code__value" aria-label="code.value">{{ code }}</code>
+      <code class="sa-code__value">{{ code }}</code>
       <span class="sa-code__actions">
         <SaButton variant="ghost" size="sm" icon="check" @click="copy">{{ t('resume.copy') }}</SaButton>
         <SaButton variant="ghost" size="sm" icon="share" @click="shareLink">{{ t('resume.share') }}</SaButton>

@@ -39,7 +39,7 @@ from ..models import (
     StreakState,
     XpEvent,
 )
-from ..schemas.enums import FsrsRating, NodeState, XpReason
+from ..schemas.enums import AgeBand, FsrsRating, NodeState, XpReason
 from ..schemas.gamification import (
     FeedbackBlock,
     GradeResult,
@@ -893,11 +893,11 @@ async def settle_streak(
     settings = await db.scalar(
         select(ProfileSettings).where(ProfileSettings.profile_id == profile.id)
     )
-    rest_cap = (
-        settings.rest_days_per_week
-        if settings is not None
-        else (REST_DAYS_PER_WEEK_YOUNG if profile.age_band == "early_primary" else 0)
-    )
+    # Every profile has a settings row whose rest_days_per_week defaults to 0, so the young-learner
+    # rest day must be a floor, not a fallback for a missing row (which never happens).
+    configured = settings.rest_days_per_week if settings is not None else 0
+    young = profile.age_band == AgeBand.EARLY_PRIMARY.value
+    rest_cap = max(configured, REST_DAYS_PER_WEEK_YOUNG if young else 0)
 
     # Reset the weekly rest-day budget at the start of a new week BEFORE consuming any for today's
     # return, so a Monday return can't both spend and immediately refund its allowance.
