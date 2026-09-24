@@ -84,8 +84,15 @@ journalctl -u schoolautomaton-update.service -f          # live logs
 Requirements: the deploy must be a **git clone** (so it can `git pull`) and the deploy user must be
 in the `docker` group (the deploy script arranges this). Auto-update runs as that user.
 
-> Note: schema-changing releases (rare) aren't auto-migrated — the app creates missing tables on boot
-> but won't alter existing ones. For those, redeploy with a fresh `sa-data` or apply a migration.
+> Note: on boot the app creates missing tables and adds missing nullable columns in place (additive
+> migrations in `backend/app/db/session.py`), so such releases update themselves and keep the data.
+> Only destructive schema changes (renaming/dropping columns, changing types) need a manual
+> migration or a fresh `sa-data`.
+>
+> There is no CI: `update.sh` pulls and rebuilds whatever lands on the checked-out branch (`main`),
+> so run the tests before merging. A failing image build aborts the update and the running
+> containers stay up — but the pull already happened, so later scheduled runs see no new commit and
+> won't retry: push a fix or run `./infra/scripts/update.sh --force`.
 
 ## 5. Update / operate manually
 
