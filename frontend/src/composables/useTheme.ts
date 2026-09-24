@@ -30,6 +30,15 @@ export const FONT_OPTIONS: FontOption[] = [
   { value: 'opendyslexic', labelKey: 'a11y.font_opendyslexic' },
 ]
 
+/**
+ * Fonts that render the UI language correctly. The bundled OpenDyslexic draws lowercase "š" with the
+ * capital "Š" glyph (same height as "Š" in the font file) — a letter confusion, exactly what a
+ * dyslexic reader must not get — so it isn't offered for Czech (and CSS falls back to Lexend there).
+ */
+export function fontOptionsFor(uiLocale: string): FontOption[] {
+  return uiLocale === 'cs' ? FONT_OPTIONS.filter((f) => f.value !== 'opendyslexic') : FONT_OPTIONS
+}
+
 /** Discrete, accessible text-size steps (maps to --font-scale). */
 export const FONT_SCALE_STEPS = [0.9, 1, 1.15, 1.3, 1.5] as const
 

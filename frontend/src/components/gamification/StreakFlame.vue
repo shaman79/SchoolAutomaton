@@ -96,7 +96,7 @@ const flicker = computed(() => isActive.value && !reduced.value)
         />
       </svg>
     </span>
-    <span v-if="count > 0" class="sa-streak__count tabular-nums" aria-hidden="true">{{ count }}</span>
+    <span v-if="count > 0 && !showLabel" class="sa-streak__count tabular-nums" aria-hidden="true">{{ count }}</span>
     <span v-if="showLabel" class="sa-streak__label text-sm" aria-hidden="true">{{ label }}</span>
   </span>
 </template>

@@ -26,19 +26,13 @@ watch(
 )
 
 /**
- * We do NOT call ensureProfile here (it's lazy at the first prompt — SPEC flow).
- * But if a resume code is already cached, best-effort hydrate the gamification
- * snapshot so the header bar shows level/streak/XP immediately. Errors (offline,
- * stale code) are swallowed; ensureProfile will fully recover later.
+ * We do NOT create a profile here (that stays lazy, at the first prompt — SPEC flow). But a returning
+ * learner's existing profile is loaded right away, so their class, language and progress show on the
+ * first screen instead of only after they submit something. Errors are swallowed (offline / stale
+ * code); ensureProfile recovers at the first prompt.
  */
-onMounted(async () => {
-  if (session.resumeCode && !session.gamification) {
-    try {
-      await session.refreshGamification()
-    } catch {
-      /* ignore — header simply hides the bar until a profile loads */
-    }
-  }
+onMounted(() => {
+  if (session.resumeCode) void session.loadExisting()
 })
 </script>
 

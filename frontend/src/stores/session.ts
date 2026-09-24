@@ -79,6 +79,20 @@ export const useSessionStore = defineStore('session', () => {
     ready.value = true
   }
 
+  /** App boot with a stored code: load that learner's profile (settings, progress) right away instead
+   *  of at the first prompt. Never creates a profile; a stale code is left for ensureProfile. */
+  async function loadExisting(): Promise<void> {
+    if (!resumeCode.value || profile.value) return
+    try {
+      _adopt(await api.getMe())
+      ready.value = true
+      const prefs = usePrefsStore()
+      if (prefs.schoolYearPending || prefs.languagePending) await syncPrefs().catch(() => {})
+    } catch {
+      /* offline or stale code — the first prompt's ensureProfile recovers */
+    }
+  }
+
   async function resumeWithCode(code: string): Promise<void> {
     const env = await api.resumeProfile(code)
     // A different learner is taking over this device — drop the previous learner's content first,
@@ -129,6 +143,7 @@ export const useSessionStore = defineStore('session', () => {
     isAuthenticated,
     level,
     ensureProfile,
+    loadExisting,
     resumeWithCode,
     refreshGamification,
     syncPrefs,

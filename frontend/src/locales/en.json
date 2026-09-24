@@ -164,6 +164,7 @@
     "settings": "Settings",
     "theme": "Theme",
     "font": "Font",
+    "font_hint": "For dyslexia, the “Dyslexia-friendly” theme with a plain font (Lexend or Atkinson) usually reads best. OpenDyslexic suits some readers but not others — try what reads best for your child.",
     "text_size": "Text size",
     "reduced_motion": "Reduce motion",
     "sound": "Sound",

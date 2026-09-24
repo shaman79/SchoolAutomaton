@@ -52,8 +52,12 @@
   --font-sans: 'Atkinson Hyperlegible', system-ui, sans-serif;
 }
 :root[data-font='opendyslexic'] {
+  /* Already wide and heavy by design — it gets no extra spacing on top (see the dyslexia theme). */
   --font-sans: 'OpenDyslexic', 'Comic Sans MS', system-ui, sans-serif;
-  letter-spacing: 0.02em;
+}
+/* The bundled OpenDyslexic draws lowercase "š" as a capital "Š": never use it for Czech. */
+:root[lang='cs'][data-font='opendyslexic'] {
+  --font-sans: 'Lexend', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 :root[data-theme='highcontrast'] {
   --color-bg: #ffffff;
@@ -70,10 +74,11 @@
   --shadow-card: 0 0 0 2px #000;
   --shadow-pop: 0 0 0 3px #000;
 }
-/* Dyslexia-friendly reading: a warm, low-glare cream palette (white pages can wash out / "shimmer"
-   for dyslexic readers) plus the spacing aids that the evidence backs most — wider letter/word
-   spacing and taller lines. The OpenDyslexic typeface stays an independent Font choice; selecting it
-   here is orthogonal. Tokens set the palette; the spacing is applied in @layer base below. */
+/* Dyslexia-friendly reading, kept CALM: a warm, low-glare cream palette (bright white can "shimmer"),
+   moderately wider letter/word spacing and ~1.5-1.6 line height (British Dyslexia Association style
+   guide), and less visual noise — no uppercase labels, no gradient text, lighter bold, plain page.
+   Works with any font; the plain sans fonts read at least as well as "dyslexia fonts" in studies, so
+   OpenDyslexic stays an optional Font choice and then gets no extra spacing on top of its own. */
 :root[data-theme='dyslexia'] {
   --color-bg: #f6efe1;
   --color-bg-tint: #efe6d2;
@@ -114,15 +119,30 @@
     max-width: 62ch;
     line-height: 1.7;
   }
-  /* Dyslexia-friendly spacing: open up letters, words and lines for easier tracking. */
+  /* Dyslexia theme: moderate spacing for tracking, applied to running text only. */
   :root[data-theme='dyslexia'] body {
-    letter-spacing: 0.035em;
-    word-spacing: 0.12em;
-    line-height: 1.85;
+    background: var(--color-bg);
+    letter-spacing: 0.02em;
+    word-spacing: 0.1em;
+    line-height: 1.6;
   }
   :root[data-theme='dyslexia'] .prose-reading {
-    max-width: 56ch;
-    line-height: 2;
+    max-width: 60ch;
+    line-height: 1.65;
+  }
+  /* Headings and bold are already emphatic: no extra spacing, and a lighter weight. */
+  :root[data-theme='dyslexia'] :is(h1, h2, h3, h4, strong, b) {
+    letter-spacing: 0;
+    word-spacing: 0;
+    font-weight: 600;
+  }
+  /* OpenDyslexic's metrics are extremely wide (its space is ~0.85em, about 3x a normal font), so words
+     fall apart on a phone. Never stack the theme's spacing on top, and pull the letters and especially
+     the word gaps back towards normal proportions. */
+  :root:not([lang='cs'])[data-font='opendyslexic'] body,
+  :root:not([lang='cs'])[data-font='opendyslexic'] :is(h1, h2, h3, h4, strong, b) {
+    letter-spacing: -0.05em;
+    word-spacing: -0.4em;
   }
   /* Visible, generous focus ring for keyboard users */
   :focus-visible {
@@ -202,6 +222,16 @@
   .safe-top {
     padding-top: max(env(safe-area-inset-top), 0.5rem);
   }
+}
+
+/* Dyslexia theme, less noise: all-caps words lose their shape (slower to read), and gradient text
+   lowers contrast — both are switched off app-wide. Outside @layer so they beat component styles. */
+:root[data-theme='dyslexia'] * {
+  text-transform: none !important;
+}
+:root[data-theme='dyslexia'] .sa-hero__title {
+  background: none;
+  color: var(--color-ink);
 }
 
 /* Respect the OS / per-profile reduced-motion preference everywhere. */

@@ -15,9 +15,8 @@ import SaButton from '@/components/common/SaButton.vue'
 import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { ApiError, api } from '@/lib/api'
-import { formatNumber } from '@/lib/format'
+import { formatAnswer } from '@/lib/answers'
 import { useGenerationStore } from '@/stores/generation'
-import type { ItemPublic } from '@/types/question'
 import type { QuizReview } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
@@ -33,48 +32,6 @@ const accuracyPct = computed(() =>
   review.value ? Math.round(review.value.accuracy * 100) : 0,
 )
 
-/** Render a per-type submitted/correct value as readable text by mapping option ids → their labels. */
-function formatValue(item: ItemPublic, value: unknown): string {
-  if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
-    return t('review.not_answered')
-  }
-  const p = item.payload
-  switch (p.kind) {
-    case 'mcq': {
-      const ids = Array.isArray(value) ? value : [value]
-      return ids.map((id) => p.options.find((o) => o.id === id)?.text ?? String(id)).join(', ')
-    }
-    case 'true_false':
-      return value ? t('q.tf.true') : t('q.tf.false')
-    case 'cloze': {
-      const map = (value ?? {}) as Record<string, string>
-      const filled = p.blanks.map((b) => map[b.id]).filter((v) => v != null && v !== '')
-      return filled.length ? filled.join(', ') : t('review.not_answered')
-    }
-    case 'short_answer':
-      return String(value)
-    case 'numeric':
-      return `${typeof value === 'number' ? formatNumber(value, locale.value) : String(value)}${p.unit ? ` ${p.unit}` : ''}`
-    case 'match': {
-      const pairs = (value as { left_id: string; right_id: string }[]) ?? []
-      const left = (id: string) => p.left.find((s) => s.id === id)?.text ?? id
-      const right = (id: string) => p.right.find((s) => s.id === id)?.text ?? id
-      return pairs.map((pr) => `${left(pr.left_id)} → ${right(pr.right_id)}`).join('; ')
-    }
-    case 'order': {
-      const ids = (value as string[]) ?? []
-      return ids.map((id) => p.tokens.find((tk) => tk.id === id)?.text ?? id).join(' → ')
-    }
-    case 'hotspot': {
-      const ids = Array.isArray(value) ? value : [value]
-      return ids
-        .map((id) => p.regions.find((r) => r.id === id)?.label ?? String(id))
-        .join(', ')
-    }
-    default:
-      return typeof value === 'string' ? value : JSON.stringify(value)
-  }
-}
 
 onMounted(async () => {
   try {
@@ -109,20 +66,20 @@ onMounted(async () => {
 
     <ol class="sa-review__list">
       <li v-for="q in review.items" :key="q.ordinal" class="sa-card sa-review__q">
-        <p class="sa-review__q-num">{{ t('review.question_n', { n: q.ordinal }) }}</p>
+        <p class="sa-review__q-num">{{ t('review.question_n', { n: q.ordinal + 1 }) }}</p>
         <SafeContent :markdown="q.item.stem_markdown" prose class="sa-review__stem" />
 
         <dl class="sa-review__answers">
           <div class="sa-review__answer">
             <dt>{{ t('review.your_answer') }}</dt>
             <dd :class="{ 'sa-review__bad': !q.is_correct }">
-              <span v-if="!q.is_correct" class="sa-review__mark" aria-hidden="true">↻</span>{{ formatValue(q.item, q.submitted_value) }}
+              <span v-if="!q.is_correct" class="sa-review__mark" aria-hidden="true">↻</span>{{ formatAnswer(q.item, q.submitted_value) }}
             </dd>
           </div>
           <div v-if="!q.is_correct" class="sa-review__answer">
             <dt>{{ t('review.correct_answer') }}</dt>
             <dd class="sa-review__good">
-              <span class="sa-review__mark" aria-hidden="true">✓</span>{{ formatValue(q.item, q.correct_answer) }}
+              <span class="sa-review__mark" aria-hidden="true">✓</span>{{ formatAnswer(q.item, q.correct_answer) }}
             </dd>
           </div>
         </dl>

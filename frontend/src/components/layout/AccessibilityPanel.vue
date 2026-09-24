@@ -18,7 +18,7 @@ import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
-import { FONT_OPTIONS, FONT_SCALE_STEPS, THEME_OPTIONS } from '@/composables/useTheme'
+import { FONT_SCALE_STEPS, THEME_OPTIONS, fontOptionsFor } from '@/composables/useTheme'
 import GradePicker from '@/components/common/GradePicker.vue'
 import { EDUCATION_LOCALES } from '@/i18n'
 import { useSessionStore } from '@/stores/session'
@@ -202,7 +202,7 @@ watch(
                 <legend class="mb-1 font-semibold">{{ t('a11y.font') }}</legend>
                 <div class="flex flex-wrap gap-2">
                   <button
-                    v-for="opt in FONT_OPTIONS"
+                    v-for="opt in fontOptionsFor(prefs.locale)"
                     :key="opt.value"
                     type="button"
                     class="sa-opt"
@@ -213,6 +213,7 @@ watch(
                     {{ t(opt.labelKey) }}
                   </button>
                 </div>
+                <p class="text-xs text-[var(--color-ink-soft)]">{{ t('a11y.font_hint') }}</p>
               </fieldset>
 
               <!-- Text size -->

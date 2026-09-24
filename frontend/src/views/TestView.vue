@@ -16,6 +16,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
+import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -68,7 +69,10 @@ async function onAnswer(e: AnswerEvent) {
     if (res.is_correct) {
       void celebrateCorrect(null)
       const combo = res.combo_multiplier > 1 ? ` ·  ×${res.combo_multiplier.toFixed(1)}` : ''
-      toast.success(`+${res.xp_awarded} ${t('gamification.xp')}${combo}`, { icon: 'star' })
+      // A "+0 XP" toast reads as a penalty (XP shrinks as mastery grows) — only show real gains.
+      if (res.xp_awarded > 0) {
+        toast.success(`+${res.xp_awarded} ${t('gamification.xp')}${combo}`, { icon: 'star' })
+      }
     }
     if (res.level_up) {
       toast.success(t('test.level_up', { level: res.level_up.to_level }), { icon: 'trophy' })
@@ -167,6 +171,7 @@ onMounted(async () => {
         managed
         @answer="onAnswer"
       />
+      <CorrectAnswer :item="current.item" :feedback="currentFeedback" />
     </div>
 
     <!-- Single morphing CTA: Check (until graded) → Next/Finish. A subtle Skip is offered while

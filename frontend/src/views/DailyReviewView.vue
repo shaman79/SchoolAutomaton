@@ -17,6 +17,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
+import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { ApiError, api } from '@/lib/api'
@@ -211,6 +212,7 @@ onMounted(() => {
           managed
           @answer="onAnswer"
         />
+        <CorrectAnswer :item="current" :feedback="feedback" />
       </div>
 
       <div class="sa-daily__footer safe-bottom">

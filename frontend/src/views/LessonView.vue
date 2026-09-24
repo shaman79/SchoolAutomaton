@@ -21,6 +21,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
+import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -237,6 +238,7 @@ onUnmounted(() => lessonStore.stopPolls())
               :sound="prefs.sound"
               @answer="(e: AnswerEvent) => onAnswer(e)"
             />
+            <CorrectAnswer :item="it" :feedback="feedbackByItem[it.id] ?? null" />
           </div>
         </div>
       </template>

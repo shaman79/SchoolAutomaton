@@ -3,8 +3,8 @@
  * Global toast outlet. Renders the shared toast queue inside polite/assertive
  * aria-live regions so screen readers announce them. Mounted once near the app
  * root. Toasts use icon + color + text (never color-only). Motion is gated on
- * the reduced-motion preference. Anchored at the bottom on mobile (thumb-zone),
- * top-right on larger screens, clear of safe-area insets.
+ * the reduced-motion preference. Anchored at the top (top-right on larger screens), clear of
+ * safe-area insets — at the bottom they covered the primary button and inline errors on phones.
  */
 import { computed } from 'vue'
 
@@ -28,7 +28,7 @@ const toneClass: Record<ToastTone, string> = {
 
 <template>
   <Teleport to="body">
-    <div class="sa-toast-host safe-bottom" :class="{ 'sa-toast-host--static': reduced }">
+    <div class="sa-toast-host" :class="{ 'sa-toast-host--static': reduced }">
       <div class="sa-toast-region" aria-live="polite" aria-atomic="false">
         <TransitionGroup :name="reduced ? '' : 'sa-toast'" tag="div" class="flex flex-col gap-2">
           <div
@@ -79,8 +79,9 @@ const toneClass: Record<ToastTone, string> = {
 <style scoped>
 .sa-toast-host {
   position: fixed;
-  inset: auto 0 0 0;
+  inset: 0 0 auto 0;
   z-index: 60;
+  padding-top: max(env(safe-area-inset-top), 0.75rem);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -91,7 +92,6 @@ const toneClass: Record<ToastTone, string> = {
   .sa-toast-host {
     inset: 0 0 auto auto;
     max-width: 24rem;
-    padding-top: max(env(safe-area-inset-top), 0.75rem);
   }
 }
 .sa-toast {

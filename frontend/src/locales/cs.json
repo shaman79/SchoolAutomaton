@@ -165,6 +165,7 @@
     "settings": "Nastavení",
     "theme": "Motiv",
     "font": "Písmo",
+    "font_hint": "Při dyslexii obvykle nejlépe funguje motiv „Pro dyslexii“ s běžným písmem – Lexend nebo Atkinson Hyperlegible. Vyzkoušejte, co dítěti čte nejlépe.",
     "text_size": "Velikost textu",
     "reduced_motion": "Omezit pohyb",
     "sound": "Zvuk",
