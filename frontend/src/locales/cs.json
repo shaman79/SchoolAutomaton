@@ -119,7 +119,11 @@
     "link_copied": "Odkaz zkopírován!",
     "share_text": "Pokračuj v učení na SchoolAutomaton — klepnutím navážeš tam, kde jsme skončili.",
     "created_toast": "Postup uložen! Tvůj kód pro pokračování je {code} — ulož si ho (najdeš ho v ⚙ Nastavení).",
-    "copy_failed": "Nepodařilo se zkopírovat — kód vyber podržením a zkopíruj."
+    "copy_failed": "Nepodařilo se zkopírovat — kód vyber podržením a zkopíruj.",
+    "qr_show": "Ukázat QR kód",
+    "qr_hide": "Skrýt QR kód",
+    "qr_alt": "QR kód s odkazem pro pokračování v učení",
+    "qr_hint": "Naskenuj ho fotoaparátem jiného telefonu nebo tabletu a pokračuj tam. Ukazuj ho jen svým lidem – kdo ho naskenuje, uvidí tvůj pokrok."
   },
   "gamification": {
     "level": "Úroveň",

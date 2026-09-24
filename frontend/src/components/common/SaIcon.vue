@@ -21,6 +21,7 @@ export type IconName =
   | 'lock'
   | 'books'
   | 'share'
+  | 'qr'
 
 const props = withDefaults(
   defineProps<{
@@ -80,6 +81,11 @@ const ICONS: Record<IconName, { stroke?: string; fill?: string }> = {
     // Three nodes joined — the standard "share" glyph.
     stroke:
       'M18 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM6 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM18 21a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6',
+  },
+  qr: {
+    // Three finder squares + a few modules — reads as "QR code" at icon size.
+    stroke:
+      'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 20h1M20 14v1',
   },
 }
 

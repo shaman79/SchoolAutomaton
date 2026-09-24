@@ -4,7 +4,8 @@
  * continue on any device. Surfaced on Home and in Settings. Copy-to-clipboard with a toast.
  * Renders nothing if there's no code yet (a profile is created lazily on first prompt).
  */
-import { computed } from 'vue'
+import QRCode from 'qrcode'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import SaButton from './SaButton.vue'
@@ -25,6 +26,37 @@ const shareUrl = computed(() =>
     ? `${window.location.origin}/resume?code=${encodeURIComponent(code.value)}`
     : '',
 )
+
+// QR of the same continue link: scan it with a parent's phone (or the tablet at school) to carry on
+// there without typing. Rendered locally to a PNG data URL — the link never leaves the device, and
+// data: images are already allowed by the CSP. Built lazily, only once the learner opens it.
+const qrOpen = ref(false)
+const qrSrc = ref('')
+
+async function renderQr() {
+  if (!qrOpen.value || !shareUrl.value) return
+  try {
+    qrSrc.value = await QRCode.toDataURL(shareUrl.value, {
+      errorCorrectionLevel: 'M',
+      margin: 2,
+      width: 240,
+      color: { dark: '#1f2330', light: '#ffffff' },
+    })
+  } catch {
+    qrSrc.value = ''
+  }
+}
+
+function toggleQr() {
+  qrOpen.value = !qrOpen.value
+  void renderQr()
+}
+
+// A new code (resume on this device, new learner) must never leave the old QR on screen.
+watch(shareUrl, () => {
+  qrSrc.value = ''
+  void renderQr()
+})
 
 async function writeClipboard(text: string): Promise<boolean> {
   try {
@@ -86,6 +118,21 @@ async function shareLink() {
         <SaButton variant="ghost" size="sm" icon="share" @click="shareLink">{{ t('resume.share') }}</SaButton>
       </span>
     </div>
+    <SaButton
+      variant="subtle"
+      size="sm"
+      icon="qr"
+      class="sa-code__qr-toggle"
+      :aria-expanded="qrOpen"
+      aria-controls="sa-code-qr"
+      @click="toggleQr"
+    >
+      {{ qrOpen ? t('resume.qr_hide') : t('resume.qr_show') }}
+    </SaButton>
+    <figure v-if="qrOpen" id="sa-code-qr" class="sa-code__qr">
+      <img v-if="qrSrc" :src="qrSrc" :alt="t('resume.qr_alt')" width="240" height="240" />
+      <figcaption>{{ t('resume.qr_hint') }}</figcaption>
+    </figure>
     <p v-if="!compact" class="sa-code__hint">{{ t('resume.save_hint') }}</p>
   </section>
 </template>
@@ -157,6 +204,31 @@ async function shareLink() {
   letter-spacing: 0.12em;
   color: var(--color-ink);
   user-select: all;
+}
+.sa-code__qr-toggle {
+  align-self: flex-start;
+}
+.sa-code__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  text-align: center;
+}
+/* Always dark-on-white with a quiet zone, whatever the theme — scanners need the contrast. */
+.sa-code__qr img {
+  width: min(240px, 100%);
+  height: auto;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 6px;
+  image-rendering: pixelated;
+}
+.sa-code__qr figcaption {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-ink-soft);
 }
 .sa-code__hint {
   margin: 0;

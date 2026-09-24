@@ -116,7 +116,11 @@
     "link_copied": "Link copied!",
     "share_text": "Continue learning on SchoolAutomaton — tap to pick up where we left off.",
     "created_toast": "Progress saved! Your code to continue is {code} — keep it safe (find it under ⚙ Settings).",
-    "copy_failed": "Couldn't copy — long-press or select the code to copy it."
+    "copy_failed": "Couldn't copy — long-press or select the code to copy it.",
+    "qr_show": "Show QR code",
+    "qr_hide": "Hide QR code",
+    "qr_alt": "QR code with the link to continue learning",
+    "qr_hint": "Scan it with another phone's or tablet's camera to carry on there. Only show it to people you trust — whoever scans it can see your progress."
   },
   "gamification": {
     "level": "Level",
