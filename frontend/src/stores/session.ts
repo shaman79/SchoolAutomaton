@@ -21,10 +21,13 @@ export const useSessionStore = defineStore('session', () => {
   const isAuthenticated = computed(() => profile.value !== null)
   const level = computed(() => gamification.value?.level ?? 1)
 
-  function _adopt(env: { profile: ProfilePublic; settings: unknown; gamification: GamificationSnapshot }) {
+  function _adopt(
+    env: { profile: ProfilePublic; settings: unknown; gamification: GamificationSnapshot },
+    opts: { identity?: boolean } = {},
+  ) {
     profile.value = env.profile
     gamification.value = env.gamification
-    usePrefsStore().hydrateFromServer(env.settings as Record<string, unknown>)
+    usePrefsStore().hydrateFromServer(env.settings as Record<string, unknown>, opts)
   }
 
   /** Purge per-learner content (quiz answers/results, lesson, generation) on an identity change so
@@ -50,7 +53,7 @@ export const useSessionStore = defineStore('session', () => {
         ready.value = true
         // A class picked on this device before the profile loaded is pushed up now (hydration
         // above kept it). Best-effort: the prompt itself already carries the local value.
-        if (prefs.schoolYearPending) await syncPrefs().catch(() => {})
+        if (prefs.schoolYearPending || prefs.languagePending) await syncPrefs().catch(() => {})
         return
       } catch {
         // The cached code is stale → we're about to become a different (fresh) learner.
@@ -70,6 +73,7 @@ export const useSessionStore = defineStore('session', () => {
     profile.value = created.profile
     // The new profile was created WITH the local class, so it is no longer pending.
     if (created.settings.school_year === prefs.schoolYear) prefs.schoolYearPending = false
+    if (created.settings.education_locale === prefs.educationLocale) prefs.languagePending = false
     prefs.hydrateFromServer(created.settings as unknown as Record<string, unknown>)
     await refreshGamification()
     ready.value = true
@@ -83,7 +87,7 @@ export const useSessionStore = defineStore('session', () => {
     usePrefsStore().resetForNewLearner()
     setResumeCode(code)
     resumeCode.value = code
-    _adopt(env)
+    _adopt(env, { identity: true })
     ready.value = true
   }
 
@@ -101,6 +105,9 @@ export const useSessionStore = defineStore('session', () => {
     // Confirmed — unless the learner changed the class again while the request was in flight.
     if ('school_year' in patch && patch.school_year === prefs.schoolYear) {
       prefs.schoolYearPending = false
+    }
+    if ('education_locale' in patch && patch.education_locale === prefs.educationLocale) {
+      prefs.languagePending = false
     }
   }
 

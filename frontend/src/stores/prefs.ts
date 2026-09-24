@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
-import { setLocale } from '@/i18n'
+import { baseUiLocale, educationLocaleFromBrowser, setLocale } from '@/i18n'
 
 export type ThemeName = 'default' | 'highcontrast' | 'dyslexia'
 export type FontName = 'lexend' | 'atkinson' | 'opendyslexic'
@@ -28,8 +28,11 @@ export const usePrefsStore = defineStore(
     // local value wins over hydration (the profile often loads only at the first prompt), and only
     // then is the class included in a settings sync — so a stale device never overwrites it.
     const schoolYearPending = ref(false)
-    // The learner waved off the home "which grade are you in?" card — don't ask again on this device.
-    const gradePromptDismissed = ref(false)
+    // Language rule: until the learner picks a language in Settings, the app follows the BROWSER
+    // (re-read on every visit). Once picked, the choice is followed everywhere — UI, generated content,
+    // server messages — and survives profile loads (pending until the server confirms it).
+    const languageChosen = ref(false)
+    const languagePending = ref(false)
     const dailyGoal = ref<DailyGoal>('regular')
 
     function applyToDom() {
@@ -53,14 +56,19 @@ export const usePrefsStore = defineStore(
       education_locale: string | null
       school_year: number | null
       daily_goal: string
-    }>) {
+    }>, opts: { identity?: boolean } = {}) {
       if (s.theme) theme.value = s.theme as ThemeName
       if (s.font) font.value = s.font as FontName
       if (typeof s.font_scale === 'number') fontScale.value = s.font_scale
       if (typeof s.reduced_motion === 'boolean') reducedMotion.value = s.reduced_motion
       if (typeof s.sound === 'boolean') sound.value = s.sound
-      if (s.locale) locale.value = s.locale
-      if (s.education_locale) educationLocale.value = s.education_locale
+      // Language: never over an unsynced local choice, never over "follow the browser" — except when
+      // a learner resumes their own profile (opts.identity), whose saved language then follows them.
+      if (!languagePending.value && (languageChosen.value || opts.identity) && s.education_locale) {
+        educationLocale.value = s.education_locale
+        locale.value = baseUiLocale(s.education_locale)
+        languageChosen.value = true
+      }
       // The server's class (including "not set") wins unless this device holds an unsynced choice.
       if ('school_year' in s && !schoolYearPending.value) schoolYear.value = s.school_year ?? null
       if (s.daily_goal) dailyGoal.value = s.daily_goal as DailyGoal
@@ -73,10 +81,25 @@ export const usePrefsStore = defineStore(
       schoolYearPending.value = true
     }
 
-    /** A different learner took over this device: their own class (and first-run card) apply. */
+    /** The learner picked a language (education system + UI language) in Settings. */
+    function setLanguage(edu: string) {
+      educationLocale.value = edu
+      locale.value = baseUiLocale(edu)
+      languageChosen.value = true
+      languagePending.value = true
+    }
+
+    /** No explicit choice yet: mirror the browser's language (called on every boot). */
+    function followBrowserLanguage(tag: string | null | undefined) {
+      if (languageChosen.value) return
+      educationLocale.value = educationLocaleFromBrowser(tag)
+      locale.value = baseUiLocale(educationLocale.value)
+    }
+
+    /** A different learner took over this device: their own settings apply, not unsynced local ones. */
     function resetForNewLearner() {
       schoolYearPending.value = false
-      gradePromptDismissed.value = false
+      languagePending.value = false
     }
 
     function toServerPatch() {
@@ -86,8 +109,9 @@ export const usePrefsStore = defineStore(
         font_scale: fontScale.value,
         reduced_motion: reducedMotion.value,
         sound: sound.value,
-        locale: locale.value,
-        education_locale: educationLocale.value,
+        // Language is pushed only once chosen, so a device that merely follows its browser never
+        // overwrites the learner's saved choice.
+        ...(languageChosen.value ? { locale: locale.value, education_locale: educationLocale.value } : {}),
         // Only a local change is pushed (null = cleared here); otherwise the server keeps its value.
         ...(schoolYearPending.value ? { school_year: schoolYear.value } : {}),
         daily_goal: dailyGoal.value,
@@ -109,11 +133,14 @@ export const usePrefsStore = defineStore(
       educationLocale,
       schoolYear,
       schoolYearPending,
-      gradePromptDismissed,
+      languageChosen,
+      languagePending,
       dailyGoal,
       applyToDom,
       hydrateFromServer,
       setSchoolYear,
+      setLanguage,
+      followBrowserLanguage,
       resetForNewLearner,
       toServerPatch,
     }

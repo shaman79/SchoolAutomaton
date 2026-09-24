@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
@@ -10,10 +10,11 @@ import AccessibilityPanel from '@/components/layout/AccessibilityPanel.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useSessionStore } from '@/stores/session'
+import { useUiStore } from '@/stores/ui'
 
 const { t } = useI18n()
 const session = useSessionStore()
-const panelOpen = ref(false)
+const ui = useUiStore()
 
 // When a brand-new anonymous profile is created, nudge the learner to save their continuation code
 // (they typically navigate straight into a lesson, so a sticky-ish toast catches the moment).
@@ -45,7 +46,7 @@ onMounted(async () => {
   <div class="flex min-h-dvh flex-col">
     <a href="#sa-main" class="sa-skip">{{ t('a11y.skip_to_content') }}</a>
 
-    <AppHeader @open-settings="panelOpen = true" />
+    <AppHeader @open-settings="ui.settingsOpen = true" />
 
     <main id="sa-main" class="mx-auto w-full max-w-screen-sm flex-1 px-4 safe-top safe-bottom lg:max-w-2xl">
       <RouterView v-slot="{ Component }">
@@ -62,12 +63,12 @@ onMounted(async () => {
       type="button"
       class="sa-a11y-fab sa-card safe-bottom"
       :aria-label="t('a11y.settings')"
-      @click="panelOpen = true"
+      @click="ui.settingsOpen = true"
     >
       <SaIcon name="settings" :size="24" />
     </button>
 
-    <AccessibilityPanel :open="panelOpen" @close="panelOpen = false" />
+    <AccessibilityPanel :open="ui.settingsOpen" @close="ui.settingsOpen = false" />
     <ToastHost />
   </div>
 </template>

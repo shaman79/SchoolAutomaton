@@ -244,14 +244,17 @@ def build_decision(
     # Apply age/grade context to avoid over-blocking legitimate older-student topics.
     effective_flags = safety.filter_safety_flags(clean)
 
-    lang = clean.language
+    # Refuse/clarify copy speaks the learner's chosen language (their setting), like the rest of the
+    # app; only the crisis card above stays in the language the child actually wrote in.
+    lang = base_language(edu_locale) or clean.language
+    in_ui_language = clean.model_copy(update={"language": lang})
 
     # 2) Other safety flags -> refuse + redirect.
     if effective_flags:
         return RefuseDecision(
             request_id=request_id,
             reason=_loc(_REFUSAL_REASON, lang),
-            redirect_suggestions=safety.refusal_redirect_suggestions(clean),
+            redirect_suggestions=safety.refusal_redirect_suggestions(in_ui_language),
         )
 
     # 3) Not educational or off-task -> refuse + redirect.
@@ -259,7 +262,7 @@ def build_decision(
         return RefuseDecision(
             request_id=request_id,
             reason=_loc(_REFUSAL_REASON, lang),
-            redirect_suggestions=safety.refusal_redirect_suggestions(clean),
+            redirect_suggestions=safety.refusal_redirect_suggestions(in_ui_language),
         )
 
     # 4) Low confidence -> clarify.

@@ -89,16 +89,51 @@ describe('class setting sync', () => {
     expect(prefs.schoolYearPending).toBe(false)
   })
 
-  it('gives a learner resuming on a shared device their own class and first-run card', async () => {
+  it('gives a learner resuming on a shared device their own class and language', async () => {
     const prefs = usePrefsStore()
     prefs.setSchoolYear(3) // the previous learner's class, never synced
-    prefs.gradePromptDismissed = true
-    ;(api.resumeProfile as Mock).mockResolvedValue(envelope(null))
+    prefs.setLanguage('en-GB') // and their language
+    ;(api.resumeProfile as Mock).mockResolvedValue(envelope(null)) // this learner: cs-CZ, no class
 
     await useSessionStore().resumeWithCode('WXYZ-2345')
 
     expect(prefs.schoolYear).toBeNull()
     expect(prefs.schoolYearPending).toBe(false)
-    expect(prefs.gradePromptDismissed).toBe(false)
+    expect(prefs.educationLocale).toBe('cs-CZ')
+    expect(prefs.locale).toBe('cs')
+  })
+})
+
+describe('language: browser until chosen, then the choice everywhere', () => {
+  it('follows the browser while nothing is chosen, and ignores the server copy', async () => {
+    const prefs = usePrefsStore()
+    prefs.followBrowserLanguage('en-GB')
+    expect([prefs.educationLocale, prefs.locale]).toEqual(['en-GB', 'en'])
+
+    ;(api.getMe as Mock).mockResolvedValue(envelope(null)) // server copy says cs-CZ
+    await useSessionStore().ensureProfile()
+    expect(prefs.educationLocale).toBe('en-GB')
+    // …and a sync doesn't overwrite the learner's saved language with the browser's.
+    await useSessionStore().syncPrefs()
+    expect((api.updateSettings as Mock).mock.calls.at(-1)![0]).not.toHaveProperty('education_locale')
+  })
+
+  it('once chosen, the browser no longer decides and the choice survives the profile load', async () => {
+    const prefs = usePrefsStore()
+    prefs.setLanguage('cs-CZ')
+    prefs.followBrowserLanguage('en-US') // next visit on an English browser
+    expect([prefs.educationLocale, prefs.locale]).toEqual(['cs-CZ', 'cs'])
+
+    const other = envelope(null)
+    other.settings.education_locale = 'en-US'
+    other.settings.locale = 'en'
+    ;(api.getMe as Mock).mockResolvedValue(other) // stale server copy
+    await useSessionStore().ensureProfile()
+
+    expect(prefs.educationLocale).toBe('cs-CZ')
+    expect(api.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ education_locale: 'cs-CZ', locale: 'cs' }),
+    )
+    expect(prefs.languagePending).toBe(false)
   })
 })

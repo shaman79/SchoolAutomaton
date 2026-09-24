@@ -83,7 +83,12 @@ async def sanitize_request(
         raw_intent = await classifier.classify(pre.clean_text, pre)
     except classifier.ClassifierUnavailable as exc:
         logger.warning("Classifier unavailable for %s: %s", request_id, exc)
-        lang = classifier.detect_language(pre.clean_text)
+        from ..llm.prompts.curriculum import base_language, normalize_education_locale
+
+        # The learner's chosen language when set, else a guess from what they typed.
+        lang = base_language(normalize_education_locale(client_locale)) or classifier.detect_language(
+            pre.clean_text
+        )
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, _UNAVAILABLE_MSG.get(lang, _UNAVAILABLE_MSG["en"])
         ) from exc

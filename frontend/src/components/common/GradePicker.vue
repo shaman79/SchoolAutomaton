@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One-tap class picker ("Do které třídy chodíš?"). Big pill buttons grouped by school stage, named
+ * One-tap class picker ("Moje třída", in Settings). Big pill buttons grouped by school stage, named
  * the way the learner's own education system names them (lib/grades). Picking a class lets every
  * later prompt skip "for 4th grade" — the backend applies it whenever a prompt names no level —
  * which matters most for the youngest learners, who can barely type yet.
@@ -14,14 +14,27 @@ import { schoolYearGroups, schoolYearLabel } from '@/lib/grades'
 const props = defineProps<{
   modelValue: number | null
   educationLocale: string | null
+  /** When given, a first pill lets the learner clear the class (emits null). */
+  unsetLabel?: string
 }>()
-const emit = defineEmits<{ (e: 'update:modelValue', year: number): void }>()
+const emit = defineEmits<{ (e: 'update:modelValue', year: number | null): void }>()
 
 const groups = computed(() => schoolYearGroups(props.educationLocale))
 </script>
 
 <template>
   <div class="sa-grades">
+    <div v-if="unsetLabel" class="sa-grades__pills">
+      <button
+        type="button"
+        class="sa-grades__pill"
+        :class="{ 'sa-grades__pill--on': modelValue === null }"
+        :aria-pressed="modelValue === null"
+        @click="emit('update:modelValue', null)"
+      >
+        {{ unsetLabel }}
+      </button>
+    </div>
     <div v-for="g in groups" :key="g.label" class="sa-grades__group" role="group" :aria-label="g.label">
       <p class="sa-grades__stage" aria-hidden="true">{{ g.label }}</p>
       <div class="sa-grades__pills">

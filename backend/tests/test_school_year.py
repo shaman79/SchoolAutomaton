@@ -239,3 +239,21 @@ def test_clarify_does_not_ask_for_the_grade_when_the_class_is_known():
     assert "třídy" not in knows.question
     # Suggestions carry no grade, so tapping one keeps the learner's own class.
     assert not any("třídu" in s for s in knows.suggestions)
+
+
+def test_refuse_and_clarify_follow_the_chosen_language_but_crisis_does_not():
+    typed_english = intent(language="en")
+    refuse = validate.build_decision(
+        typed_english.model_copy(update={"is_educational": False}), "rid", client_locale="cs-CZ"
+    )
+    assert isinstance(refuse, RefuseDecision)
+    assert "Pomáhám" in refuse.reason and any("násobilky" in s for s in refuse.redirect_suggestions)
+    clarify = validate.build_decision(
+        typed_english.model_copy(update={"classifier_confidence": 0.2}), "rid", client_locale="cs-CZ"
+    )
+    assert "Pomůžu" in clarify.question
+    crisis = validate.build_decision(
+        typed_english.model_copy(update={"safety_flags": [SafetyFlag.SELF_HARM]}), "rid",
+        client_locale="cs-CZ",
+    )
+    assert crisis.disclosure == safety.crisis_disclosure("en")  # the language the child wrote in

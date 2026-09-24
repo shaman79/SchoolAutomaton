@@ -7,8 +7,8 @@
  *   clarify  -> inline clarifying question + suggestion chips that REFINE the prompt
  *   refuse   -> friendly inline redirect with alternative-topic chips
  *   crisis   -> dedicated, non-dismissable CrisisCard (resources + AI disclosure)
- * A one-time "which grade are you in?" card stores the learner's class, so prompts don't need to
- * name the grade (the backend applies it whenever a prompt names no level).
+ * A compact line shows the learner's class (set in Settings) — prompts needn't name the grade, the
+ * backend applies the class whenever a prompt names no level.
  * Mobile-first, WCAG 2.2 AA (>=44px targets, aria-live status, visible focus, never color-only).
  */
 import { computed, nextTick, onMounted, ref } from 'vue'
@@ -17,7 +17,6 @@ import { useRouter } from 'vue-router'
 
 import CrisisCard from '@/components/CrisisCard.vue'
 import DailyReviewCard from '@/components/common/DailyReviewCard.vue'
-import GradePicker from '@/components/common/GradePicker.vue'
 import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
@@ -29,6 +28,7 @@ import { schoolYearLabel } from '@/lib/grades'
 import { usePrefsStore } from '@/stores/prefs'
 import { usePromptStore } from '@/stores/prompt'
 import { useSessionStore } from '@/stores/session'
+import { useUiStore } from '@/stores/ui'
 import type { Decision, LearningSessionSummary } from '@/types/session'
 
 const { t, tm } = useI18n()
@@ -36,6 +36,7 @@ const router = useRouter()
 const session = useSessionStore()
 const prompt = usePromptStore()
 const prefs = usePrefsStore()
+const ui = useUiStore()
 const { reduced } = useReducedMotion()
 
 const text = ref('')
@@ -43,9 +44,6 @@ const busy = ref(false)
 const errorMsg = ref<string | null>(null)
 const decision = ref<Decision | null>(null)
 const promptEl = ref<HTMLTextAreaElement | null>(null)
-const gradeTitleEl = ref<HTMLElement | null>(null)
-const gradeChangeBtn = ref<HTMLButtonElement | null>(null)
-const examplesTitleEl = ref<HTMLElement | null>(null)
 const suggestions = ref<LearningSessionSummary[]>([])
 
 // Returning learners (a saved resume code) get a "pick up where you left off" strip of their own
@@ -67,46 +65,10 @@ const examples = computed<string[]>(() => {
 
 const canSubmit = computed(() => text.value.trim().length > 0 && !busy.value)
 
-// --- the learner's class: asked once (skippable), then shown as a compact, changeable line ---
-const pickingGrade = ref(false)
-const showGradeCard = computed(
-  () => pickingGrade.value || (prefs.schoolYear === null && !prefs.gradePromptDismissed),
-)
+// --- the learner's class lives in Settings; home only shows it (or invites to set it) ---
 const gradeName = computed(() =>
   prefs.schoolYear === null ? '' : schoolYearLabel(prefs.schoolYear, prefs.educationLocale),
 )
-
-// The card replaces the control that opened it, so focus is moved explicitly (WCAG 2.4.3):
-// into the card when it opens, back to the "change" button (or the examples) when it closes.
-function closeGradeCard() {
-  pickingGrade.value = false
-  nextTick(() => (gradeChangeBtn.value ?? examplesTitleEl.value)?.focus({ preventScroll: true }))
-}
-
-function chooseGrade(year: number) {
-  // Kept as pending until the server confirms it (synced by the settings watcher once the profile
-  // is loaded, or at the first prompt), so a later profile load can't overwrite the choice.
-  prefs.setSchoolYear(year)
-  closeGradeCard()
-}
-
-/** Toggle the picker; when opening, bring it into view (on a phone it opens below the prompt). */
-function toggleGradeCard() {
-  if (showGradeCard.value) {
-    closeGradeCard()
-    return
-  }
-  pickingGrade.value = true
-  nextTick(() => {
-    gradeTitleEl.value?.focus({ preventScroll: true })
-    gradeTitleEl.value?.scrollIntoView({ block: 'center', behavior: reduced.value ? 'auto' : 'smooth' })
-  })
-}
-
-function skipGrade() {
-  prefs.gradePromptDismissed = true
-  closeGradeCard()
-}
 
 const isClarify = computed(() => decision.value?.type === 'clarify')
 const isRefuse = computed(() => decision.value?.type === 'refuse')
@@ -197,18 +159,11 @@ function applyRedirect(suggestion: string) {
           {{ busy ? t('home.go_busy') : t('home.go') }}
         </SaButton>
         <p class="sa-prompt__hint">{{ t('home.enter_hint') }}</p>
-        <p v-if="gradeName" class="sa-prompt__grade">
+        <p class="sa-prompt__grade">
           <span aria-hidden="true">🎒</span>
-          {{ t('home.grade_for', { grade: gradeName }) }}
-          <button
-            ref="gradeChangeBtn"
-            type="button"
-            class="sa-prompt__grade-change"
-            :aria-expanded="showGradeCard"
-            aria-controls="sa-grade-card"
-            @click="toggleGradeCard"
-          >
-            {{ t('home.grade_change') }}
+          <template v-if="gradeName">{{ t('home.grade_for', { grade: gradeName }) }}</template>
+          <button type="button" class="sa-prompt__grade-change" @click="ui.settingsOpen = true">
+            {{ gradeName ? t('home.grade_change') : t('home.grade_set') }}
           </button>
         </p>
 
@@ -269,33 +224,12 @@ function applyRedirect(suggestion: string) {
         </div>
       </div>
 
-      <!-- Which grade? Asked once so prompts don't need to say it; skippable, changeable later. -->
-      <section
-        v-if="showGradeCard"
-        id="sa-grade-card"
-        class="sa-card sa-grade-card"
-        aria-labelledby="sa-grade-title"
-      >
-        <h2 id="sa-grade-title" ref="gradeTitleEl" tabindex="-1" class="sa-grade-card__title">
-          <span aria-hidden="true">🎒</span> {{ t('home.grade_title') }}
-        </h2>
-        <p class="sa-grade-card__desc">{{ t('home.grade_desc') }}</p>
-        <GradePicker
-          :model-value="prefs.schoolYear"
-          :education-locale="prefs.educationLocale"
-          @update:model-value="chooseGrade"
-        />
-        <button type="button" class="sa-grade-card__skip" @click="skipGrade">
-          {{ t('home.grade_skip') }}
-        </button>
-      </section>
-
       <!-- Today's spaced-repetition round (renders only when something is due). -->
       <DailyReviewCard />
 
       <!-- Example prompts -->
       <div v-if="examples.length" class="flex flex-col gap-2">
-        <p ref="examplesTitleEl" tabindex="-1" class="text-sm font-semibold text-[var(--color-ink-soft)]">
+        <p class="text-sm font-semibold text-[var(--color-ink-soft)]">
           {{ t('home.examples') }}
         </p>
         <div class="flex flex-wrap gap-2">
@@ -403,8 +337,7 @@ function applyRedirect(suggestion: string) {
   font-size: 0.9rem;
   font-weight: 600;
 }
-.sa-prompt__grade-change,
-.sa-grade-card__skip {
+.sa-prompt__grade-change {
   min-height: var(--tap-min);
   padding: 0 0.4rem;
   border: 0;
@@ -415,26 +348,6 @@ function applyRedirect(suggestion: string) {
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
-}
-.sa-grade-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 1rem 1.1rem;
-  border-left: 4px solid var(--color-sun);
-}
-.sa-grade-card__title {
-  margin: 0;
-  font-size: 1.1rem;
-}
-.sa-grade-card__desc {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--color-ink-soft);
-}
-.sa-grade-card__skip {
-  align-self: flex-start;
-  color: var(--color-ink-soft);
 }
 .sa-prompt__error {
   margin: 0;

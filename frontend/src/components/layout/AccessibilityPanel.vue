@@ -11,7 +11,7 @@
  * slide/scrim transitions are gated on the reduced-motion preference.
  */
 import { useEventListener } from '@vueuse/core'
-import { computed, nextTick, ref, watch } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
@@ -19,8 +19,8 @@ import SaButton from '@/components/common/SaButton.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { FONT_OPTIONS, FONT_SCALE_STEPS, THEME_OPTIONS } from '@/composables/useTheme'
-import { baseUiLocale, EDUCATION_LOCALES, setLocale } from '@/i18n'
-import { schoolYearLabel, schoolYearOptions } from '@/lib/grades'
+import GradePicker from '@/components/common/GradePicker.vue'
+import { EDUCATION_LOCALES } from '@/i18n'
 import { useSessionStore } from '@/stores/session'
 import { usePrefsStore } from '@/stores/prefs'
 
@@ -44,22 +44,6 @@ const LOCALE_LABELS: Record<string, string> = {
   'cs-CZ': 'Čeština',
 }
 
-// Class choices named by the selected education system. A class that system doesn't list (e.g. the
-// Czech 4th upper-secondary year after switching to en-US) stays listed so the select can show it.
-const schoolYearChoices = computed(() => {
-  const years = schoolYearOptions(prefs.educationLocale)
-  const current = prefs.schoolYear
-  return current !== null && !years.includes(current) ? [...years, current] : years
-})
-
-// <select> values are strings; '' = not set.
-const schoolYearModel = computed({
-  get: () => (prefs.schoolYear === null ? '' : String(prefs.schoolYear)),
-  set: (value: string) => {
-    prefs.setSchoolYear(value === '' ? null : Number(value))
-  },
-})
-
 // --- live persistence: apply locally now, sync to server (debounced, best-effort) ---
 let syncTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleSync() {
@@ -72,10 +56,7 @@ function scheduleSync() {
 }
 
 function onLocaleChange(educationLocale: string) {
-  prefs.educationLocale = educationLocale
-  const ui = baseUiLocale(educationLocale)
-  prefs.locale = ui
-  setLocale(ui)
+  prefs.setLanguage(educationLocale) // an explicit choice: from now on the browser no longer decides
   scheduleSync()
 }
 
@@ -184,24 +165,19 @@ watch(
                 <p class="text-xs text-[var(--color-ink-soft)]">{{ t('a11y.language_hint') }}</p>
               </fieldset>
 
-              <!-- My class (exact school year) -->
-              <div class="flex flex-col gap-2">
-                <label for="a11y-class" class="font-semibold">{{ t('a11y.school_year') }}</label>
-                <select
-                  id="a11y-class"
-                  v-model="schoolYearModel"
-                  class="sa-select"
-                  aria-describedby="a11y-class-hint"
-                >
-                  <option value="">{{ t('a11y.school_year_unset') }}</option>
-                  <option v-for="y in schoolYearChoices" :key="y" :value="String(y)">
-                    {{ schoolYearLabel(y, prefs.educationLocale) }}
-                  </option>
-                </select>
+              <!-- My class (exact school year), named by the chosen education system -->
+              <fieldset id="settings-class" class="flex flex-col gap-2" aria-describedby="a11y-class-hint">
+                <legend class="mb-1 font-semibold">{{ t('a11y.school_year') }}</legend>
                 <p id="a11y-class-hint" class="text-xs text-[var(--color-ink-soft)]">
                   {{ t('a11y.school_year_hint') }}
                 </p>
-              </div>
+                <GradePicker
+                  :model-value="prefs.schoolYear"
+                  :education-locale="prefs.educationLocale"
+                  :unset-label="t('a11y.school_year_unset')"
+                  @update:model-value="prefs.setSchoolYear"
+                />
+              </fieldset>
 
               <!-- Theme -->
               <fieldset class="flex flex-col gap-2">
@@ -321,19 +297,6 @@ watch(
   border-color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
   color: var(--color-primary-strong);
-}
-.sa-select {
-  min-height: var(--tap-min);
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius-btn);
-  border: 2px solid var(--color-line);
-  background: var(--color-surface-2);
-  font: inherit;
-  font-weight: 600;
-  color: var(--color-ink);
-}
-.sa-select:focus-visible {
-  border-color: var(--color-primary);
 }
 .sa-toggle {
   display: flex;

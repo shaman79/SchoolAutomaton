@@ -24,11 +24,9 @@
       "Koloběh vody – přírodověda",
       "Příprava na přijímačky z matematiky"
     ],
-    "grade_title": "Do které třídy chodíš?",
-    "grade_desc": "Lekce a kvízy ti pak sednou přesně k tomu, co se učíte ve škole. Třídu můžeš kdykoli změnit.",
-    "grade_skip": "Teď ne",
     "grade_for": "Pro: {grade}",
-    "grade_change": "Změnit třídu"
+    "grade_change": "Změnit třídu",
+    "grade_set": "Nastav si svou třídu"
   },
   "loading": {
     "thinking": "Připravuji tvou lekci…",

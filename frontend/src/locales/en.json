@@ -23,11 +23,9 @@
       "Help me understand photosynthesis",
       "Test me on Spanish food vocabulary"
     ],
-    "grade_title": "Which grade are you in?",
-    "grade_desc": "Lessons and quizzes will then match what you're learning at school. You can change it any time.",
-    "grade_skip": "Not now",
     "grade_for": "For: {grade}",
-    "grade_change": "Change grade"
+    "grade_change": "Change grade",
+    "grade_set": "Set your grade"
   },
   "loading": {
     "thinking": "Putting your lesson together…",
