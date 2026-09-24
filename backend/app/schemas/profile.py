@@ -110,3 +110,29 @@ class LearningSessionSummary(AppModel):
     subject: str | None = None
     created_at: datetime | None = None
     attempted: bool = False  # quiz only: the learner has a graded attempt (so "Review" has content)
+
+
+class TopicProgress(AppModel):
+    """One concept the learner practised in the window, judged in words rather than a percentage."""
+
+    concept_id: int
+    title: str
+    subject: str
+    answers: int
+    correct: int
+    # confident = solid (mastered, or reliably right); mostly = on the way; practice = worth another go.
+    status: str  # confident|mostly|practice
+
+
+class ParentSummary(AppModel):
+    """A calm, parent-facing overview of the last ``days`` days (GET /profiles/me/summary)."""
+
+    days: int
+    active_days: int
+    lessons: int
+    quizzes_completed: int
+    answers: int
+    correct: int
+    due_reviews: int
+    topics: list[TopicProgress] = Field(default_factory=list)
+    misconceptions: list[str] = Field(default_factory=list)  # wrong ideas met this week (deduped)

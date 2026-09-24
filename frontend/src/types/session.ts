@@ -242,3 +242,26 @@ export interface QuizReview {
   accuracy: number
   items: QuizReviewItem[]
 }
+
+/** One practised topic in the parent overview, judged in words (never a bare percentage). */
+export interface TopicProgress {
+  concept_id: number
+  title: string
+  subject: string
+  answers: number
+  correct: number
+  status: 'confident' | 'mostly' | 'practice'
+}
+
+/** GET /profiles/me/summary — the calm parent overview of the last `days` days. */
+export interface ParentSummary {
+  days: number
+  active_days: number
+  lessons: number
+  quizzes_completed: number
+  answers: number
+  correct: number
+  due_reviews: number
+  topics: TopicProgress[]
+  misconceptions: string[]
+}

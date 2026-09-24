@@ -12,13 +12,14 @@ from ....schemas.gamification import GamificationSnapshot, TreeResponse
 from ....schemas.profile import (
     CreateProfileIn,
     LearningSessionSummary,
+    ParentSummary,
     ProfileCreateOut,
     ProfileEnvelope,
     ProfileSettingsPublic,
     ProfileSettingsUpdate,
     ResumeIn,
 )
-from ....services import profile_service, recommendation_service, tree_service
+from ....services import profile_service, recommendation_service, summary_service, tree_service
 from ...deps import get_db, get_profile
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
@@ -151,3 +152,14 @@ async def get_tree(
     db: AsyncSession = Depends(get_db),
 ):
     return await tree_service.build_tree(db, profile, subject)
+
+
+@router.get("/me/summary", response_model=ParentSummary)
+async def get_summary(
+    days: int = Query(default=7, ge=1, le=31),
+    profile: Profile = Depends(get_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    """Parent overview of the last ``days`` days: activity, practised topics judged in words, the
+    wrong ideas met, and how many reviews are due."""
+    return await summary_service.build_summary(db, profile, days)

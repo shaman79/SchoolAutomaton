@@ -11,6 +11,7 @@ import type {
   LearningSessionSummary,
   Lesson,
   LessonSection,
+  ParentSummary,
   ProfileCreateOut,
   ProfileEnvelope,
   ProfileSettings,
@@ -99,6 +100,9 @@ export const api = {
     request<ProfileSettings>('/profiles/me/settings', { method: 'PATCH', body: patch }),
 
   getGamification: () => request<GamificationSnapshot>('/profiles/me/gamification'),
+
+  /** Parent overview of the last `days` days (activity + practised topics judged in words). */
+  getSummary: (days = 7) => request<ParentSummary>(`/profiles/me/summary?days=${days}`),
 
   getMyRequests: () => request<LearningSessionSummary[]>('/profiles/me/requests'),
 

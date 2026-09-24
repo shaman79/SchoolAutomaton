@@ -438,5 +438,37 @@
     "stop": "Zastavit",
     "dictate": "Nadiktovat",
     "listening": "Poslouchám… (klepni pro konec)"
+  },
+  "parents": {
+    "link": "Přehled pro rodiče",
+    "title": "Přehled pro rodiče",
+    "subtitle": "Posledních 7 dní",
+    "load_error": "Přehled se nepodařilo načíst.",
+    "empty": "Za posledních 7 dní tu zatím nic není. Jakmile se začne učit, uvidíte tady, co zvládá a co procvičit.",
+    "active_days": "Dny s učením",
+    "of_days": "{n} ze {total}",
+    "lessons": "Lekce",
+    "quizzes": "Dokončené testy",
+    "answers": "Odpovědi",
+    "answers_value": "{correct} z {n} správně",
+    "topics_title": "Co jde a co procvičit",
+    "status": {
+      "confident": "Zvládá s jistotou",
+      "mostly": "Většinou zvládá",
+      "practice": "Stojí za procvičení"
+    },
+    "topic_answers": "{correct} z {n} správně",
+    "misconceptions_title": "O čem si spolu promluvit",
+    "misconceptions_hint": "Tyhle mylné představy se tento týden objevily v odpovědích. Stačí se dítěte zeptat, jak o tom přemýšlí.",
+    "reviews_title": "Opakování",
+    "reviews_hint": "Krátké opakování ve správnou chvíli pomáhá, aby si dítě látku zapamatovalo natrvalo.",
+    "tips_title": "Jak pomoct",
+    "tips": [
+      "Chvalte snahu a postup, ne „chytrost“: „Tohle máš pěkně promyšlené.“",
+      "Nechte si věc vysvětlit — kdo učí druhé, učí se nejvíc.",
+      "Deset minut denně je víc než hodina jednou za týden.",
+      "Chyba je informace, ne selhání: zeptejte se dítěte, co by příště zkusilo jinak."
+    ],
+    "reviews_none": "Teď nic nečeká na zopakování. Aplikace sama pohlídá, kdy je vhodné se k látce vrátit."
   }
 }

@@ -435,5 +435,37 @@
     "stop": "Stop",
     "dictate": "Dictate",
     "listening": "Listening… (tap to stop)"
+  },
+  "parents": {
+    "link": "Overview for parents",
+    "title": "Overview for parents",
+    "subtitle": "The last 7 days",
+    "load_error": "The overview couldn't be loaded.",
+    "empty": "Nothing here from the last 7 days yet. Once learning starts, you'll see what's going well and what to practise.",
+    "active_days": "Days with learning",
+    "of_days": "{n} of {total}",
+    "lessons": "Lessons",
+    "quizzes": "Tests finished",
+    "answers": "Answers",
+    "answers_value": "{correct} of {n} correct",
+    "topics_title": "What's going well, what to practise",
+    "status": {
+      "confident": "Confident",
+      "mostly": "Mostly there",
+      "practice": "Worth practising"
+    },
+    "topic_answers": "{correct} of {n} correct",
+    "misconceptions_title": "Worth talking about",
+    "misconceptions_hint": "These mix-ups showed up in answers this week. Just ask how they think about it.",
+    "reviews_title": "Reviews",
+    "reviews_hint": "A short review at the right moment helps make it stick for good.",
+    "tips_title": "How to help",
+    "tips": [
+      "Praise effort and strategy, not being “smart”: “You really thought that through.”",
+      "Ask them to explain it to you — teaching is the best way to learn.",
+      "Ten minutes a day beats an hour once a week.",
+      "A mistake is information, not failure: ask what they'd try differently next time."
+    ],
+    "reviews_none": "Nothing is waiting for review right now. The app keeps track of when it is time to come back to a topic."
   }
 }
