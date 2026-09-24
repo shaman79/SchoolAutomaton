@@ -161,6 +161,7 @@ async def generate_quiz(
         language=intent.language,
         education_locale=intent.education_locale,
         grade_band=intent.grade_band.value,
+        school_year=intent.school_year,
         subject=intent.subject.value,
         concept_id=primary_concept.id,
         quiz_type="standard",

@@ -11,7 +11,15 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 
 from .common import StrictModel
-from .enums import AgeBand, DecisionType, GradeBand, Mode, SafetyFlag, Subject
+from .enums import (
+    AgeBand,
+    DecisionType,
+    GradeBand,
+    Mode,
+    SafetyFlag,
+    Subject,
+    normalize_school_year,
+)
 
 
 class StructuredIntent(StrictModel):
@@ -22,6 +30,14 @@ class StructuredIntent(StrictModel):
     topic: str = Field(default="", description="Sanitized topic, <=120 chars, no instructions")
     mode: Mode = Mode.STUDY
     grade_band: GradeBand = GradeBand.UNKNOWN
+    # Exact school year when the prompt states it (1 = first grade; 0 = kindergarten; see
+    # enums.SCHOOL_YEAR_*), or the learner's own class setting merged in validate.py on the proceed
+    # path. Finer than grade_band — e.g. it separates the Czech 9th grade (basic school, RVP ZV) from
+    # upper-secondary school, which the G9-12 band lumps together. None = not stated.
+    school_year: int | None = Field(
+        default=None,
+        description="Exact school year 0-13 if stated (1 = first grade, 0 = kindergarten), else null",
+    )
     age: int | None = Field(default=None, ge=3, le=120)
     age_band: AgeBand = AgeBand.UNKNOWN
     language: str = Field(default="en", description="ISO-639-1 / BCP-47 of the student's prompt")
@@ -45,6 +61,13 @@ class StructuredIntent(StrictModel):
     @classmethod
     def _norm_lang(cls, v: str) -> str:
         return (v or "en").strip().lower()[:12] or "en"
+
+    @field_validator("school_year", mode="before")
+    @classmethod
+    def _norm_school_year(cls, v: object) -> int | None:
+        # Bounds live here, not in ge/le: an out-of-range model value means "not stated" rather than
+        # a validation failure that would sink the whole classification.
+        return normalize_school_year(v)
 
     @field_validator("constraints")
     @classmethod
@@ -108,3 +131,11 @@ class CreateRequestIn(StrictModel):
     # The learner's education-system locale setting (e.g. 'en-US', 'en-GB', 'cs-CZ'). Trusted,
     # constrained client metadata — whitelisted server-side, never treated as raw prompt text.
     locale: str | None = None
+    # The learner's class setting ("Moje třída"), same trust level as ``locale``: an int clamped to
+    # the school-year range (garbage → None). Used only when the prompt itself names no level.
+    school_year: int | None = None
+
+    @field_validator("school_year", mode="before")
+    @classmethod
+    def _norm_school_year(cls, v: object) -> int | None:
+        return normalize_school_year(v)

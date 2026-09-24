@@ -56,17 +56,24 @@ def _intent_context(intent: StructuredIntent) -> str:
     volatile tail (never the cached prefix) so the prompt cache stays byte-identical (SPEC §5)."""
     target = READABILITY_TARGETS.get(intent.grade_band.value, READABILITY_TARGETS["unknown"])
     constraints = "; ".join(intent.constraints) if intent.constraints else "(none)"
+    # The exact school year (when known) is more precise than the band — state it right after it.
+    school_year = (
+        f"school_year: {intent.school_year} (1 = first grade of primary school, 0 = kindergarten)\n"
+        if intent.school_year is not None
+        else ""
+    )
     block = (
         f"subject: {intent.subject.value}\n"
         f"topic: {intent.topic}\n"
         f"grade_band: {intent.grade_band.value}\n"
+        f"{school_year}"
         f"language: {intent.language}\n"
         f"target_FKGL: {target['fkgl']}\n"
         f"max_words_per_sentence: {target['max_sentence_words']}\n"
         f"max_new_terms: {target['max_new_terms']}\n"
         f"extra_constraints: {constraints}"
     )
-    curriculum = curriculum_directive(intent.education_locale, intent.grade_band)
+    curriculum = curriculum_directive(intent.education_locale, intent.grade_band, intent.school_year)
     if curriculum:
         block = f"{block}\n\n{curriculum}"
     return block

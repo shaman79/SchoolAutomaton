@@ -5,8 +5,17 @@
 # prefix (pedagogy.py SYSTEM_PEDAGOGY_EN) is NEVER changed by this. None/unknown locale = generic
 # (today's behavior: no curriculum framing).
 #
-# grade_naming keys are the GradeBand enum values (app/schemas/enums.py): K, G1-2, G3-5, G6-8,
-# G9-12, adult, unknown.
+# Keys (all optional except language/country/framework):
+#   framework                 fallback curriculum framework (adults / unknown level)
+#   framework_by_band         GradeBand value -> framework, when the band alone picks the stage
+#   framework_by_school_year  inclusive [from, to] school-year ranges -> framework (wins over the band)
+#   grade_naming              GradeBand value -> local name of the level (K, G1-2, G3-5, G6-8, G9-12,
+#                             adult; see app/schemas/enums.py)
+#   school_years              exact school year -> local name. School years count from the first year
+#                             of compulsory primary school (1 = first grade, age 6-7; 0 = kindergarten /
+#                             preschool; 13 = a 4th upper-secondary year, e.g. the Czech maturita year)
+#   spelling / units / currency / date_format   short phrases slotted into the directive
+#   notation / terminology / exercise_formats / language_learning / conventions   full sentences
 
 en-US:
   language: en
@@ -16,6 +25,7 @@ en-US:
   units: "US customary units as the primary measure (inches, feet, miles, pounds, ounces, °F, gallons), giving the metric equivalent in parentheses where it aids understanding"
   currency: "US dollars ($)"
   date_format: "month day, year (e.g. June 16, 2026)"
+  notation: "Number notation: decimal point (3.5), comma thousands separator (12,500), × for multiplication and ÷ for division in elementary grades."
   conventions: "Use US contexts and examples (e.g. grade levels, US place names) where a concrete setting is needed; keep examples globally understandable otherwise."
   grade_naming:
     K: "Kindergarten"
@@ -24,6 +34,21 @@ en-US:
     G6-8: "Grades 6-8 (middle school)"
     G9-12: "Grades 9-12 (high school)"
     adult: "adult learners"
+  school_years:
+    0: "Kindergarten"
+    1: "Grade 1 (elementary school)"
+    2: "Grade 2 (elementary school)"
+    3: "Grade 3 (elementary school)"
+    4: "Grade 4 (elementary school)"
+    5: "Grade 5 (elementary school)"
+    6: "Grade 6 (middle school)"
+    7: "Grade 7 (middle school)"
+    8: "Grade 8 (middle school)"
+    9: "Grade 9 (high school, freshman year)"
+    10: "Grade 10 (high school, sophomore year)"
+    11: "Grade 11 (high school, junior year)"
+    12: "Grade 12 (high school, senior year)"
+    13: "first year of college (just after Grade 12)"
 
 en-GB:
   language: en
@@ -33,6 +58,7 @@ en-GB:
   units: "the metric system as the primary measure (metres, centimetres, kilograms, grams, °C, litres); miles may be used for road distances as in everyday UK usage"
   currency: "pounds sterling (£)"
   date_format: "day month year (e.g. 16 June 2026)"
+  notation: "Number notation: decimal point (3.5), comma thousands separator (12,500), × for multiplication and ÷ for division in primary years."
   conventions: "Use UK contexts and terminology (e.g. 'maths' not 'math', 'Year groups', UK place names) where a concrete setting is needed; keep examples globally understandable otherwise."
   grade_naming:
     K: "Reception (EYFS)"
@@ -41,20 +67,77 @@ en-GB:
     G6-8: "Years 7-9 (Key Stage 3)"
     G9-12: "Years 10-13 (Key Stages 4-5, GCSE and A-level)"
     adult: "adult learners"
+  # UK Year N starts a year earlier than US Grade N, so school year N (US-grade aligned) = Year N+1.
+  school_years:
+    0: "Reception / Year 1 (EYFS, Key Stage 1)"
+    1: "Year 2 (Key Stage 1)"
+    2: "Year 3 (Key Stage 2)"
+    3: "Year 4 (Key Stage 2)"
+    4: "Year 5 (Key Stage 2)"
+    5: "Year 6 (Key Stage 2, KS2 SATs year)"
+    6: "Year 7 (Key Stage 3)"
+    7: "Year 8 (Key Stage 3)"
+    8: "Year 9 (Key Stage 3)"
+    9: "Year 10 (Key Stage 4, GCSE)"
+    10: "Year 11 (Key Stage 4, GCSE exam year)"
+    11: "Year 12 (sixth form, A-level)"
+    12: "Year 13 (sixth form, A-level exam year)"
+    13: "Year 13 (sixth form, A-level exam year)"
 
+# Czech Republic. The Czech curriculum is STAGE-specific: preschool follows RVP PV, the nine-year
+# základní škola follows RVP ZV (1st stage = grades 1-5, split into the 1st period grades 1-3 and the
+# 2nd period grades 4-5; 2nd stage = grades 6-9), upper-secondary schools follow RVP G (gymnázium) or
+# the field-specific RVP of a vocational school. The 9th grade is still základní škola (RVP ZV), not
+# upper-secondary, even though the coarse G9-12 band groups it with high school — hence the exact
+# school_years table below.
 cs-CZ:
   language: cs
   country: CZ
-  framework: "český Rámcový vzdělávací program (RVP)"
-  spelling: "spisovná čeština se správnou diakritikou (háčky a čárky)"
-  units: "metrická soustava (metr, centimetr, kilogram, gram, °C, litr)"
-  currency: "české koruny (Kč)"
-  date_format: "den. měsíc. rok (např. 16. 6. 2026)"
-  conventions: "Používej český kontext a příklady (česká místa, jména) tam, kde je potřeba konkrétní zasazení; jinak udržuj příklady obecně srozumitelné."
+  framework: "the Czech national curriculum: the stage-appropriate Framework Education Programme ('Rámcový vzdělávací program', RVP)"
+  framework_by_school_year:
+    - from: 0
+      to: 0
+      framework: &rvp_pv "the Czech Framework Education Programme for Preschool Education ('RVP PV', mateřská škola): pre-literacy and pre-numeracy through play ('předčtenářské a předmatematické dovednosti'); do not assume the child can read fluently, so keep text minimal and picture-led"
+    - from: 1
+      to: 9
+      framework: &rvp_zv "the Czech Framework Education Programme for Basic Education ('RVP ZV', základní škola) and its expected outcomes ('očekávané výstupy') for the learner's period: 1st stage = grades 1-5 (1st period grades 1-3, 2nd period grades 4-5), 2nd stage = grades 6-9"
+    - from: 10
+      to: 13
+      framework: &rvp_ss "the Czech upper-secondary Framework Education Programmes ('RVP G' for gymnázium; the field-specific RVP for vocational schools, SOŠ/SOU) and, in the final year, the state school-leaving exam ('maturita')"
+  framework_by_band:
+    K: *rvp_pv
+    G1-2: *rvp_zv
+    G3-5: *rvp_zv
+    G6-8: *rvp_zv
+    G9-12: "the RVP of the learner's actual school: 'RVP ZV' for the 9th grade of základní škola (the final year before the upper-secondary entrance exams, 'přijímací zkoušky'), otherwise the upper-secondary 'RVP G' (gymnázium) or the field-specific RVP (SOŠ/SOU)"
+  spelling: "standard Czech ('spisovná čeština') with correct diacritics (háčky, čárky, kroužky) and Czech typography"
+  units: "the metric system as taught in Czech schools (metr, centimetr, kilogram, gram, litr, °C)"
+  currency: "Czech crowns (Kč, e.g. 125 Kč)"
+  date_format: "day. month. year (e.g. 16. 6. 2026 or 16. června 2026)"
+  notation: "Czech school notation: decimal comma (3,5 — never 3.5), a space as the thousands separator (12 500), multiplication written with a centred dot (3 · 4 = 12), division written with a colon (12 : 3 = 4), Czech quotation marks („…“), 24-hour time (14:30) and a space between a number and its unit (5 km, 20 °C)."
+  terminology: "Use the Czech school terminology and subject names the learner knows from class — e.g. 'prvouka' (grades 1-3), 'přírodověda' and 'vlastivěda' (grades 4-5), 'přírodopis', 'zeměpis', 'dějepis', 'výchova k občanství', 'informatika'; in Czech language 'slovní druhy', 'větné členy', 'vyjmenovaná slova', 'vzory podstatných jmen'; in maths 'násobilka', 'písemné sčítání a násobení', 'zlomky', 'desetinná čísla', 'převody jednotek'. Base Czech history, geography and literature on what Czech schools teach."
+  exercise_formats: "Czech practice formats: for spelling (i/y after 'obojetné souhlásky' and in 'vyjmenovaná slova', s/z/vz, mě/mně, bě/bje, velká písmena) use cloze items with the blank INSIDE the word and short choices (e.g. 'b{{b1}}strý' with the choices 'y' and 'i') and name the rule in the explanation; for maths word problems ('slovní úlohy') follow the Czech layout 'zápis' (what we know) → 'výpočet' → 'odpověď' (a full-sentence answer)."
+  language_learning: "Foreign-language lessons (usually English, taught from grade 3): explain in Czech and practise in the target language; the RVP ZV aims at CEFR A1 by the end of grade 5 and A2 by the end of grade 9 for the first foreign language (A1 for a second foreign language)."
+  conventions: "Use Czech contexts where a concrete setting is needed: Czech first names (e.g. Adéla, Jakub, Tereza, Vojta), Czech places (Praha, Brno, Vltava, Sněžka), prices in Kč and the Czech school year (září–červen, pololetí, vysvědčení). Address the learner informally ('ty'). Keep examples otherwise universally understandable."
   grade_naming:
-    K: "mateřská škola (předškolní vzdělávání)"
-    G1-2: "1.-2. ročník (1. stupeň ZŠ)"
-    G3-5: "3.-5. ročník (1. stupeň ZŠ)"
-    G6-8: "6.-8. ročník (2. stupeň ZŠ)"
-    G9-12: "9. ročník ZŠ a střední škola (gymnázium / SŠ)"
+    K: "předškolák (poslední rok mateřské školy)"
+    G1-2: "1.–2. třída ZŠ (1. stupeň, 1. období)"
+    G3-5: "3.–5. třída ZŠ (1. stupeň; 3. třída uzavírá 1. období, 4.–5. třída je 2. období)"
+    G6-8: "6.–8. třída ZŠ (2. stupeň) / prima–tercie osmiletého gymnázia"
+    G9-12: "9. třída ZŠ nebo 1.–4. ročník střední školy (kvarta–oktáva osmiletého gymnázia)"
     adult: "dospělí studenti"
+  school_years:
+    0: "předškolák — poslední, povinný rok mateřské školy"
+    1: "1. třída ZŠ (1. stupeň, 1. období RVP ZV; teprve se učí číst a psát)"
+    2: "2. třída ZŠ (1. stupeň, 1. období RVP ZV)"
+    3: "3. třída ZŠ (1. stupeň, konec 1. období RVP ZV)"
+    4: "4. třída ZŠ (1. stupeň, 2. období RVP ZV)"
+    5: "5. třída ZŠ (1. stupeň, konec 2. období RVP ZV; přijímačky na osmiletá gymnázia)"
+    6: "6. třída ZŠ (2. stupeň) / prima osmiletého gymnázia"
+    7: "7. třída ZŠ (2. stupeň) / sekunda osmiletého gymnázia; přijímačky na šestiletá gymnázia"
+    8: "8. třída ZŠ (2. stupeň) / tercie osmiletého gymnázia"
+    9: "9. třída ZŠ (konec 2. stupně RVP ZV; jednotná přijímací zkouška na maturitní obory SŠ z češtiny a matematiky) / kvarta osmiletého gymnázia"
+    10: "1. ročník střední školy (gymnázium, SOŠ, SOU) / kvinta osmiletého gymnázia"
+    11: "2. ročník střední školy / sexta osmiletého gymnázia"
+    12: "3. ročník střední školy / septima osmiletého gymnázia"
+    13: "4. ročník střední školy — maturitní ročník / oktáva osmiletého gymnázia"

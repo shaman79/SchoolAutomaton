@@ -52,6 +52,9 @@ class ProfileSettings(Base):
     # Education-system locale (BCP-47, e.g. 'en-US'); drives generated-content curriculum + language.
     # Distinct from `locale` (UI) so the UI stays en/cs while content follows a region. None = generic.
     education_locale: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    # The learner's class ("Moje třída") as an exact school year (enums.SCHOOL_YEAR_*); fills in the
+    # level of a prompt that names none. None = not set.
+    school_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     daily_goal: Mapped[str] = mapped_column(String(12), default="regular")
     interleave_strength: Mapped[float] = mapped_column(Float, default=INTERLEAVE_STRENGTH_DEFAULT)
     rest_days_per_week: Mapped[int] = mapped_column(Integer, default=REST_DAYS_PER_WEEK_DEFAULT)

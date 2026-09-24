@@ -4,18 +4,24 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .common import AppModel, StrictModel
-from .enums import AgeBand, DailyGoal
+from .enums import AgeBand, DailyGoal, normalize_school_year
 from .gamification import GamificationSnapshot
 
 
 class CreateProfileIn(StrictModel):
     locale: str = "en"
     education_locale: str | None = None  # BCP-47 region setting (en-US/en-GB/cs-CZ)
+    school_year: int | None = None  # the learner's class (exact school year); None = not set
     age_band: AgeBand = AgeBand.UNKNOWN
     display_name: str | None = Field(default=None, max_length=40)
+
+    @field_validator("school_year", mode="before")
+    @classmethod
+    def _norm_school_year(cls, v: object) -> int | None:
+        return normalize_school_year(v)
 
 
 class ResumeIn(StrictModel):
@@ -30,6 +36,7 @@ class ProfileSettingsPublic(AppModel):
     sound: bool = True
     locale: str = "en"
     education_locale: str | None = None  # BCP-47 (en-US/en-GB/cs-CZ); drives generated content
+    school_year: int | None = None  # the learner's class (exact school year); None = not set
     daily_goal: DailyGoal = DailyGoal.REGULAR
     interleave_strength: float = 0.30
     rest_days_per_week: int = 0
@@ -44,11 +51,18 @@ class ProfileSettingsUpdate(StrictModel):
     sound: bool | None = None
     locale: str | None = None
     education_locale: str | None = None
+    # Explicit null clears the class setting (unlike the other fields, where null means "unchanged").
+    school_year: int | None = None
     daily_goal: DailyGoal | None = None
     interleave_strength: float | None = None
     rest_days_per_week: int | None = None
     desired_retention: float | None = Field(default=None, ge=0.80, le=0.97)
     display_name: str | None = Field(default=None, max_length=40)
+
+    @field_validator("school_year", mode="before")
+    @classmethod
+    def _norm_school_year(cls, v: object) -> int | None:
+        return normalize_school_year(v)
 
 
 class ProfilePublic(AppModel):

@@ -30,6 +30,8 @@ class Quiz(Base):
     # Learner-selected education-system locale the quiz was generated under (BCP-47); None = generic.
     education_locale: Mapped[str | None] = mapped_column(String(12), nullable=True)
     grade_band: Mapped[str] = mapped_column(String(12))
+    # Exact school year the quiz was pitched at (finer than grade_band); None = band only.
+    school_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subject: Mapped[str] = mapped_column(String(40))
     concept_id: Mapped[int | None] = mapped_column(ForeignKey("concepts.id"), nullable=True)
     quiz_type: Mapped[str] = mapped_column(String(16), default="standard")  # QuizType

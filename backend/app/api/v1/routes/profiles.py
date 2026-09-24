@@ -30,6 +30,7 @@ async def create_profile(body: CreateProfileIn, db: AsyncSession = Depends(get_d
         db,
         locale=body.locale,
         education_locale=body.education_locale,
+        school_year=body.school_year,
         age_band=body.age_band.value,
         display_name=body.display_name,
     )

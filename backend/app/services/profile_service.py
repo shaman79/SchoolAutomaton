@@ -29,6 +29,9 @@ from ..schemas.profile import (
 )
 from . import leveling
 
+# Settings a PATCH may explicitly reset to null.
+_CLEARABLE_SETTINGS = frozenset({"school_year"})
+
 
 async def _unique_resume_code(db: AsyncSession) -> tuple[str, str]:
     for _ in range(12):
@@ -45,6 +48,7 @@ async def create_profile(
     *,
     locale: str = "en",
     education_locale: str | None = None,
+    school_year: int | None = None,
     age_band: str = "unknown",
     display_name: str | None = None,
 ) -> tuple[str, Profile]:
@@ -59,7 +63,10 @@ async def create_profile(
     await db.flush()  # assign profile.id
     db.add(
         ProfileSettings(
-            profile_id=profile.id, locale=locale or "en", education_locale=education_locale
+            profile_id=profile.id,
+            locale=locale or "en",
+            education_locale=education_locale,
+            school_year=school_year,
         )
     )
     db.add(StreakState(profile_id=profile.id))
@@ -161,6 +168,7 @@ def settings_public(profile: Profile, settings: ProfileSettings) -> ProfileSetti
         sound=settings.sound,
         locale=settings.locale,
         education_locale=settings.education_locale,
+        school_year=settings.school_year,
         daily_goal=settings.daily_goal,
         interleave_strength=settings.interleave_strength,
         rest_days_per_week=settings.rest_days_per_week,
@@ -199,7 +207,8 @@ async def update_settings(
     if "desired_retention" in data:
         profile.desired_retention = data.pop("desired_retention")
     for field, value in data.items():
-        if value is not None and hasattr(settings, field):
+        # null means "unchanged" — except for the nullable class setting, where it means "not set".
+        if (value is not None or field in _CLEARABLE_SETTINGS) and hasattr(settings, field):
             setattr(settings, field, value.value if hasattr(value, "value") else value)
     if settings.locale:
         profile.primary_language = settings.locale

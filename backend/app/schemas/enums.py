@@ -32,6 +32,40 @@ class GradeBand(StrEnum):
     UNKNOWN = "unknown"
 
 
+# Exact school year, counted from the first year of compulsory primary school (1 = first grade, age
+# 6-7 — US Grade 1, Czech 1. třída; 0 = kindergarten / preschool). 13 covers a 4th upper-secondary
+# year (e.g. the Czech maturita year). Finer than GradeBand, which it determines when known.
+SCHOOL_YEAR_MIN = 0
+SCHOOL_YEAR_MAX = 13
+
+
+def normalize_school_year(value: object) -> int | None:
+    """Coerce a (model- or client-supplied) school year to an int in range, else ``None``.
+
+    Never raises: an out-of-range or garbage value means "not stated", so a sloppy classifier field
+    or client hint can't fail the request."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        year = int(value)  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return None
+    return year if SCHOOL_YEAR_MIN <= year <= SCHOOL_YEAR_MAX else None
+
+
+def grade_band_for_school_year(year: int) -> GradeBand:
+    """The coarse GradeBand an exact school year falls in (0=K, 1-2, 3-5, 6-8, 9+ = G9-12)."""
+    if year <= 0:
+        return GradeBand.K
+    if year <= 2:
+        return GradeBand.G1_2
+    if year <= 5:
+        return GradeBand.G3_5
+    if year <= 8:
+        return GradeBand.G6_8
+    return GradeBand.G9_12
+
+
 class Mode(StrEnum):
     """What the student asked for."""
 

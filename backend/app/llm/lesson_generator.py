@@ -521,6 +521,7 @@ async def generate_lesson(
         detected_language=intent.language,
         education_locale=intent.education_locale,
         grade_band=intent.grade_band.value,
+        school_year=intent.school_year,
         subject=intent.subject.value,
         target_fkgl=float(target_band["fkgl"]),
         lexile_band=target_band["lexile"],

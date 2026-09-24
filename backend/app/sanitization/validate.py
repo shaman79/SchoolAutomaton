@@ -18,7 +18,15 @@ from __future__ import annotations
 
 import re
 
-from ..schemas.enums import DecisionType, GradeBand, Mode, SafetyFlag, Subject
+from ..schemas.enums import (
+    DecisionType,
+    GradeBand,
+    Mode,
+    SafetyFlag,
+    Subject,
+    grade_band_for_school_year,
+    normalize_school_year,
+)
 from ..schemas.intent import (
     ClarifyDecision,
     CrisisDecision,
@@ -42,12 +50,12 @@ _REFUSAL_REASON: dict[str, str] = {
 _CLARIFY_QUESTION: dict[str, str] = {
     "en": "I want to help! Could you tell me a bit more about what you'd like to learn, and roughly "
     "what grade or age level?",
-    "cs": "Rád/a pomůžu! Můžeš mi prozradit trochu víc o tom, co se chceš naučit, a přibližně pro "
-    "jakou třídu nebo věk?",
+    "cs": "Pomůžu ti! Můžeš mi prozradit trochu víc o tom, co se chceš naučit, a do jaké chodíš "
+    "třídy?",
 }
 _CLARIFY_SUGGESTIONS: dict[str, tuple[str, ...]] = {
     "en": ("The water cycle for 5th grade", "Quiz me on fractions", "Basics of optics for 6th grade"),
-    "cs": ("Koloběh vody pro 5. třídu", "Vyzkoušej mě ze zlomků", "Základy optiky pro 6. třídu"),
+    "cs": ("Koloběh vody pro 4. třídu", "Vyzkoušej mě ze zlomků", "Vyjmenovaná slova po B pro 3. třídu"),
 }
 
 
@@ -121,6 +129,10 @@ def revalidate_intent(intent: StructuredIntent) -> StructuredIntent:
     subject = _coerce_enum(intent.subject, Subject, Subject.OTHER)
     mode = _coerce_enum(intent.mode, Mode, Mode.STUDY)
     grade_band = _coerce_enum(intent.grade_band, GradeBand, GradeBand.UNKNOWN)
+    # A stated exact school year is authoritative over the coarse band (keeps the two consistent).
+    school_year = normalize_school_year(intent.school_year)
+    if school_year is not None:
+        grade_band = grade_band_for_school_year(school_year)
 
     clean_flags: list[SafetyFlag] = []
     for flag in intent.safety_flags or []:
@@ -140,6 +152,7 @@ def revalidate_intent(intent: StructuredIntent) -> StructuredIntent:
         topic=clean_topic,
         mode=mode,
         grade_band=grade_band,
+        school_year=school_year,
         age=intent.age,
         age_band=intent.age_band,
         language=intent.language,
@@ -156,12 +169,29 @@ def revalidate_intent(intent: StructuredIntent) -> StructuredIntent:
     )
 
 
+def _apply_class_setting(intent: StructuredIntent, client_school_year: int | None) -> StructuredIntent:
+    """Fill in the learner's class setting ("Moje třída") when the prompt itself names no level.
+
+    The prompt always wins: the setting is used only when the classifier found no school year AND its
+    band is either unknown (with no stated age) or already the setting's own band — so a learner who
+    explicitly asks for another level ("pro 7. třídu", "high school") still gets exactly that."""
+    year = normalize_school_year(client_school_year)
+    if year is None or intent.school_year is not None:
+        return intent
+    band = grade_band_for_school_year(year)
+    unstated = intent.grade_band == GradeBand.UNKNOWN and intent.age is None
+    if unstated or intent.grade_band == band:
+        return intent.model_copy(update={"school_year": year, "grade_band": band})
+    return intent
+
+
 def build_decision(
     intent: StructuredIntent,
     request_id: str,
     *,
     country: str | None = None,
     client_locale: str | None = None,
+    client_school_year: int | None = None,
 ) -> Decision:
     """Deterministically route a (raw, unvalidated) classifier verdict to a Decision.
 
@@ -169,7 +199,8 @@ def build_decision(
     setting (e.g. 'en-GB'): on the PROCEED branch it pins ``education_locale`` + the output ``language``
     (decision 1a). It also derives the crisis-resource ``country`` when not given. It is applied AFTER
     safety routing so crisis/refuse/clarify copy stays keyed on the genuinely DETECTED language (never
-    mislocalizing a child's crisis resources to the device setting).
+    mislocalizing a child's crisis resources to the device setting). ``client_school_year`` (the
+    learner's class setting) is likewise merged on the proceed branch only — see _apply_class_setting.
     """
     # Pure helpers live with the curriculum registry; lazy import avoids any import-time coupling.
     from ..llm.prompts.curriculum import base_language, country_of, normalize_education_locale
@@ -244,6 +275,7 @@ def build_decision(
                 "language": base_language(edu_locale) or proceed_intent.language,
             }
         )
+    proceed_intent = _apply_class_setting(proceed_intent, client_school_year)
 
     return ProceedDecision(
         request_id=request_id,

@@ -45,6 +45,7 @@ class LessonPublic(AppModel):
     topic: str
     language: str
     grade_band: str
+    school_year: int | None = None  # exact school year when known (finer than grade_band)
     subject: str
     objectives: list[LessonObjectivePublic] = []
     measured_fkgl: float | None = None

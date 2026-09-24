@@ -94,3 +94,72 @@ def test_cached_system_prefix_is_unaffected_by_locale():
     assert prompts.system_pedagogy("cs") is prompts.SYSTEM_PEDAGOGY_EN  # same object for every language
     for needle in ("National Curriculum", "Common Core", "Rámcový", "British English", "American English"):
         assert needle not in prefix
+
+
+# --------------------------------------------------------------------------- Czech RVP alignment
+@pytest.mark.parametrize(
+    "school_year,framework,level",
+    [
+        (0, "RVP PV", "předškolák"),
+        (1, "RVP ZV", "1. třída"),
+        (3, "RVP ZV", "konec 1. období"),
+        (4, "RVP ZV", "2. období"),
+        (9, "RVP ZV", "9. třída ZŠ"),  # still základní škola, NOT upper-secondary
+        (10, "RVP G", "1. ročník střední školy"),
+        (13, "RVP G", "maturitní ročník"),
+    ],
+)
+def test_czech_directive_picks_the_stage_rvp_for_the_exact_year(school_year, framework, level):
+    from app.schemas.enums import grade_band_for_school_year
+
+    band = grade_band_for_school_year(school_year)
+    d = curriculum.curriculum_directive("cs-CZ", band, school_year)
+    align = d.splitlines()[1]
+    assert framework in align
+    assert level in d
+
+
+def test_czech_band_fallback_names_the_right_stage():
+    # Without an exact year the band picks the stage; G6-8 is the 2nd stage of základní škola (RVP ZV)
+    # and G9-12 must mention that the 9th grade is still RVP ZV.
+    assert "RVP ZV" in curriculum.curriculum_directive("cs-CZ", GradeBand.G6_8)
+    g912 = curriculum.curriculum_directive("cs-CZ", GradeBand.G9_12)
+    assert "9th grade" in g912 and "RVP ZV" in g912 and "RVP G" in g912
+    assert "RVP PV" in curriculum.curriculum_directive("cs-CZ", GradeBand.K)
+
+
+def test_czech_directive_carries_school_notation_and_formats():
+    d = curriculum.curriculum_directive("cs-CZ", GradeBand.G3_5, 4)
+    assert "decimal comma" in d and "12 : 3" in d and "3 · 4" in d  # Czech maths notation
+    assert "vyjmenovaná slova" in d and "{{b1}}" in d  # i/y cloze inside the word
+    assert "zápis" in d and "odpověď" in d  # word-problem layout
+    assert "Kč" in d
+
+
+def test_exact_year_naming_for_other_locales():
+    assert "Year 7" in curriculum.curriculum_directive("en-GB", GradeBand.G6_8, 6)
+    assert "Grade 4" in curriculum.curriculum_directive("en-US", GradeBand.G3_5, 4)
+
+
+def test_exact_year_reaches_the_prompt_tail():
+    intent = StructuredIntent(
+        subject=Subject.MATH,
+        topic="zlomky",
+        mode=Mode.STUDY,
+        grade_band=GradeBand.G3_5,
+        school_year=4,
+        language="cs",
+        education_locale="cs-CZ",
+    )
+    tail = prompts.build_section_user(intent, kind="explanation", title="Zlomky", objective=None)
+    assert "school_year: 4" in tail
+    assert "4. třída ZŠ" in tail
+    # No exact year -> no school_year line (the band alone drives the level).
+    no_year = prompts.build_section_user(_intent(education_locale="cs-CZ"), kind="hook", title="x", objective=None)
+    assert "school_year:" not in no_year
+
+
+def test_czech_curriculum_never_reaches_the_cached_prefix():
+    prefix = prompts.system_pedagogy("cs")
+    for needle in ("RVP ZV", "RVP PV", "decimal comma", "vyjmenovaná"):
+        assert needle not in prefix

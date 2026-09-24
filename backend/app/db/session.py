@@ -69,6 +69,10 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
         "education_locale",
         "ALTER TABLE profile_settings ADD COLUMN education_locale VARCHAR(12)",
     ),
+    # Exact school year (nullable → existing rows fall back to the coarse grade band).
+    ("lessons", "school_year", "ALTER TABLE lessons ADD COLUMN school_year INTEGER"),
+    ("quizzes", "school_year", "ALTER TABLE quizzes ADD COLUMN school_year INTEGER"),
+    ("profile_settings", "school_year", "ALTER TABLE profile_settings ADD COLUMN school_year INTEGER"),
 )
 
 

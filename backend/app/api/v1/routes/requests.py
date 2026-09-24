@@ -46,7 +46,14 @@ async def create_request(
         )
 
     request_id = str(uuid.uuid4())
-    decision = await sanitize_request(db, prompt, ctx, request_id, client_locale=body.locale)
+    decision = await sanitize_request(
+        db,
+        prompt,
+        ctx,
+        request_id,
+        client_locale=body.locale,
+        client_school_year=body.school_year,
+    )
 
     is_proceed = isinstance(decision, ProceedDecision)
     lr = LearningRequest(

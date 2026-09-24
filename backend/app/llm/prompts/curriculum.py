@@ -79,23 +79,51 @@ def _grade_value(grade_band) -> str:
     return grade_band.value if hasattr(grade_band, "value") else str(grade_band or "")
 
 
-def curriculum_directive(education_locale: str | None, grade_band) -> str:
+def _framework(profile: dict, grade: str, school_year: int | None) -> str:
+    """The curriculum framework for this learner: an exact school year picks its stage (e.g. the Czech
+    RVP ZV vs RVP G), else the grade band, else the locale-wide fallback."""
+    if school_year is not None:
+        for rng in profile.get("framework_by_school_year") or []:
+            if rng.get("from", 0) <= school_year <= rng.get("to", -1):
+                return str(rng["framework"])
+    return str((profile.get("framework_by_band") or {}).get(grade) or profile["framework"])
+
+
+def _level_name(profile: dict, grade: str, school_year: int | None) -> str | None:
+    """The local name of the learner's level: the exact school year's name when known, else the band's."""
+    if school_year is not None:
+        name = (profile.get("school_years") or {}).get(school_year)
+        if name:
+            return str(name)
+    name = (profile.get("grade_naming") or {}).get(grade)
+    return str(name) if name else None
+
+
+# Full-sentence convention keys, appended verbatim (in this order) after the short-phrase lines.
+_SENTENCE_KEYS = ("notation", "terminology", "exercise_formats", "language_learning", "conventions")
+
+
+def curriculum_directive(education_locale: str | None, grade_band, school_year: int | None = None) -> str:
     """Volatile-tail guidance pinning the education system. Empty string for a generic/unknown locale.
 
-    Names the framework, the locale's name for this grade band, and spelling/units/currency/date/
-    example conventions so generated content follows that system. Goes ONLY in the trailing user
-    message — never the cached prefix."""
+    Names the stage-appropriate framework, the local name of the learner's level (the exact school
+    year when known, else the grade band), and spelling/units/currency/date/notation/terminology/
+    exercise/example conventions so generated content follows that system. Goes ONLY in the trailing
+    user message — never the cached prefix."""
     profile = CURRICULA.get(education_locale or "")
     if not profile:
         return ""
     grade = _grade_value(grade_band)
-    grade_name = (profile.get("grade_naming") or {}).get(grade)
+    level_name = _level_name(profile, grade, school_year)
     lines = [
         "Education system (follow precisely):",
-        f"- Align the content to {profile['framework']}.",
+        f"- Align the content to {_framework(profile, grade, school_year)}.",
     ]
-    if grade_name:
-        lines.append(f"- Refer to this level using its local name: \"{grade_name}\".")
+    if level_name:
+        lines.append(
+            f"- The learner's level, by its local name: \"{level_name}\". Pitch the content, examples "
+            "and vocabulary to exactly this level, and use this local naming whenever you refer to it."
+        )
     if profile.get("spelling"):
         lines.append(f"- Write in {profile['spelling']}.")
     if profile.get("units"):
@@ -104,6 +132,7 @@ def curriculum_directive(education_locale: str | None, grade_band) -> str:
         lines.append(f"- Money: use {profile['currency']}.")
     if profile.get("date_format"):
         lines.append(f"- Dates: write as {profile['date_format']}.")
-    if profile.get("conventions"):
-        lines.append(f"- {profile['conventions']}")
+    for key in _SENTENCE_KEYS:
+        if profile.get(key):
+            lines.append(f"- {profile[key]}")
     return "\n".join(lines)

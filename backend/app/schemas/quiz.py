@@ -23,6 +23,7 @@ class QuizPublic(AppModel):
     title: str
     language: str
     grade_band: str
+    school_year: int | None = None  # exact school year when known (finer than grade_band)
     subject: str
     quiz_type: QuizType = QuizType.STANDARD
     questions: list[QuizQuestionPublic] = []

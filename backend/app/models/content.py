@@ -65,6 +65,8 @@ class Lesson(Base):
     # re-render / grading reproduce the same curriculum framing the lesson was generated under.
     education_locale: Mapped[str | None] = mapped_column(String(12), nullable=True)
     grade_band: Mapped[str] = mapped_column(String(12))
+    # Exact school year the lesson was pitched at (finer than grade_band); None = band only.
+    school_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     subject: Mapped[str] = mapped_column(String(40))
     target_fkgl: Mapped[float] = mapped_column(Float)
     measured_fkgl: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -163,10 +163,22 @@ def ai_disclosure(language: str) -> str:
     )
 
 
+# Each suggestion is a ready-to-send prompt (the UI drops a tapped chip straight into the prompt box),
+# localized by the DETECTED prompt language like the refusal reason itself.
+_REDIRECT_SUGGESTIONS: dict[str, tuple[str, ...]] = {
+    "en": (
+        "Teach me about the water cycle for 4th grade",
+        "Quiz me on multiplication facts",
+        "Explain fractions with pictures",
+    ),
+    "cs": (
+        "Vysvětli mi koloběh vody pro 4. třídu",
+        "Vyzkoušej mě z násobilky",
+        "Procvič se mnou vyjmenovaná slova",
+    ),
+}
+
+
 def refusal_redirect_suggestions(intent: StructuredIntent) -> list[str]:
     """Friendly, on-task alternatives offered when a prompt is refused (growth-mindset framing)."""
-    return [
-        "Ask about a school subject like math, science, history, or languages.",
-        "Try: 'Teach me about the water cycle for 4th grade.'",
-        "Try: 'Quiz me on multiplication facts.'",
-    ]
+    return list(_REDIRECT_SUGGESTIONS[_lang_key(intent.language, _REDIRECT_SUGGESTIONS)])
