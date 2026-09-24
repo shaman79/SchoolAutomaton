@@ -24,6 +24,10 @@ export const usePrefsStore = defineStore(
     // The learner's class as an exact school year (lib/grades: 1 = first grade, 0 = preschool).
     // Sent with each prompt so content fits the class when the prompt names no level. null = not set.
     const schoolYear = ref<number | null>(null)
+    // A class the learner chose on THIS device that the server hasn't confirmed yet. While set, the
+    // local value wins over hydration (the profile often loads only at the first prompt), and only
+    // then is the class included in a settings sync — so a stale device never overwrites it.
+    const schoolYearPending = ref(false)
     // The learner waved off the home "which grade are you in?" card — don't ask again on this device.
     const gradePromptDismissed = ref(false)
     const dailyGoal = ref<DailyGoal>('regular')
@@ -57,11 +61,22 @@ export const usePrefsStore = defineStore(
       if (typeof s.sound === 'boolean') sound.value = s.sound
       if (s.locale) locale.value = s.locale
       if (s.education_locale) educationLocale.value = s.education_locale
-      // Adopt a server class, but never let an unset server value wipe one chosen on this device
-      // before the profile existed (it is pushed up on the next sync).
-      if (typeof s.school_year === 'number') schoolYear.value = s.school_year
+      // The server's class (including "not set") wins unless this device holds an unsynced choice.
+      if ('school_year' in s && !schoolYearPending.value) schoolYear.value = s.school_year ?? null
       if (s.daily_goal) dailyGoal.value = s.daily_goal as DailyGoal
       applyToDom()
+    }
+
+    /** The learner picked (or cleared) their class on this device. */
+    function setSchoolYear(year: number | null) {
+      schoolYear.value = year
+      schoolYearPending.value = true
+    }
+
+    /** A different learner took over this device: their own class (and first-run card) apply. */
+    function resetForNewLearner() {
+      schoolYearPending.value = false
+      gradePromptDismissed.value = false
     }
 
     function toServerPatch() {
@@ -73,7 +88,8 @@ export const usePrefsStore = defineStore(
         sound: sound.value,
         locale: locale.value,
         education_locale: educationLocale.value,
-        school_year: schoolYear.value,
+        // Only a local change is pushed (null = cleared here); otherwise the server keeps its value.
+        ...(schoolYearPending.value ? { school_year: schoolYear.value } : {}),
         daily_goal: dailyGoal.value,
       }
     }
@@ -92,10 +108,13 @@ export const usePrefsStore = defineStore(
       locale,
       educationLocale,
       schoolYear,
+      schoolYearPending,
       gradePromptDismissed,
       dailyGoal,
       applyToDom,
       hydrateFromServer,
+      setSchoolYear,
+      resetForNewLearner,
       toServerPatch,
     }
   },

@@ -182,3 +182,60 @@ async def test_additive_migration_adds_school_year_columns():
             cols = {row[1] for row in (await conn.execute(text(f"PRAGMA table_info({table})"))).all()}
             assert "school_year" in cols, table
     await eng.dispose()
+
+
+# --------------------------------------------------------------------------- review fixes
+def test_non_finite_or_fractional_numbers_are_not_a_school_year():
+    for bad in (float("inf"), float("-inf"), float("nan"), 4.5, "1e400", 10**400):
+        assert normalize_school_year(bad) is None
+    assert normalize_school_year(4.0) == 4
+
+
+@pytest.mark.asyncio
+async def test_infinite_school_year_never_500s(client):
+    # json.loads turns 1e400 into inf; int(inf) used to raise OverflowError -> unhandled 500.
+    raw = '{"prompt": "zlomky", "school_year": 1e400}'
+    r = await client.post("/api/v1/requests", content=raw, headers={"Content-Type": "application/json"})
+    assert r.status_code == 503  # dropped as "not stated"; the (unconfigured) classifier fails closed
+    r = await client.post("/api/v1/profiles", content='{"school_year": 1e400}',
+                          headers={"Content-Type": "application/json"})
+    assert r.status_code == 201 and r.json()["settings"]["school_year"] is None
+
+
+@pytest.mark.asyncio
+async def test_invalid_class_in_settings_is_rejected_not_cleared(client):
+    code = (await client.post("/api/v1/profiles", json={"school_year": 5})).json()["resume_code"]
+    h = {"X-Resume-Code": code}
+    for bad in (42, -1, "abc", True, 4.5):
+        r = await client.patch("/api/v1/profiles/me/settings", headers=h, json={"school_year": bad})
+        assert r.status_code == 422, (bad, r.text)
+    r = await client.patch("/api/v1/profiles/me/settings", headers=h, content='{"school_year": 1e400}')
+    assert r.status_code == 422
+    me = (await client.get("/api/v1/profiles/me", headers=h)).json()
+    assert me["settings"]["school_year"] == 5  # untouched
+
+
+def test_class_never_narrows_high_school_down_to_the_ninth_grade():
+    # "chemie na úrovni SŠ" from a 9th grader: G9-12 stays G9-12 (no RVP ZV 9. třída framing)...
+    d = validate.build_decision(intent(grade_band=GradeBand.G9_12), "rid", client_school_year=9)
+    assert d.intent.school_year is None and d.intent.grade_band is GradeBand.G9_12
+    # ...while an upper-secondary class still refines the band to its exact year.
+    d = validate.build_decision(intent(grade_band=GradeBand.G9_12), "rid", client_school_year=11)
+    assert d.intent.school_year == 11
+
+
+def test_stated_age_band_blocks_the_class_setting():
+    from app.schemas.enums import AgeBand
+
+    d = validate.build_decision(intent(age_band=AgeBand.UPPER_SECONDARY), "rid", client_school_year=4)
+    assert d.intent.school_year is None
+
+
+def test_clarify_does_not_ask_for_the_grade_when_the_class_is_known():
+    vague = intent(classifier_confidence=0.2, topic="")
+    asks = validate.build_decision(vague, "rid")
+    knows = validate.build_decision(vague, "rid", client_school_year=4)
+    assert "třídy" in asks.question
+    assert "třídy" not in knows.question
+    # Suggestions carry no grade, so tapping one keeps the learner's own class.
+    assert not any("třídu" in s for s in knows.suggestions)

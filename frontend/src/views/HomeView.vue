@@ -43,6 +43,9 @@ const busy = ref(false)
 const errorMsg = ref<string | null>(null)
 const decision = ref<Decision | null>(null)
 const promptEl = ref<HTMLTextAreaElement | null>(null)
+const gradeTitleEl = ref<HTMLElement | null>(null)
+const gradeChangeBtn = ref<HTMLButtonElement | null>(null)
+const examplesTitleEl = ref<HTMLElement | null>(null)
 const suggestions = ref<LearningSessionSummary[]>([])
 
 // Returning learners (a saved resume code) get a "pick up where you left off" strip of their own
@@ -73,27 +76,36 @@ const gradeName = computed(() =>
   prefs.schoolYear === null ? '' : schoolYearLabel(prefs.schoolYear, prefs.educationLocale),
 )
 
-function chooseGrade(year: number) {
-  prefs.schoolYear = year
+// The card replaces the control that opened it, so focus is moved explicitly (WCAG 2.4.3):
+// into the card when it opens, back to the "change" button (or the examples) when it closes.
+function closeGradeCard() {
   pickingGrade.value = false
-  session.syncPrefs().catch(() => {
-    /* saved locally; it follows the resume code on the next sync */
-  })
+  nextTick(() => (gradeChangeBtn.value ?? examplesTitleEl.value)?.focus({ preventScroll: true }))
 }
 
-/** Re-open the picker and bring it into view (on a phone it opens below the prompt card). */
-function changeGrade() {
+function chooseGrade(year: number) {
+  // Kept as pending until the server confirms it (synced by the settings watcher once the profile
+  // is loaded, or at the first prompt), so a later profile load can't overwrite the choice.
+  prefs.setSchoolYear(year)
+  closeGradeCard()
+}
+
+/** Toggle the picker; when opening, bring it into view (on a phone it opens below the prompt). */
+function toggleGradeCard() {
+  if (showGradeCard.value) {
+    closeGradeCard()
+    return
+  }
   pickingGrade.value = true
-  nextTick(() =>
-    document
-      .getElementById('sa-grade-title')
-      ?.scrollIntoView({ block: 'center', behavior: reduced.value ? 'auto' : 'smooth' }),
-  )
+  nextTick(() => {
+    gradeTitleEl.value?.focus({ preventScroll: true })
+    gradeTitleEl.value?.scrollIntoView({ block: 'center', behavior: reduced.value ? 'auto' : 'smooth' })
+  })
 }
 
 function skipGrade() {
   prefs.gradePromptDismissed = true
-  pickingGrade.value = false
+  closeGradeCard()
 }
 
 const isClarify = computed(() => decision.value?.type === 'clarify')
@@ -185,10 +197,17 @@ function applyRedirect(suggestion: string) {
           {{ busy ? t('home.go_busy') : t('home.go') }}
         </SaButton>
         <p class="sa-prompt__hint">{{ t('home.enter_hint') }}</p>
-        <p v-if="gradeName && !showGradeCard" class="sa-prompt__grade">
+        <p v-if="gradeName" class="sa-prompt__grade">
           <span aria-hidden="true">🎒</span>
           {{ t('home.grade_for', { grade: gradeName }) }}
-          <button type="button" class="sa-prompt__grade-change" @click="changeGrade">
+          <button
+            ref="gradeChangeBtn"
+            type="button"
+            class="sa-prompt__grade-change"
+            :aria-expanded="showGradeCard"
+            aria-controls="sa-grade-card"
+            @click="toggleGradeCard"
+          >
             {{ t('home.grade_change') }}
           </button>
         </p>
@@ -251,8 +270,13 @@ function applyRedirect(suggestion: string) {
       </div>
 
       <!-- Which grade? Asked once so prompts don't need to say it; skippable, changeable later. -->
-      <section v-if="showGradeCard" class="sa-card sa-grade-card" aria-labelledby="sa-grade-title">
-        <h2 id="sa-grade-title" class="sa-grade-card__title">
+      <section
+        v-if="showGradeCard"
+        id="sa-grade-card"
+        class="sa-card sa-grade-card"
+        aria-labelledby="sa-grade-title"
+      >
+        <h2 id="sa-grade-title" ref="gradeTitleEl" tabindex="-1" class="sa-grade-card__title">
           <span aria-hidden="true">🎒</span> {{ t('home.grade_title') }}
         </h2>
         <p class="sa-grade-card__desc">{{ t('home.grade_desc') }}</p>
@@ -271,7 +295,7 @@ function applyRedirect(suggestion: string) {
 
       <!-- Example prompts -->
       <div v-if="examples.length" class="flex flex-col gap-2">
-        <p class="text-sm font-semibold text-[var(--color-ink-soft)]">
+        <p ref="examplesTitleEl" tabindex="-1" class="text-sm font-semibold text-[var(--color-ink-soft)]">
           {{ t('home.examples') }}
         </p>
         <div class="flex flex-wrap gap-2">

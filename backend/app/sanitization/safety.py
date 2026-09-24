@@ -164,15 +164,16 @@ def ai_disclosure(language: str) -> str:
 
 
 # Each suggestion is a ready-to-send prompt (the UI drops a tapped chip straight into the prompt box),
-# localized by the DETECTED prompt language like the refusal reason itself.
+# localized by the DETECTED prompt language like the refusal reason itself. No grade in them: a
+# stated grade would override the learner's own class setting.
 _REDIRECT_SUGGESTIONS: dict[str, tuple[str, ...]] = {
     "en": (
-        "Teach me about the water cycle for 4th grade",
+        "Teach me about the water cycle",
         "Quiz me on multiplication facts",
         "Explain fractions with pictures",
     ),
     "cs": (
-        "Vysvětli mi koloběh vody pro 4. třídu",
+        "Vysvětli mi koloběh vody",
         "Vyzkoušej mě z násobilky",
         "Procvič se mnou vyjmenovaná slova",
     ),

@@ -61,8 +61,8 @@ en-GB:
   notation: "Number notation: decimal point (3.5), comma thousands separator (12,500), × for multiplication and ÷ for division in primary years."
   conventions: "Use UK contexts and terminology (e.g. 'maths' not 'math', 'Year groups', UK place names) where a concrete setting is needed; keep examples globally understandable otherwise."
   grade_naming:
-    K: "Reception (EYFS)"
-    G1-2: "Years 1-2 (Key Stage 1)"
+    K: "Reception / Year 1 (EYFS, Key Stage 1)"
+    G1-2: "Years 2-3 (Key Stages 1-2)"
     G3-5: "Years 4-6 (Key Stage 2)"
     G6-8: "Years 7-9 (Key Stage 3)"
     G9-12: "Years 10-13 (Key Stages 4-5, GCSE and A-level)"

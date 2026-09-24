@@ -48,6 +48,9 @@ export const useSessionStore = defineStore('session', () => {
       try {
         _adopt(await api.getMe())
         ready.value = true
+        // A class picked on this device before the profile loaded is pushed up now (hydration
+        // above kept it). Best-effort: the prompt itself already carries the local value.
+        if (prefs.schoolYearPending) await syncPrefs().catch(() => {})
         return
       } catch {
         // The cached code is stale → we're about to become a different (fresh) learner.
@@ -65,6 +68,8 @@ export const useSessionStore = defineStore('session', () => {
     resumeCode.value = created.resume_code
     lastResumeCodeForDisplay.value = created.resume_code
     profile.value = created.profile
+    // The new profile was created WITH the local class, so it is no longer pending.
+    if (created.settings.school_year === prefs.schoolYear) prefs.schoolYearPending = false
     prefs.hydrateFromServer(created.settings as unknown as Record<string, unknown>)
     await refreshGamification()
     ready.value = true
@@ -72,8 +77,10 @@ export const useSessionStore = defineStore('session', () => {
 
   async function resumeWithCode(code: string): Promise<void> {
     const env = await api.resumeProfile(code)
-    // A different learner is taking over this device — drop the previous learner's content first.
+    // A different learner is taking over this device — drop the previous learner's content first,
+    // and let their own class (even "not set") replace the previous learner's.
     clearLearnerContent()
+    usePrefsStore().resetForNewLearner()
     setResumeCode(code)
     resumeCode.value = code
     _adopt(env)
@@ -88,7 +95,13 @@ export const useSessionStore = defineStore('session', () => {
   /** Push current local prefs to the server so they follow the resume code. */
   async function syncPrefs(): Promise<void> {
     if (!isAuthenticated.value) return
-    await api.updateSettings(usePrefsStore().toServerPatch())
+    const prefs = usePrefsStore()
+    const patch = prefs.toServerPatch()
+    await api.updateSettings(patch)
+    // Confirmed — unless the learner changed the class again while the request was in flight.
+    if ('school_year' in patch && patch.school_year === prefs.schoolYear) {
+      prefs.schoolYearPending = false
+    }
   }
 
   function forget(): void {

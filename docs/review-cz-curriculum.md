@@ -62,8 +62,9 @@ další práci.
   Po odmítnutí zadání byla tlačítka s náhradními návrhy anglicky a navíc ve tvaru instrukce
   („Try: '…'“), takže se po klepnutí vložila do pole doslova. ✅ Opraveno.
 - **Ukázkové zadání.** Příklady odpovídaly spíš americké škole (španělština, fotosyntéza pro
-  5. třídu). ✅ Nahrazeny typickými českými tématy: vyjmenovaná slova, násobilka, zlomky ve
-  4. třídě, anglická slovíčka, přijímačky.
+  5. třídu). ✅ Nahrazeny typickými českými tématy: vyjmenovaná slova, násobilka, zlomky,
+  anglická slovíčka, přijímačky. Třídu v nich záměrně neuvádím, jinak by přebila třídu
+  nastavenou dítětem.
 - **Opakování bez obrazovky.** Aplikace slibuje „vrátíme se k tomu ve správnou chvíli“ a
   zahrádka vědomostí ukazuje „čas zalít“, ale žádná obrazovka nevolala `/review/due`.
   ✅ Doplněno „Zalij svou zahrádku“.
@@ -108,9 +109,25 @@ další práci.
 - Číselná odpověď přijme „12 500“ i „3,5“. Přehled odpovědí píše čísla česky.
 - Česky je i stránka 404. Karta s kódem už čtečce obrazovky neříká doslova „code.value“.
 
-**Ověření.** Backend 256 testů (+52), frontend typecheck, 43 testů (+24) a produkční build.
-Aplikace byla spuštěna a ručně prošla v Chromiu na šířce telefonu: výběr třídy, kolo opakování,
-drobečky lekce „Matematika · 4. třída · 15 min“ a přehled pokroku.
+**Nezávislá kontrola kódu** našla šest chyb. Všechny jsou opravené a pokryté testy:
+1. Třída zvolená před načtením profilu se při prvním zadání přepsala hodnotou ze serveru.
+   Zařízení teď posílá třídu jen tehdy, když ji samo změnilo.
+2. Na sdíleném zařízení si další dítě „zdědilo“ třídu předchozího. Po zadání jiného kódu teď
+   platí třída nového dítěte.
+3. Hodnota `1e400` shodila požadavek chybou 500. Teď se ignoruje.
+4. Neplatná hodnota v nastavení tiše smazala uloženou třídu. Teď vrátí chybu 422.
+5. Deváťák, který výslovně chtěl úroveň SŠ, dostal obsah pro 9. třídu. Třída už pásmo SŠ
+   nezužuje na 9. třídu.
+6. Po otevření a zavření výběru třídy se ztrácelo zaměření klávesnice. Teď se přesouvá na
+   nadpis karty a zpět na tlačítko.
+
+K tomu tyto drobnosti: tlačítka s návrhy už neuvádějí třídu, upřesňující otázka se na třídu
+neptá, když ji dítě nastavilo, britské názvy ročníků sedí, souhrn opakování počítá jen
+zodpovězené otázky a opakování si poradí s neplatným kódem.
+
+**Ověření.** Backend 262 testů (+58), frontend typecheck, 49 testů (+30) a produkční build.
+Aplikace byla spuštěna a ručně prošla v Chromiu na šířce telefonu: výběr třídy (i klávesnicí),
+kolo opakování, drobečky lekce „Matematika · 4. třída · 15 min“ a přehled pokroku.
 
 ## 5. Doporučení dalšího rozvoje
 

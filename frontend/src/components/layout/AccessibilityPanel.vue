@@ -56,7 +56,7 @@ const schoolYearChoices = computed(() => {
 const schoolYearModel = computed({
   get: () => (prefs.schoolYear === null ? '' : String(prefs.schoolYear)),
   set: (value: string) => {
-    prefs.schoolYear = value === '' ? null : Number(value)
+    prefs.setSchoolYear(value === '' ? null : Number(value))
   },
 })
 

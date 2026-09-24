@@ -19,7 +19,7 @@ import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
-import { api } from '@/lib/api'
+import { ApiError, api } from '@/lib/api'
 import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore } from '@/stores/session'
 import type { AnswerEvent, ItemPublic } from '@/types/question'
@@ -42,7 +42,9 @@ const submitting = ref(false)
 const done = ref(false)
 const doneRef = ref<HTMLElement | null>(null)
 
-const hasProfile = computed(() => !!session.resumeCode)
+// A stored code the server no longer knows (401) is treated like having no profile yet.
+const staleCode = ref(false)
+const hasProfile = computed(() => !!session.resumeCode && !staleCode.value)
 const current = computed(() => items.value[index.value] ?? null)
 const total = computed(() => items.value.length)
 const feedback = computed(() => (current.value ? (results.value[current.value.id] ?? null) : null))
@@ -51,6 +53,9 @@ const isLast = computed(() => index.value >= total.value - 1)
 const correctCount = computed(
   () => Object.values(results.value).filter((r) => r.is_correct).length,
 )
+// Skipped questions stay due (they come back next round), so the summary counts answered ones only.
+const answeredCount = computed(() => Object.keys(results.value).length)
+const skippedCount = computed(() => total.value - answeredCount.value)
 
 // Single morphing CTA (as in the quiz): Check drives the question's own submit until it's graded.
 const qr = ref<{ submit?: () => void; canSubmit?: boolean } | null>(null)
@@ -61,8 +66,9 @@ async function load() {
   failed.value = false
   try {
     items.value = (await api.getDue(SESSION_SIZE)).items
-  } catch {
-    failed.value = true
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) staleCode.value = true
+    else failed.value = true
   } finally {
     loading.value = false
   }
@@ -115,7 +121,9 @@ async function advance() {
   session.refreshGamification().catch(() => {
     /* the header simply keeps its last snapshot */
   })
-  if (total.value && correctCount.value / total.value >= 0.8) void celebrateLevelUp(doneRef.value)
+  if (answeredCount.value && correctCount.value / answeredCount.value >= 0.8) {
+    void celebrateLevelUp(doneRef.value)
+  }
 }
 
 // Never strand the learner on a question they can't answer.
@@ -164,7 +172,12 @@ onMounted(() => {
     <div v-else-if="done" ref="doneRef" class="sa-card sa-daily__done" role="status" aria-live="polite">
       <span class="sa-daily__done-glyph" aria-hidden="true">🌸</span>
       <h1 class="sa-daily__title">{{ t('daily.done_title') }}</h1>
-      <p class="sa-daily__intro">{{ t('daily.done_body', { correct: correctCount, total }) }}</p>
+      <p class="sa-daily__intro">
+        <template v-if="answeredCount">
+          {{ t('daily.done_body', { correct: correctCount, total: answeredCount }) }}
+        </template>
+        {{ skippedCount ? t('daily.done_skipped') : t('daily.done_later') }}
+      </p>
       <div class="sa-daily__actions">
         <SaButton variant="primary" size="lg" block icon="star" :to="{ name: 'stats' }">
           {{ t('results.view_progress') }}

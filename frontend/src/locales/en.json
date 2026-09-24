@@ -5,7 +5,7 @@
   },
   "home": {
     "prompt_label": "What would you like to learn?",
-    "prompt_placeholder": "e.g. I want to learn about photosynthesis at 5th grade level",
+    "prompt_placeholder": "e.g. Explain photosynthesis with pictures",
     "go": "Let's go!",
     "go_busy": "Sending…",
     "enter_hint": "Press Enter to begin, or Shift+Enter for a new line.",
@@ -17,10 +17,10 @@
     "have_code": "Have a resume code? Continue learning",
     "continue_title": "Pick up where you left off",
     "example_list": [
-      "Learn about the water cycle for 3rd grade",
-      "Quiz me on the French Revolution, high school",
-      "Explain fractions with pictures, age 9",
-      "Help me understand photosynthesis, 5th grade",
+      "Teach me about the water cycle",
+      "Quiz me on the French Revolution",
+      "Explain fractions with pictures",
+      "Help me understand photosynthesis",
       "Test me on Spanish food vocabulary"
     ],
     "grade_title": "Which grade are you in?",
@@ -382,7 +382,9 @@
     "empty_title": "All watered",
     "empty_body": "Nothing to review right now. When something starts to wilt, you'll find it here.",
     "done_title": "Garden watered!",
-    "done_body": "{correct} of {total} correct. We'll come back to these in a few days.",
+    "done_body": "{correct} of {total} correct.",
+    "done_later": "We'll come back to these in a few days.",
+    "done_skipped": "The questions you skipped will wait for you next time.",
     "load_error": "Couldn't load your review. Please try again."
   },
   "subjects": {

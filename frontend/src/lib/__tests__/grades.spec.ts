@@ -51,4 +51,9 @@ describe('levelLabel', () => {
     expect(levelLabel({ grade_band: 'G3-5', school_year: null }, 'en-US')).toBe('Grades 3–5')
     expect(levelLabel({ grade_band: 'unknown' }, 'cs-CZ')).toBe('')
   })
+
+  it('keeps UK band labels consistent with the Year = school year + 1 mapping', () => {
+    expect(levelLabel({ grade_band: 'G1-2' }, 'en-GB')).toBe('Years 2–3')
+    expect(levelLabel({ grade_band: 'G1-2', school_year: 1 }, 'en-GB')).toBe('Year 2')
+  })
 })

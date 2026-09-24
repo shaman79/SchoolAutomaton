@@ -7,7 +7,7 @@ from datetime import datetime
 from pydantic import Field, field_validator
 
 from .common import AppModel, StrictModel
-from .enums import AgeBand, DailyGoal, normalize_school_year
+from .enums import SCHOOL_YEAR_MAX, SCHOOL_YEAR_MIN, AgeBand, DailyGoal, normalize_school_year
 from .gamification import GamificationSnapshot
 
 
@@ -61,8 +61,17 @@ class ProfileSettingsUpdate(StrictModel):
 
     @field_validator("school_year", mode="before")
     @classmethod
-    def _norm_school_year(cls, v: object) -> int | None:
-        return normalize_school_year(v)
+    def _strict_school_year(cls, v: object) -> int | None:
+        # Unlike the lenient request/classifier paths, a bad value here must be a 422 — coercing it
+        # to None would silently CLEAR the learner's stored class.
+        if v is None:
+            return None
+        year = normalize_school_year(v)
+        if year is None:
+            raise ValueError(
+                f"school_year must be a whole number {SCHOOL_YEAR_MIN}-{SCHOOL_YEAR_MAX} or null"
+            )
+        return year
 
 
 class ProfilePublic(AppModel):

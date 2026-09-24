@@ -85,8 +85,8 @@ const BAND_LABELS: Record<LevelSystem, Record<string, string>> = {
     adult: 'Dospělí',
   },
   'en-GB': {
-    K: 'Reception',
-    'G1-2': 'Years 1–2',
+    K: 'Reception / Year 1',
+    'G1-2': 'Years 2–3',
     'G3-5': 'Years 4–6',
     'G6-8': 'Years 7–9',
     'G9-12': 'Years 10–13',

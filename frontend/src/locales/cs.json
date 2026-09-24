@@ -5,7 +5,7 @@
   },
   "home": {
     "prompt_label": "Co se chceš naučit?",
-    "prompt_placeholder": "např. Chci pochopit zlomky, jsem ve 4. třídě",
+    "prompt_placeholder": "např. Vysvětli mi zlomky na obrázcích",
     "go": "Jdeme na to!",
     "go_busy": "Odesílám…",
     "enter_hint": "Stiskni Enter pro start, nebo Shift+Enter pro nový řádek.",
@@ -17,12 +17,12 @@
     "have_code": "Máš kód pro pokračování? Pokračuj v učení",
     "continue_title": "Navaž na minulé učení",
     "example_list": [
-      "Procvič se mnou vyjmenovaná slova po B (3. třída)",
-      "Vysvětli mi zlomky na obrázcích (4. třída)",
+      "Procvič se mnou vyjmenovaná slova po B",
+      "Vysvětli mi zlomky na obrázcích",
       "Vyzkoušej mě z násobilky 6 a 7",
-      "Anglická slovíčka: zvířata, kvíz pro 3. třídu",
-      "Koloběh vody – přírodověda pro 4. třídu",
-      "Příprava na přijímačky z matematiky (9. třída)"
+      "Anglická slovíčka: zvířata – kvíz",
+      "Koloběh vody – přírodověda",
+      "Příprava na přijímačky z matematiky"
     ],
     "grade_title": "Do které třídy chodíš?",
     "grade_desc": "Lekce a kvízy ti pak sednou přesně k tomu, co se učíte ve škole. Třídu můžeš kdykoli změnit.",
@@ -383,7 +383,9 @@
     "empty_title": "Všechno je zalité",
     "empty_body": "Teď nemáš nic k opakování. Až něco začne vadnout, najdeš to tady.",
     "done_title": "Zahrádka je zalitá!",
-    "done_body": "Správně {correct} z {total}. Za pár dní se k tomu zase vrátíme.",
+    "done_body": "Správně {correct} z {total}.",
+    "done_later": "Za pár dní se k tomu zase vrátíme.",
+    "done_skipped": "Přeskočené otázky na tebe počkají příště.",
     "load_error": "Opakování se nepodařilo načíst. Zkus to prosím znovu."
   },
   "subjects": {

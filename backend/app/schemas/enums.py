@@ -43,12 +43,15 @@ def normalize_school_year(value: object) -> int | None:
     """Coerce a (model- or client-supplied) school year to an int in range, else ``None``.
 
     Never raises: an out-of-range or garbage value means "not stated", so a sloppy classifier field
-    or client hint can't fail the request."""
+    or client hint can't fail the request. JSON may carry ±Infinity/NaN or 1e400 (→ inf), and a
+    fractional number is not a school year either."""
     if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, float) and not value.is_integer():  # also rejects inf / nan
         return None
     try:
         year = int(value)  # type: ignore[call-overload]
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     return year if SCHOOL_YEAR_MIN <= year <= SCHOOL_YEAR_MAX else None
 

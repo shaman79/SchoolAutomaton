@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 
 from ..schemas.enums import (
+    AgeBand,
     DecisionType,
     GradeBand,
     Mode,
@@ -53,9 +54,16 @@ _CLARIFY_QUESTION: dict[str, str] = {
     "cs": "Pomůžu ti! Můžeš mi prozradit trochu víc o tom, co se chceš naučit, a do jaké chodíš "
     "třídy?",
 }
+# When the learner's class setting is known, don't ask for the grade again.
+_CLARIFY_QUESTION_CLASS_KNOWN: dict[str, str] = {
+    "en": "I want to help! Could you tell me a bit more about what you'd like to learn?",
+    "cs": "Pomůžu ti! Můžeš mi prozradit trochu víc o tom, co se chceš naučit?",
+}
+# No grade in the suggestions: a tapped chip becomes the prompt, and a stated grade would override
+# the learner's own class setting (the prompt always wins).
 _CLARIFY_SUGGESTIONS: dict[str, tuple[str, ...]] = {
-    "en": ("The water cycle for 5th grade", "Quiz me on fractions", "Basics of optics for 6th grade"),
-    "cs": ("Koloběh vody pro 4. třídu", "Vyzkoušej mě ze zlomků", "Vyjmenovaná slova po B pro 3. třídu"),
+    "en": ("The water cycle", "Quiz me on fractions", "Basics of optics"),
+    "cs": ("Koloběh vody", "Vyzkoušej mě ze zlomků", "Vyjmenovaná slova po B"),
 }
 
 
@@ -173,14 +181,22 @@ def _apply_class_setting(intent: StructuredIntent, client_school_year: int | Non
     """Fill in the learner's class setting ("Moje třída") when the prompt itself names no level.
 
     The prompt always wins: the setting is used only when the classifier found no school year AND its
-    band is either unknown (with no stated age) or already the setting's own band — so a learner who
-    explicitly asks for another level ("pro 7. třídu", "high school") still gets exactly that."""
+    band is either unknown (with no stated age or age band) or already the setting's own band — so a
+    learner who explicitly asks for another level ("pro 7. třídu", "high school") still gets exactly
+    that. One exception to the refinement: G9-12 spans the 9th grade of basic school (RVP ZV) AND
+    upper-secondary school, so a 9th grader asking for "střední škola" level must not be narrowed back
+    to 9. třída — the setting never refines G9-12 to year 9."""
     year = normalize_school_year(client_school_year)
     if year is None or intent.school_year is not None:
         return intent
     band = grade_band_for_school_year(year)
-    unstated = intent.grade_band == GradeBand.UNKNOWN and intent.age is None
-    if unstated or intent.grade_band == band:
+    unstated = (
+        intent.grade_band == GradeBand.UNKNOWN
+        and intent.age is None
+        and intent.age_band == AgeBand.UNKNOWN
+    )
+    refines = intent.grade_band == band and not (band == GradeBand.G9_12 and year == 9)
+    if unstated or refines:
         return intent.model_copy(update={"school_year": year, "grade_band": band})
     return intent
 
@@ -248,9 +264,10 @@ def build_decision(
 
     # 4) Low confidence -> clarify.
     if clean.classifier_confidence < CONFIDENCE_CLARIFY_THRESHOLD:
+        class_known = normalize_school_year(client_school_year) is not None
         return ClarifyDecision(
             request_id=request_id,
-            question=_loc(_CLARIFY_QUESTION, lang),
+            question=_loc(_CLARIFY_QUESTION_CLASS_KNOWN if class_known else _CLARIFY_QUESTION, lang),
             suggestions=list(_loc(_CLARIFY_SUGGESTIONS, lang)),
         )
 
