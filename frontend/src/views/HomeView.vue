@@ -25,6 +25,7 @@ import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
 import { schoolYearLabel } from '@/lib/grades'
+import { useVoiceInput, voiceInputSupported } from '@/composables/useVoiceInput'
 import { usePrefsStore } from '@/stores/prefs'
 import { usePromptStore } from '@/stores/prompt'
 import { useSessionStore } from '@/stores/session'
@@ -64,6 +65,16 @@ const examples = computed<string[]>(() => {
 })
 
 const canSubmit = computed(() => text.value.trim().length > 0 && !busy.value)
+
+// --- dictation (parent opt-in in Settings) ---
+const canDictate = computed(() => prefs.voiceInput && voiceInputSupported())
+const voice = useVoiceInput((said) => {
+  text.value = text.value.trim() ? `${text.value.trim()} ${said}` : said
+})
+function toggleDictation() {
+  if (voice.listening.value) voice.stop()
+  else voice.start(prefs.educationLocale ?? 'cs-CZ')
+}
 
 // --- the learner's class lives in Settings; home only shows it (or invites to set it) ---
 const gradeName = computed(() =>
@@ -147,6 +158,16 @@ function applyRedirect(suggestion: string) {
           class="sa-prompt__input"
           @keydown.enter.exact.prevent="go"
         />
+        <button
+          v-if="canDictate"
+          type="button"
+          class="sa-prompt__mic"
+          :aria-pressed="voice.listening.value"
+          @click="toggleDictation"
+        >
+          <span aria-hidden="true">{{ voice.listening.value ? '⏹' : '🎤' }}</span>
+          {{ voice.listening.value ? t('speech.listening') : t('speech.dictate') }}
+        </button>
         <SaButton
           type="submit"
           variant="primary"
@@ -162,7 +183,12 @@ function applyRedirect(suggestion: string) {
         <p class="sa-prompt__grade">
           <span aria-hidden="true">🎒</span>
           <template v-if="gradeName">{{ t('home.grade_for', { grade: gradeName }) }}</template>
-          <button type="button" class="sa-prompt__grade-change" @click="ui.settingsOpen = true">
+          <button
+            type="button"
+            class="sa-prompt__grade-change"
+            :class="{ 'sa-prompt__grade-set': !gradeName }"
+            @click="ui.settingsOpen = true"
+          >
             {{ gradeName ? t('home.grade_change') : t('home.grade_set') }}
           </button>
         </p>
@@ -327,6 +353,33 @@ function applyRedirect(suggestion: string) {
   margin: 0;
   font-size: 0.78rem;
   color: var(--color-ink-soft);
+}
+.sa-prompt__mic {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--tap-min);
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--color-line);
+  background: var(--color-surface-2);
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.sa-prompt__mic[aria-pressed='true'] {
+  border-color: var(--color-coral);
+}
+/* No class yet: an inviting pill rather than a small link (it is what makes content fit). */
+.sa-prompt__grade-set {
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-sun) 22%, var(--color-surface));
+  text-decoration: none;
+  color: var(--color-ink);
+  font-weight: 700;
 }
 .sa-prompt__grade {
   display: flex;

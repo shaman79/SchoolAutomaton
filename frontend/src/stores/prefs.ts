@@ -34,6 +34,9 @@ export const usePrefsStore = defineStore(
     const languageChosen = ref(false)
     const languagePending = ref(false)
     const dailyGoal = ref<DailyGoal>('regular')
+    // Dictation into the prompt box. Device-local and OFF by default: the browser's recognizer may
+    // send the child's voice to a cloud service, so a parent opts in (Settings explains this).
+    const voiceInput = ref(false)
 
     function applyToDom() {
       const el = document.documentElement
@@ -136,6 +139,7 @@ export const usePrefsStore = defineStore(
       languageChosen,
       languagePending,
       dailyGoal,
+      voiceInput,
       applyToDom,
       hydrateFromServer,
       setSchoolYear,

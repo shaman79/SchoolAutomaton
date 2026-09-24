@@ -129,15 +129,18 @@ watch(state, trigger)
       <span class="sa-feedback__headline" :class="{ 'sr-only': hasBody }">{{ statusLabel }}</span>
     </div>
 
+    <!-- The specific trap behind the chosen wrong answer comes first ("why THIS answer"), then the
+         general explanation. The stored text names the wrong idea, so it is labelled as such. -->
+    <div v-if="misconception && !correct" class="sa-feedback__misconception">
+      <p class="sa-feedback__misc-label">{{ t('feedback.misconception') }}</p>
+      <SafeContent :markdown="misconception.refutation || misconception.description" />
+    </div>
+
     <SafeContent
       v-if="explanation"
       :markdown="explanation"
       class="sa-feedback__explanation"
     />
-
-    <div v-if="misconception" class="sa-feedback__misconception">
-      <SafeContent :markdown="misconception.refutation" />
-    </div>
   </div>
 </template>
 
@@ -215,5 +218,11 @@ watch(state, trigger)
     transform: scale(1);
     opacity: 1;
   }
+}
+.sa-feedback__misc-label {
+  margin: 0 0 0.15rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
 }
 </style>

@@ -122,7 +122,8 @@ def curriculum_directive(education_locale: str | None, grade_band, school_year: 
     if level_name:
         lines.append(
             f"- The learner's level, by its local name: \"{level_name}\". Pitch the content, examples "
-            "and vocabulary to exactly this level, and use this local naming whenever you refer to it."
+            "and vocabulary to exactly this level; if the text mentions the level at all, use this local "
+            "naming (the details in parentheses are for you, not for the learner)."
         )
     if profile.get("spelling"):
         lines.append(f"- Write in {profile['spelling']}.")

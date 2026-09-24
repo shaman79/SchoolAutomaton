@@ -183,11 +183,27 @@ def _is_answerable(item_type: ItemType, d: dict[str, Any]) -> bool:
     return True
 
 
+# Key names a model plausibly uses instead of ours (seen in synthetic generation runs: a match item
+# with "pairs" instead of "correct" was silently discarded). Renamed before validation — only when the
+# canonical key is absent, so a well-formed payload is never touched.
+_PAYLOAD_KEY_ALIASES: dict[ItemType, dict[str, str]] = {
+    ItemType.MATCH: {"pairs": "correct", "correct_pairs": "correct", "matches": "correct"},
+    ItemType.ORDER: {"order": "correct_order", "correct_sequence": "correct_order", "items": "tokens"},
+    ItemType.MCQ: {"choices": "options"},
+    ItemType.CLOZE: {"gaps": "blanks", "template": "text_template", "text": "text_template"},
+    ItemType.TRUE_FALSE: {"correct": "answer", "is_true": "answer"},
+}
+
+
 def coerce_payload(item_type: ItemType, payload: dict[str, Any] | None) -> dict[str, Any] | None:
     """Validate + canonicalize a model payload, returning the canonical dict — or None if it is
     malformed OR not answerable/gradeable (the caller then DROPS the item rather than ship a broken
     question the learner can't answer or that grades a correct answer wrong)."""
     data = dict(payload or {})
+    for alias, canonical in _PAYLOAD_KEY_ALIASES.get(item_type, {}).items():
+        if alias in data:
+            value = data.pop(alias)  # a stray alias would also fail the strict schema
+            data.setdefault(canonical, value)
     data.setdefault("kind", item_type.value)
     model = _PAYLOAD_MODELS.get(item_type)
     if model is None:

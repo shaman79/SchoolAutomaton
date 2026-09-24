@@ -487,7 +487,7 @@ async def grade_and_reward(
 
     # 4) Resolve a misconception row from the matched distractor text (best-effort).
     misconception_info, misconception_id = await _resolve_misconception(
-        db, item.concept_id, misconception_text
+        db, item.concept_id, misconception_text, item=item
     )
 
     # 5) XP — diminishing returns on mastery, combo multiplier on consecutive first-try-correct.
@@ -725,11 +725,24 @@ async def _concept_was_failed(db: AsyncSession, profile: Profile, concept_id: in
 
 
 async def _resolve_misconception(
-    db: AsyncSession, concept_id: int, text: str | None
+    db: AsyncSession, concept_id: int, text: str | None, *, item: Item | None = None
 ) -> tuple[MisconceptionInfo | None, int | None]:
-    """Best-effort map a matched distractor / LLM misconception string to a Misconception row."""
+    """Map a chosen wrong option / LLM misconception string to a Misconception row.
+
+    The generator stores each distractor with its misconception id (``distractors_json``), so a chosen
+    MCQ option maps exactly — that is what lets the feedback say WHY this particular answer is wrong.
+    The old text match of an option's text against misconception descriptions almost never hit; it
+    remains only as the fallback for free-text (LLM-graded) misconception strings."""
     if not text:
         return None, None
+    if item is not None:
+        wanted = _norm_text(text)
+        for d in getattr(item, "distractors_json", None) or []:
+            mid = d.get("misconception_id") if isinstance(d, dict) else None
+            if mid and _norm_text(d.get("text", "")) == wanted:
+                row = await db.get(Misconception, mid)
+                if row is not None:
+                    return MisconceptionInfo(description=row.description, refutation=row.refutation_text), row.id
     rows = (
         await db.execute(select(Misconception).where(Misconception.concept_id == concept_id))
     ).scalars().all()

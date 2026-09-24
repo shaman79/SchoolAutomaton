@@ -736,3 +736,29 @@ async def test_build_review_session_caps_new_items(db):
     await db.flush()
     ordered, _comp = await interleave.build_review_session(db, profile, limit=50)
     assert len(ordered) <= 10  # new-item daily cap honored
+
+
+@pytest.mark.asyncio
+async def test_wrong_mcq_option_reports_its_own_misconception(db):
+    # The generator stores each distractor with its misconception id; choosing that option must
+    # surface exactly that misconception (the "why this answer is tempting" feedback).
+    from app.models import Misconception
+
+    profile = await _make_profile(db)
+    concept = await _make_concept(db, slug="vyjmenovana-slova-po-b", subject="language_arts")
+    trap = Misconception(concept_id=concept.id, code="i-po-b", description="Po b se vždy píše měkké i.",
+                         refutation_text="Po b se vždy píše měkké i.")
+    db.add(trap)
+    await db.flush()
+    payload = {"kind": "mcq", "multiple": False, "options": [
+        {"id": "a", "text": "bydlet", "is_correct": True}, {"id": "b", "text": "bidlet", "is_correct": False}]}
+    item = await _make_item(db, concept.id, "mcq", payload)
+    item.distractors_json = [{"text": "bidlet", "misconception_id": trap.id}]
+    await db.flush()
+
+    res = await gamification.grade_and_reward(
+        db, profile, item, AnswerIn(item_id=item.id, submitted_value="b"), None
+    )
+    assert res.is_correct is False
+    assert res.misconception is not None
+    assert res.misconception.description == "Po b se vždy píše měkké i."

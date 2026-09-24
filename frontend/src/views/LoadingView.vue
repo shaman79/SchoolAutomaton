@@ -16,7 +16,7 @@ import { useGeneration } from '@/composables/useGeneration'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 
 const props = defineProps<{ sessionId: string }>()
-const { t } = useI18n()
+const { t, tm } = useI18n()
 const router = useRouter()
 const { reduced } = useReducedMotion()
 
@@ -30,6 +30,18 @@ const encouragements = [
   'loading.cheer_4',
 ]
 const cheerIdx = ref(0)
+
+// "Víš, že…?" — something to read during the 30-60 s a lesson takes to build. A random start so a
+// returning child doesn't always see the same first fact; the child can tap for another.
+const facts = computed<string[]>(() => {
+  const raw = tm('loading.fact_list') as unknown
+  return Array.isArray(raw) ? (raw as string[]) : []
+})
+const factIdx = ref(Math.floor(Math.random() * 1000))
+const fact = computed(() => (facts.value.length ? facts.value[factIdx.value % facts.value.length] : ''))
+function nextFact() {
+  factIdx.value++
+}
 let cheerTimer: ReturnType<typeof setInterval> | null = null
 
 const headline = computed(() => {
@@ -119,8 +131,15 @@ watch(
         />
       </div>
 
+      <!-- Something to do while waiting. -->
+      <div v-if="fact" class="sa-card sa-loading__fact">
+        <p class="sa-loading__fact-title"><span aria-hidden="true">💡</span> {{ t('loading.fact_title') }}</p>
+        <p class="sa-loading__fact-text" aria-live="polite">{{ fact }}</p>
+        <button type="button" class="sa-loading__fact-next" @click="nextFact">{{ t('loading.fact_next') }}</button>
+      </div>
+
       <!-- Live checklist of plan sections (ticks off as `section` events arrive). -->
-      <ul v-if="g.checklist.value.length" class="sa-loading__list" aria-label="Plan">
+      <ul v-if="g.checklist.value.length" class="sa-loading__list" :aria-label="t('loading.plan_label')">
         <li
           v-for="s in g.checklist.value"
           :key="s.ordinal"
@@ -144,6 +163,32 @@ watch(
   gap: 1rem;
   padding: 3rem 0 4rem;
   text-align: center;
+}
+.sa-loading__fact {
+  width: 100%;
+  max-width: 30rem;
+  padding: 0.9rem 1rem;
+  text-align: left;
+  border-left: 4px solid var(--color-sun);
+}
+.sa-loading__fact-title {
+  margin: 0 0 0.3rem;
+  font-weight: 700;
+}
+.sa-loading__fact-text {
+  margin: 0;
+}
+.sa-loading__fact-next {
+  min-height: var(--tap-min);
+  margin-top: 0.3rem;
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: underline;
+  cursor: pointer;
 }
 .sa-loading__mascot {
   font-size: 3.5rem;

@@ -41,7 +41,24 @@
     "cheer_1": "Skvělá volba — tohle bude zábava!",
     "cheer_2": "Přidávám obrázky a příklady přímo pro tebe…",
     "cheer_3": "Přimíchávám trochu procvičování, aby ti to lépe utkvělo…",
-    "cheer_4": "Už to skoro je — ladím to k dokonalosti!"
+    "cheer_4": "Už to skoro je — ladím to k dokonalosti!",
+    "fact_title": "Víš, že…?",
+    "fact_next": "Další zajímavost",
+    "plan_label": "Plán lekce",
+    "fact_list": [
+      "Chobotnice má tři srdce.",
+      "Světlo ze Slunce k nám letí asi 8 minut.",
+      "Slovo „robot“ vymyslel Josef Čapek pro hru svého bratra Karla R.U.R.",
+      "Sněžka je nejvyšší hora Česka – měří 1 603 metrů.",
+      "Vltava je nejdelší řeka, která teče jen po českém území.",
+      "Dospělý člověk má 206 kostí, miminko jich má víc – některé mu teprve srostou.",
+      "Na Měsíci vydrží stopy astronautů velmi dlouho, protože tam nefouká vítr ani neprší.",
+      "Karel IV. založil v roce 1348 v Praze první univerzitu ve střední Evropě.",
+      "Pštros má oko větší než svůj mozek.",
+      "Srdce dospělého člověka udeří zhruba 100 000krát za den.",
+      "Včely si ukazují cestu ke květům tancem.",
+      "Voda při zamrznutí zvětší svůj objem, proto led plave."
+    ]
   },
   "common": {
     "next": "Další",
@@ -181,7 +198,9 @@
     "theme_dyslexia": "Pro dyslexii",
     "font_lexend": "Lexend",
     "font_atkinson": "Atkinson Hyperlegible",
-    "font_opendyslexic": "OpenDyslexic"
+    "font_opendyslexic": "OpenDyslexic",
+    "voice_input": "Hlasové zadávání",
+    "voice_input_hint": "Pro rodiče: dítě může zadání nadiktovat. Hlas přepisuje prohlížeč, často cloudovou službou (např. Google), proto je volba ve výchozím stavu vypnutá."
   },
   "lesson": {
     "gated_hint": "Tahle část se odemkne, až dokončíš tu předchozí.",
@@ -304,7 +323,8 @@
     }
   },
   "feedback": {
-    "partial": "Skoro to je — pokračuj!"
+    "partial": "Skoro to je — pokračuj!",
+    "misconception": "Tahle odpověď svádí, když si člověk myslí:"
   },
   "test": {
     "progress_label": "Průběh kvízu",
@@ -385,7 +405,10 @@
     "done_body": "Správně {correct} z {total}.",
     "done_later": "Za pár dní se k tomu zase vrátíme.",
     "done_skipped": "Přeskočené otázky na tebe počkají příště.",
-    "load_error": "Opakování se nepodařilo načíst. Zkus to prosím znovu."
+    "load_error": "Opakování se nepodařilo načíst. Zkus to prosím znovu.",
+    "sprint_start": "⚡ Sprint na 60 sekund",
+    "sprint_left": "Zbývá {n} s",
+    "sprint_done": "Ve sprintu máš {n} správně."
   },
   "subjects": {
     "math": "Matematika",
@@ -409,5 +432,11 @@
   "not_found": {
     "title": "Tahle stránka se někam zatoulala.",
     "back": "Zpět k učení"
+  },
+  "speech": {
+    "read": "Přečíst",
+    "stop": "Zastavit",
+    "dictate": "Nadiktovat",
+    "listening": "Poslouchám… (klepni pro konec)"
   }
 }

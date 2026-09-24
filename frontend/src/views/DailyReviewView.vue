@@ -9,7 +9,7 @@
  * a due concept is a plant that needs watering, never a failure.
  * Mirrors the quiz runner's single morphing Check → Next CTA. Mobile-first, reduced-motion aware.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -17,7 +17,9 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
+import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
+import { speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { ApiError, api } from '@/lib/api'
@@ -42,6 +44,9 @@ const failed = ref(false)
 const submitting = ref(false)
 const done = ref(false)
 const doneRef = ref<HTMLElement | null>(null)
+const questionEl = ref<HTMLElement | null>(null)
+// Review items carry no language of their own here; the learner's education locale is the best guess.
+const readLang = computed(() => speechLang(prefs.locale, prefs.educationLocale))
 
 // A stored code the server no longer knows (401) is treated like having no profile yet.
 const staleCode = ref(false)
@@ -113,11 +118,36 @@ async function onAnswer(e: AnswerEvent) {
   }
 }
 
+// Optional sprint: 60 s to answer as many as possible. Opt-in only (time pressure stresses some
+// children), started before the first answer, ends the round when the time is up.
+const SPRINT_SECONDS = 60
+const sprintLeft = ref<number | null>(null)
+let sprintTimer: ReturnType<typeof setInterval> | null = null
+function startSprint() {
+  sprintLeft.value = SPRINT_SECONDS
+  sprintTimer = setInterval(() => {
+    if (sprintLeft.value === null) return
+    sprintLeft.value -= 1
+    if (sprintLeft.value <= 0) finish()
+  }, 1000)
+}
+function stopSprint() {
+  if (sprintTimer) clearInterval(sprintTimer)
+  sprintTimer = null
+}
+onUnmounted(stopSprint)
+
 async function advance() {
   if (!isLast.value) {
     index.value++
     return
   }
+  finish()
+}
+
+function finish() {
+  if (done.value) return
+  stopSprint()
   done.value = true
   session.refreshGamification().catch(() => {
     /* the header simply keeps its last snapshot */
@@ -178,6 +208,7 @@ onMounted(() => {
           {{ t('daily.done_body', { correct: correctCount, total: answeredCount }) }}
         </template>
         {{ skippedCount ? t('daily.done_skipped') : t('daily.done_later') }}
+        <template v-if="sprintLeft !== null">{{ t('daily.sprint_done', { n: correctCount }) }}</template>
       </p>
       <div class="sa-daily__actions">
         <SaButton variant="primary" size="lg" block icon="star" :to="{ name: 'stats' }">
@@ -192,6 +223,17 @@ onMounted(() => {
       <header class="sa-daily__header">
         <h1 class="sa-daily__title"><span aria-hidden="true">💧</span> {{ t('daily.title') }}</h1>
         <p v-if="index === 0 && !answered" class="sa-daily__intro">{{ t('daily.intro') }}</p>
+        <button
+          v-if="index === 0 && !answered && sprintLeft === null && total > 2"
+          type="button"
+          class="sa-daily__sprint"
+          @click="startSprint"
+        >
+          {{ t('daily.sprint_start') }}
+        </button>
+        <p v-if="sprintLeft !== null" class="sa-daily__timer" role="timer" aria-live="off">
+          ⏱ {{ t('daily.sprint_left', { n: sprintLeft }) }}
+        </p>
         <ProgressBar
           :value="index + 1"
           :max="total"
@@ -203,6 +245,8 @@ onMounted(() => {
       </header>
 
       <div :key="current.id">
+        <div class="sa-daily__qhead"><ReadAloudButton :target="questionEl" :lang="readLang" /></div>
+        <div ref="questionEl">
         <QuestionRenderer
           ref="qr"
           :item="current"
@@ -212,6 +256,7 @@ onMounted(() => {
           managed
           @answer="onAnswer"
         />
+        </div>
         <CorrectAnswer :item="current" :feedback="feedback" />
       </div>
 
@@ -248,6 +293,27 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.sa-daily__sprint {
+  align-self: flex-start;
+  min-height: var(--tap-min);
+  padding: 0.35rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--color-line);
+  background: var(--color-surface-2);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sa-daily__timer {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.sa-daily__qhead {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.4rem;
+}
 .sa-daily {
   display: flex;
   flex-direction: column;

@@ -202,8 +202,8 @@ free of clues that give away the answer.
 
 ## Item-type reference (stable)
 mcq: a stem plus options; each option has an id and text; exactly one is_correct unless the request
-says multiple-select. Keep options parallel in length and grammar so length is not a clue. Order
-options sensibly (numeric ascending, otherwise no fixed pattern).
+says multiple-select. Keep options parallel in length and grammar so length is not a clue. List
+options in no fixed pattern and never put the correct option first by habit.
 true_false: a single declarative statement and a boolean answer; avoid absolutes ("always",
 "never") unless they are the point of the item.
 cloze: a text_template with one or more blanks. Mark EACH blank in the template with a {{blank_id}}
@@ -220,6 +220,20 @@ order: a list of tokens and the correct_order of their ids; the sequence must ha
 ordering.
 hotspot: an image_request describing a kid-safe figure and labeled regions, each with coordinates and
 whether it is_correct. The region geometry must match the described figure.
+
+EXACT payload shapes (use these key names; any other key name makes the item unreadable and it is
+discarded):
+mcq:          {"options": [{"id": "a", "text": "...", "is_correct": true}, {"id": "b", "text": "...", "is_correct": false}], "multiple": false}
+true_false:   {"statement": "...", "answer": true}
+cloze:        {"text_template": "... {{b1}} ...", "blanks": [{"id": "b1", "answer": "...", "choices": ["...", "..."]}]}   (choices optional)
+short_answer: {"placeholder": "..."}   (put the answer in the item's expected_answer / accepted_variants)
+numeric:      {"answer": 12.5, "tolerance": 0, "unit": "cm"}
+match:        {"left": [{"id": "l1", "text": "..."}], "right": [{"id": "r1", "text": "..."}], "correct": [{"left_id": "l1", "right_id": "r1"}]}
+order:        {"tokens": [{"id": "t1", "text": "..."}], "correct_order": ["t1", "t2"]}
+hotspot:      {"image_request": "...", "regions": [{"id": "r1", "shape": "rect", "coords": [0.1, 0.1, 0.3, 0.2], "label": "...", "is_correct": true}]}
+Item-level fields: expected_answer is only for short_answer and numeric (the answer as text); leave it
+null otherwise. distractors are only for mcq: one per wrong option, whose text repeats that option's
+text exactly. Leave points at 10.
 
 INTEGRITY (mandatory — an item that fails this is discarded, so the learner loses it): every item
 must be answerable and gradeable exactly as written. mcq: at least one option has is_correct=true.

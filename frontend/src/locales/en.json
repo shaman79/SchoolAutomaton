@@ -40,7 +40,22 @@
     "cheer_1": "Great choice — this is going to be fun!",
     "cheer_2": "Adding pictures and examples just for you…",
     "cheer_3": "Mixing in a little practice to help it stick…",
-    "cheer_4": "Almost there — making it just right!"
+    "cheer_4": "Almost there — making it just right!",
+    "fact_title": "Did you know…?",
+    "fact_next": "Another one",
+    "plan_label": "Lesson plan",
+    "fact_list": [
+      "An octopus has three hearts.",
+      "Sunlight takes about 8 minutes to reach Earth.",
+      "The word “robot” comes from a 1920 Czech play, R.U.R.",
+      "Adults have 206 bones; babies have more, and some fuse together as they grow.",
+      "Footprints on the Moon can last a very long time — there is no wind or rain to wipe them away.",
+      "An ostrich’s eye is bigger than its brain.",
+      "An adult’s heart beats about 100,000 times a day.",
+      "Honeybees show each other the way to flowers by dancing.",
+      "Water expands when it freezes, which is why ice floats.",
+      "Mount Everest grows a few millimetres taller every year."
+    ]
   },
   "common": {
     "next": "Next",
@@ -180,7 +195,9 @@
     "theme_dyslexia": "Dyslexia-friendly",
     "font_lexend": "Lexend",
     "font_atkinson": "Atkinson Hyperlegible",
-    "font_opendyslexic": "OpenDyslexic"
+    "font_opendyslexic": "OpenDyslexic",
+    "voice_input": "Voice input",
+    "voice_input_hint": "For parents: lets your child dictate the prompt. The browser transcribes the voice, often with a cloud service (e.g. Google), so this is off by default."
   },
   "lesson": {
     "gated_hint": "Finish the section above to unlock this one.",
@@ -303,7 +320,8 @@
     }
   },
   "feedback": {
-    "partial": "Partly there — keep going!"
+    "partial": "Partly there — keep going!",
+    "misconception": "This answer is tempting if you think:"
   },
   "test": {
     "progress_label": "Quiz progress",
@@ -384,7 +402,10 @@
     "done_body": "{correct} of {total} correct.",
     "done_later": "We'll come back to these in a few days.",
     "done_skipped": "The questions you skipped will wait for you next time.",
-    "load_error": "Couldn't load your review. Please try again."
+    "load_error": "Couldn't load your review. Please try again.",
+    "sprint_start": "⚡ 60-second sprint",
+    "sprint_left": "{n} s left",
+    "sprint_done": "{n} correct in the sprint."
   },
   "subjects": {
     "math": "Math",
@@ -408,5 +429,11 @@
   "not_found": {
     "title": "This page wandered off.",
     "back": "Back to learning"
+  },
+  "speech": {
+    "read": "Read aloud",
+    "stop": "Stop",
+    "dictate": "Dictate",
+    "listening": "Listening… (tap to stop)"
   }
 }

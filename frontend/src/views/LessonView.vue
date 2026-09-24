@@ -21,7 +21,9 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
+import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
+import { speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -125,6 +127,10 @@ function isLocked(s: LessonSection): boolean {
 
 const objectives = computed(() => lesson.value?.objectives ?? [])
 
+// Read-aloud: each section's rendered text, in the lesson's language.
+const sectionEls = ref<Record<number, HTMLElement | null>>({})
+const readLang = computed(() => speechLang(lesson.value?.language, prefs.educationLocale))
+
 // "Matematika · 4. třída · 15 min" — subject and level named the way the learner's school names them.
 const crumbs = computed(() => {
   const l = lesson.value
@@ -202,7 +208,10 @@ onUnmounted(() => lessonStore.stopPolls())
       :class="{ 'sa-lesson__section--locked': isLocked(s) }"
       :aria-disabled="isLocked(s) ? 'true' : undefined"
     >
-      <h2 v-if="s.title" class="sa-lesson__h2">{{ s.title }}</h2>
+      <div class="sa-lesson__head">
+        <h2 v-if="s.title" class="sa-lesson__h2">{{ s.title }}</h2>
+        <ReadAloudButton v-if="!isLocked(s)" :target="sectionEls[s.ordinal] ?? null" :lang="readLang" />
+      </div>
 
       <!-- Locked interactive section: explain why, don't reveal content. -->
       <p v-if="isLocked(s)" class="sa-lesson__locked-hint" role="note">
@@ -211,7 +220,11 @@ onUnmounted(() => lessonStore.stopPolls())
 
       <template v-else>
         <!-- Dual coding: prose + visual side by side on wider screens, stacked on phones. -->
-        <div class="sa-lesson__body" :class="{ 'sa-lesson__body--dual': s.assets.length }">
+        <div
+          :ref="(el) => (sectionEls[s.ordinal] = el as HTMLElement | null)"
+          class="sa-lesson__body"
+          :class="{ 'sa-lesson__body--dual': s.assets.length }"
+        >
           <SafeContent
             v-if="s.body_markdown"
             :markdown="s.body_markdown"
@@ -315,6 +328,13 @@ onUnmounted(() => lessonStore.stopPolls())
 </template>
 
 <style scoped>
+.sa-lesson__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
 .sa-lesson {
   display: flex;
   flex-direction: column;

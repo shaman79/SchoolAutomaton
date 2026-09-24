@@ -16,7 +16,9 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
+import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
+import { speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -34,6 +36,8 @@ const test = useTestStore()
 const { celebrateCorrect } = useCelebration()
 
 const failed = ref(false)
+const questionEl = ref<HTMLElement | null>(null)
+const readLang = computed(() => speechLang(test.quiz?.language, prefs.educationLocale))
 const submitting = ref(false)
 const finishing = ref(false)
 
@@ -159,9 +163,13 @@ onMounted(async () => {
     <!-- One question at a time (the QuestionRenderer's own root is the card; this wrapper only holds
          the points label above it — no nested card). -->
     <div v-if="current" :key="current.item.id" class="sa-test__question">
-      <p class="sa-test__points">
-        {{ t('test.points', { n: current.points }) }}
-      </p>
+      <div class="sa-test__qhead">
+        <p class="sa-test__points">
+          {{ t('test.points', { n: current.points }) }}
+        </p>
+        <ReadAloudButton :target="questionEl" :lang="readLang" />
+      </div>
+      <div ref="questionEl">
       <QuestionRenderer
         ref="qr"
         :item="current.item"
@@ -171,6 +179,7 @@ onMounted(async () => {
         managed
         @answer="onAnswer"
       />
+      </div>
       <CorrectAnswer :item="current.item" :feedback="currentFeedback" />
     </div>
 
@@ -223,6 +232,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.sa-test__qhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
 .sa-test {
   display: flex;
   flex-direction: column;

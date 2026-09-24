@@ -20,6 +20,7 @@ import SaIcon from '@/components/common/SaIcon.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { FONT_SCALE_STEPS, THEME_OPTIONS, fontOptionsFor } from '@/composables/useTheme'
 import GradePicker from '@/components/common/GradePicker.vue'
+import { voiceInputSupported } from '@/composables/useVoiceInput'
 import { EDUCATION_LOCALES } from '@/i18n'
 import { useSessionStore } from '@/stores/session'
 import { usePrefsStore } from '@/stores/prefs'
@@ -143,9 +144,6 @@ watch(
             </header>
 
             <div class="flex flex-col gap-6 overflow-y-auto pb-2">
-              <!-- Your code to continue (anonymous; no account) -->
-              <ResumeCodeCard v-if="session.resumeCode" />
-
               <!-- Language -->
               <fieldset class="flex flex-col gap-2">
                 <legend class="mb-1 font-semibold">{{ t('a11y.language') }}</legend>
@@ -247,7 +245,24 @@ watch(
                   <span class="font-semibold">{{ t('a11y.sound') }}</span>
                   <input v-model="prefs.sound" type="checkbox" class="sa-switch" />
                 </label>
+                <template v-if="voiceInputSupported()">
+                  <label class="sa-toggle">
+                    <span class="font-semibold">{{ t('a11y.voice_input') }}</span>
+                    <input
+                      v-model="prefs.voiceInput"
+                      type="checkbox"
+                      class="sa-switch"
+                      aria-describedby="a11y-voice-hint"
+                    />
+                  </label>
+                  <p id="a11y-voice-hint" class="-mt-2 text-xs text-[var(--color-ink-soft)]">
+                    {{ t('a11y.voice_input_hint') }}
+                  </p>
+                </template>
               </div>
+
+              <!-- Your code to continue (anonymous; no account) — last: set once, rarely changed. -->
+              <ResumeCodeCard v-if="session.resumeCode" />
 
               <p class="text-xs text-[var(--color-ink-soft)]">{{ t('a11y.synced_hint') }}</p>
             </div>

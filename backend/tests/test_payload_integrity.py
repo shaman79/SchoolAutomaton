@@ -87,3 +87,17 @@ def test_cloze_requires_blank_markers_in_template():
 def test_valid_simple_types_pass():
     assert coerce_payload(ItemType.NUMERIC, {"answer": 42.0, "tolerance": 0.5}) is not None
     assert coerce_payload(ItemType.SHORT_ANSWER, {"placeholder": "your answer"}) is not None
+
+
+def test_common_alias_keys_are_accepted_not_discarded():
+    # Seen in a synthetic generation run: "pairs" instead of "correct" made the whole item vanish.
+    from app.schemas.enums import ItemType
+    from app.schemas.generation import coerce_payload
+
+    match = {"left": [{"id": "l1", "text": "polovina"}], "right": [{"id": "r1", "text": "1/2"}],
+             "pairs": [{"left_id": "l1", "right_id": "r1"}]}
+    out = coerce_payload(ItemType.MATCH, match)
+    assert out is not None and out["correct"] == [{"left_id": "l1", "right_id": "r1"}]
+    # A canonical key always wins over an alias.
+    both = dict(match, correct=[{"left_id": "l1", "right_id": "r1"}], pairs=[])
+    assert coerce_payload(ItemType.MATCH, both)["correct"] == [{"left_id": "l1", "right_id": "r1"}]
