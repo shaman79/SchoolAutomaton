@@ -546,12 +546,17 @@ async def generate_lesson(
         return concept_cache[s]
 
     objectives_json: list[dict[str, Any]] = []
+    # Several objectives often target one concept (or slugs that normalize alike): link each concept
+    # once — a duplicate (lesson, concept, 'taught') row violates the UNIQUE constraint on autoflush.
+    taught: set[int] = set()
     for obj in plan.objectives:
         concept = await get_concept(obj.concept_slug, obj.text)
         objectives_json.append(
             {"text": obj.text, "bloom_tier": int(obj.bloom_tier), "concept_id": concept.id}
         )
-        db.add(LessonConcept(lesson_id=lesson.id, concept_id=concept.id, relation="taught"))
+        if concept.id not in taught:
+            taught.add(concept.id)
+            db.add(LessonConcept(lesson_id=lesson.id, concept_id=concept.id, relation="taught"))
     lesson.objectives_json = objectives_json
 
     for edge in plan.concept_edges:

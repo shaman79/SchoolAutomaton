@@ -29,6 +29,7 @@ from app.db.session import SessionLocal, engine  # noqa: E402
 from app.llm import lesson_generator, orchestrator, quiz_generator  # noqa: E402
 from app.llm.grader import grade_free_text  # noqa: E402
 from app.models import (  # noqa: E402
+    LessonConcept,
     AssetsRef,
     Concept,
     ConceptEdge,
@@ -646,3 +647,35 @@ async def test_parse_validation_error_triggers_corrective_retry(db):
     assert calls["n"] == 2  # one failed attempt, then a successful retry
     assert isinstance(result, GenQuiz)
     assert result.title == "Photosynthesis Quiz"
+
+
+@pytest.mark.asyncio
+async def test_objectives_sharing_a_concept_do_not_violate_unique(db):
+    """Two objectives on the same concept (or slugs that normalize alike) used to add a duplicate
+    LessonConcept(lesson, concept, 'taught') → UNIQUE constraint failed on the next autoflush."""
+    client = _make_mock_client()
+    plan = _canned_plan()
+    plan.objectives = [
+        GenObjective(text="I can say what photosynthesis makes.", bloom_tier=BloomTier.REMEMBER,
+                     concept_slug="photosynthesis"),
+        GenObjective(text="I can explain why plants need light.", bloom_tier=BloomTier.UNDERSTAND,
+                     concept_slug="Photosynthesis"),
+        GenObjective(text="I can name what plants take in.", bloom_tier=BloomTier.REMEMBER,
+                     concept_slug="light"),
+    ]
+
+    async def _create(**kwargs):
+        user = kwargs["messages"][0]["content"]
+        if '"title":"GenSection"' in user:
+            return _FakeText(_canned_section(_section_kind_from(user)))
+        if '"title":"LessonPlan"' in user:
+            return _FakeText(plan)
+        raise AssertionError("unexpected create() call")
+
+    client.messages.create = AsyncMock(side_effect=_create)
+    lr = await _seed_request(db, Mode.STUDY)
+    lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+    await db.flush()
+    links = list(await db.scalars(select(LessonConcept).where(LessonConcept.lesson_id == lesson.id)))
+    assert sorted(lc.relation for lc in links) == ["taught", "taught"]  # one per distinct concept
+    assert len(lesson.objectives_json) == 3  # every objective is kept
