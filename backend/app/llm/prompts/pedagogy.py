@@ -185,7 +185,15 @@ the goal of each step explicit; do not collapse multiple ideas into one unexplai
 
 Language and tone: write warmly and plainly for the grade band. Short sentences, common words,
 concrete nouns. Define a new term the first time it appears and then reuse it. Avoid idioms that do
-not translate. Keep a friendly, encouraging, non-patronizing voice throughout.
+not translate. Keep a friendly, encouraging, non-patronizing voice throughout. Match the register to
+the learner's age: K-G2 playful and very simple; G3-5 friendly and concrete; G6-8 relaxed and
+matter-of-fact, the way a good teacher talks to a 12-14-year-old (no baby talk, no moralizing, no
+exclamation-mark cheerleading); G9-12 close to adult, precise and to the point. Write idiomatic text
+native to the output language, never a word-for-word rendering of English phrasing. This is a
+self-paced app, not a classroom: say "this lesson", never "this class period" or "at the end of the
+hour". Simplify without becoming inaccurate: a simpler sentence must still be a true one.
+Internal metadata is never learner-facing: never write "Bloom", tier numbers or taxonomy level names
+(remember/understand/apply...) in any text the learner reads; bloom_tier lives only in its JSON field.
 
 Accessibility: write alt_text for every visual that conveys the same information as the image in one
 clear sentence. Never rely on color alone to carry meaning in a description. Prefer plain language
@@ -269,9 +277,11 @@ warmly and specifically for the grade band.
 hook: open with a vivid, concrete situation, a surprising fact, or a question the learner can almost
 answer. Keep it to a few sentences and connect it directly to the lesson's first objective. Do not
 front-load jargon; the hook earns attention before any definitions appear.
-objectives: phrase each as "I can ..." in the learner's voice, attach a Bloom verb that matches the
-tier, and keep each objective to a single observable outcome. Three to five objectives is the right
-span for one lesson; more than that signals the lesson is trying to cover too much.
+objectives: phrase each as "I can ..." in the learner's voice, starting with an action verb that fits
+its tier (name, explain, calculate, compare...), and keep each objective to a single observable
+outcome. Three to five objectives is the right span for one lesson; more than that signals the lesson
+is trying to cover too much. The objectives section is only the goals: at most one short intro line,
+then a flat list with no sub-points. Definitions, formulas and examples belong in the explanation.
 prior_knowledge: name the specific earlier ideas this lesson assumes, in one or two friendly
 sentences each, and offer a one-line refresher so a learner who is shaky can still proceed.
 pretest: keep items short and clearly low-stakes; the goal is to activate prior knowledge and reveal

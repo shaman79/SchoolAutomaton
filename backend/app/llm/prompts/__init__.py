@@ -89,7 +89,7 @@ def build_lesson_plan_user(intent: StructuredIntent) -> str:
         "Requirements:\n"
         f"- sections: one stub PER skeleton kind, in this exact order: {skeleton}. "
         "Give each a short title; set needs_image and visual_kind where a visual helps.\n"
-        "- objectives: 3 to 5 Bloom-tagged 'I can ...' statements, each with a concept_slug "
+        "- objectives: 3 to 5 'I can ...' statements, each with a bloom_tier (in that field only, never in the text) and a concept_slug "
         "(lowercase-hyphen slug derived from the concept).\n"
         "- concept_edges: propose prerequisite and related edges between concept slugs you use.\n"
         "- misconceptions: list 1 to 4 common misconceptions for this topic as short strings.\n"
