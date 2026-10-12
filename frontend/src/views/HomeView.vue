@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * HomeView — the playful entry point. A dominant prompt hero (single textarea + big CTA),
- * example chips, and a link to /resume. On submit we lazily ensure an anonymous profile, then
+ * example chips, and a link to /resume. A returning learner with an unfinished lesson/quiz gets a
+ * "Continue where you left off" card first. On submit we lazily ensure an anonymous profile, then
  * route on the sanitizer Decision:
  *   proceed  -> /loading/:request_id (generation)
  *   clarify  -> inline clarifying question + suggestion chips that REFINE the prompt
@@ -17,6 +18,7 @@ import { useRouter } from 'vue-router'
 
 import CrisisCard from '@/components/CrisisCard.vue'
 import DailyReviewCard from '@/components/common/DailyReviewCard.vue'
+import ProgressBar from '@/components/common/ProgressBar.vue'
 import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
@@ -24,6 +26,7 @@ import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
+import { progressLabel } from '@/lib/format'
 import { schoolYearLabel } from '@/lib/grades'
 import { useVoiceInput, voiceInputSupported } from '@/composables/useVoiceInput'
 import { usePrefsStore } from '@/stores/prefs'
@@ -46,16 +49,34 @@ const errorMsg = ref<string | null>(null)
 const decision = ref<Decision | null>(null)
 const promptEl = ref<HTMLTextAreaElement | null>(null)
 const suggestions = ref<LearningSessionSummary[]>([])
+// The unfinished lesson/quiz the learner was last in. Opening it restores their exact position.
+const unfinished = ref<LearningSessionSummary | null>(null)
 
-// Returning learners (a saved resume code) get a "pick up where you left off" strip of their own
-// recent lessons/quizzes — reuse over regenerating the same topic. Best-effort; silent on failure.
+const unfinishedLabel = computed(() => (unfinished.value ? progressLabel(unfinished.value) : null))
+const unfinishedTarget = computed(() =>
+  unfinished.value
+    ? {
+        name: unfinished.value.mode === 'test' ? 'test' : 'lesson',
+        params: { sessionId: unfinished.value.request_id },
+      }
+    : null,
+)
+// Don't list the same session twice (it already has the card above).
+const otherSuggestions = computed(() =>
+  suggestions.value.filter((s) => s.request_id !== unfinished.value?.request_id),
+)
+
+// Returning learners (a saved resume code) get their unfinished session to continue, plus a strip of
+// ready lessons/quizzes to explore — reuse over regenerating the same topic. Best-effort; silent on
+// failure.
 onMounted(async () => {
   if (!session.resumeCode) return
-  try {
-    suggestions.value = await api.getRecommendations({ limit: 4 })
-  } catch {
-    /* optional */
-  }
+  const [cont, recs] = await Promise.allSettled([
+    api.getContinue(),
+    api.getRecommendations({ limit: 4 }),
+  ])
+  if (cont.status === 'fulfilled') unfinished.value = cont.value
+  if (recs.status === 'fulfilled') suggestions.value = recs.value
 })
 
 // Example prompts are localized (array). Fall back gracefully if a locale lacks them.
@@ -145,6 +166,32 @@ function applyRedirect(suggestion: string) {
     />
 
     <template v-else>
+      <!-- Unfinished lesson/quiz: one tap back to the exact spot (restored when it opens). -->
+      <section
+        v-if="unfinished?.progress && unfinishedTarget"
+        class="sa-card sa-continue"
+        aria-labelledby="sa-continue-title"
+      >
+        <h2 id="sa-continue-title" class="sa-continue__eyebrow">{{ t('home.resume_title') }}</h2>
+        <p class="sa-continue__name">{{ unfinished.title || t('history.untitled') }}</p>
+        <ProgressBar
+          :value="unfinished.progress.position"
+          :max="unfinished.progress.total"
+          size="sm"
+          :label="unfinished.title || t('history.untitled')"
+          :value-text="unfinishedLabel ?? undefined"
+        />
+        <p class="sa-continue__meta">
+          <span class="sa-continue__badge">{{
+            t(unfinished.mode === 'test' ? 'history.mode_test' : 'history.mode_study')
+          }}</span>
+          <span>{{ unfinishedLabel }}</span>
+        </p>
+        <SaButton variant="primary" block icon="sparkle" icon-right :to="unfinishedTarget">
+          {{ t('common.continue') }}
+        </SaButton>
+      </section>
+
       <!-- Prompt hero card -->
       <form class="sa-card sa-prompt" :class="{ 'sa-prompt--anim': !reduced }" @submit.prevent="go">
         <label for="prompt" class="sa-prompt__label">{{ t('home.prompt_label') }}</label>
@@ -271,9 +318,9 @@ function applyRedirect(suggestion: string) {
         </div>
       </div>
 
-      <!-- Pick up where you left off (returning learners), with a path to the full list. -->
-      <template v-if="suggestions.length">
-        <SuggestionsStrip :items="suggestions" :title="t('home.continue_title')" />
+      <!-- Ready lessons/quizzes to explore (returning learners), with a path to the full list. -->
+      <template v-if="otherSuggestions.length">
+        <SuggestionsStrip :items="otherSuggestions" :title="t('home.continue_title')" />
         <RouterLink :to="{ name: 'history' }" class="sa-home__seeall">
           <SaIcon name="books" :size="16" aria-hidden="true" />
           {{ t('history.title') }}
@@ -318,6 +365,48 @@ function applyRedirect(suggestion: string) {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+.sa-continue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.1rem;
+  border: 2px solid var(--color-primary);
+}
+.sa-continue__eyebrow {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+.sa-continue__name {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.sa-continue__meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+.sa-continue__badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+  color: var(--color-primary-strong);
 }
 .sa-prompt {
   display: flex;

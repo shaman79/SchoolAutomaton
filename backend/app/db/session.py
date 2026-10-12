@@ -73,6 +73,13 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("lessons", "school_year", "ALTER TABLE lessons ADD COLUMN school_year INTEGER"),
     ("quizzes", "school_year", "ALTER TABLE quizzes ADD COLUMN school_year INTEGER"),
     ("profile_settings", "school_year", "ALTER TABLE profile_settings ADD COLUMN school_year INTEGER"),
+    # Resume-where-you-left-off: the learner's position inside an open quiz attempt.
+    (
+        "quiz_attempts",
+        "current_index",
+        "ALTER TABLE quiz_attempts ADD COLUMN current_index INTEGER NOT NULL DEFAULT 0",
+    ),
+    ("quiz_attempts", "last_active_at", "ALTER TABLE quiz_attempts ADD COLUMN last_active_at DATETIME"),
 )
 
 

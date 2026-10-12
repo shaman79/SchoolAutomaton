@@ -1,11 +1,13 @@
-/** Drives the interactive TestRunner: load quiz → start attempt → grade each answer → results.
- *  Combo/scoring come from the server GradeResult; this store tracks per-question state + progress. */
+/** Drives the interactive TestRunner: load quiz → start (or resume) attempt → grade each answer →
+ *  results. The SERVER owns the attempt — the question the learner is on and every graded answer — so
+ *  a refresh, a break, or another device with the same resume code picks up at the exact question.
+ *  Combo/scoring come from the server GradeResult; this store mirrors per-question state + progress. */
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { api } from '@/lib/api'
-import type { AnswerEvent } from '@/types/question'
-import type { GradeResult, Quiz } from '@/types/session'
+import { ApiError, api } from '@/lib/api'
+import type { AnswerEvent, SubmittedValue } from '@/types/question'
+import type { AttemptStart, GradeResult, Quiz } from '@/types/session'
 
 import { useSessionStore } from './session'
 
@@ -16,6 +18,11 @@ export const useTestStore = defineStore('test', () => {
   const quizId = ref<number | null>(null)
   const currentIndex = ref(0)
   const results = ref<Record<number, GradeResult>>({})
+  // What the learner had submitted, per item id, as replayed by the server — so a restored question
+  // shows their answer again, not just the verdict.
+  const submitted = ref<Record<number, SubmittedValue>>({})
+  // True when load() picked up an attempt that already had progress (the view greets the learner).
+  const resumed = ref(false)
   const summary = ref<unknown | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
@@ -25,28 +32,42 @@ export const useTestStore = defineStore('test', () => {
   const answeredCount = computed(() => Object.keys(results.value).length)
   const finished = computed(() => total.value > 0 && answeredCount.value >= total.value)
 
+  function _apply(q: Quiz, started: AttemptStart): void {
+    const res: Record<number, GradeResult> = {}
+    const sub: Record<number, SubmittedValue> = {}
+    for (const a of started.answers) {
+      res[a.item_id] = a.result
+      sub[a.item_id] = a.submitted_value
+    }
+    quiz.value = q
+    quizId.value = q.id
+    attemptId.value = started.attempt_id
+    results.value = res
+    submitted.value = sub
+    currentIndex.value = Math.min(Math.max(0, started.current_index), Math.max(0, q.questions.length - 1))
+    summary.value = null
+    resumed.value = started.resumed && (started.current_index > 0 || started.answers.length > 0)
+  }
+
   async function load(id: number): Promise<void> {
-    // Resume an in-progress attempt for the SAME quiz (restored from localStorage on refresh) instead
-    // of restarting: keeps answers/position AND avoids minting a duplicate server attempt.
-    if (
+    // This tab's own copy of the open attempt (sessionStorage) paints instantly on a refresh; the
+    // server's state then replaces it. Anything else is cleared first, so a previous quiz (or its
+    // revealed answers) never flashes while this one loads.
+    const cached =
       quizId.value === id &&
       attemptId.value != null &&
       summary.value == null &&
       quiz.value?.id === id
-    ) {
-      return
-    }
-    loading.value = true
+    if (!cached) reset()
+    loading.value = !cached
     error.value = null
     try {
-      quiz.value = await api.getQuiz(id)
-      const started = await api.startAttempt(id)
-      attemptId.value = started.attempt_id
-      quizId.value = id
-      currentIndex.value = 0
-      results.value = {}
-      summary.value = null
+      // Idempotent server-side: an open attempt for this quiz is resumed (never duplicated) and comes
+      // back with the learner's position + already-graded answers.
+      const [q, started] = await Promise.all([api.getQuiz(id), api.startAttempt(id)])
+      _apply(q, started)
     } catch (e) {
+      if (cached) return // e.g. a refresh while offline: carry on with the tab's own copy
       error.value = e instanceof Error ? e.message : 'Could not load test'
       throw e
     } finally {
@@ -54,15 +75,32 @@ export const useTestStore = defineStore('test', () => {
     }
   }
 
-  async function submit(event: AnswerEvent): Promise<GradeResult> {
-    const res = await api.submitAnswer({ ...event, attemptId: attemptId.value })
+  /** Grade an answer. Resolves to null when the server had already settled this question (answered
+   *  or finished in another tab/device): the store re-syncs to the server's state instead. */
+  async function submit(event: AnswerEvent): Promise<GradeResult | null> {
+    let res: GradeResult
+    try {
+      res = await api.submitAnswer({ ...event, attemptId: attemptId.value })
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && quizId.value != null) {
+        await load(quizId.value)
+        return null
+      }
+      throw e
+    }
     results.value[event.questionId] = res
     if (res.xp_awarded) await useSessionStore().refreshGamification()
     return res
   }
 
   function next(): void {
-    if (currentIndex.value < total.value - 1) currentIndex.value += 1
+    if (currentIndex.value >= total.value - 1) return
+    currentIndex.value += 1
+    // Tell the server which question we're on now, so a refresh / break / other device resumes here.
+    // Best-effort: the server never resumes behind an answered question anyway.
+    if (attemptId.value != null) {
+      void api.saveAttemptPosition(attemptId.value, currentIndex.value).catch(() => {})
+    }
   }
 
   async function complete(): Promise<unknown> {
@@ -84,6 +122,8 @@ export const useTestStore = defineStore('test', () => {
     quizId.value = null
     currentIndex.value = 0
     results.value = {}
+    submitted.value = {}
+    resumed.value = false
     summary.value = null
     loading.value = false
     error.value = null
@@ -95,6 +135,8 @@ export const useTestStore = defineStore('test', () => {
     quizId,
     currentIndex,
     results,
+    submitted,
+    resumed,
     summary,
     loading,
     error,
@@ -109,12 +151,13 @@ export const useTestStore = defineStore('test', () => {
     reset,
   }
 }, {
-  // Survive a mid-quiz page refresh WITHIN the tab — sessionStorage, NOT localStorage: `results` and
-  // `summary` carry server-revealed correct answers + explanations (SPEC §2), which must not persist
-  // across tabs/restarts or leak to the next anonymous learner on a shared device. (loading/error are
-  // excluded so a refresh can't restore a stuck spinner.)
+  // A same-tab cache only (instant paint on refresh; the server is the source of truth for resuming)
+  // — sessionStorage, NOT localStorage: `results` and `summary` carry server-revealed correct answers
+  // + explanations (SPEC §2), which must not persist across tabs/restarts or leak to the next
+  // anonymous learner on a shared device. (loading/error are excluded so a refresh can't restore a
+  // stuck spinner.)
   persist: {
     storage: sessionStorage,
-    pick: ['quiz', 'quizId', 'attemptId', 'currentIndex', 'results', 'summary'],
+    pick: ['quiz', 'quizId', 'attemptId', 'currentIndex', 'results', 'submitted', 'summary'],
   },
 })

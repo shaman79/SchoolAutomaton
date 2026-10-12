@@ -5,6 +5,8 @@
  * with a progress bar; on answer it grades through the store, shows immediate feedback inline (the
  * renderer renders AnswerFeedback off the GradeResult), and pops a combo/XP toast + celebration.
  * "Next" advances; after the final question it calls test.complete() and routes to /results.
+ * RESUME: the store reloads the attempt from the server, so a refresh / break / other device lands on
+ * the same question with earlier answers (and their feedback) back in place.
  * Mobile-first, touch-first, reduced-motion aware, WCAG 2.2 AA.
  */
 import { computed, onMounted, ref } from 'vue'
@@ -68,6 +70,12 @@ async function onAnswer(e: AnswerEvent) {
   submitting.value = true
   try {
     const res = await test.submit(e)
+    if (!res) {
+      // Already settled on the server (answered or finished in another tab/device) — the store has
+      // re-synced, so the screen now shows the up-to-date state.
+      toast.info(t('test.synced'))
+      return
+    }
 
     // Combo / XP feedback as a toast (in addition to the inline AnswerFeedback).
     if (res.is_correct) {
@@ -132,8 +140,12 @@ onMounted(async () => {
       const status = await api.getRequestStatus(props.sessionId)
       id = status.quiz_id
     }
-    if (id) await test.load(id)
-    else failed.value = true
+    if (id) {
+      await test.load(id)
+      if (test.resumed) {
+        toast.info(t('test.resumed', { current: test.currentIndex + 1, total: test.total }))
+      }
+    } else failed.value = true
   } catch {
     failed.value = true
   }
@@ -175,6 +187,7 @@ onMounted(async () => {
         :item="current.item"
         :feedback="currentFeedback"
         :disabled="answeredCurrent || submitting"
+        :submitted="test.submitted[current.item.id]"
         :sound="prefs.sound"
         managed
         @answer="onAnswer"

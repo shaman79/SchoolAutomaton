@@ -166,6 +166,27 @@ class ItemFsrsCard(Base):
     )
 
 
+class LessonProgress(Base):
+    """Per-(profile,lesson) reading position, so a learner resumes a lesson exactly where they left off
+    after a refresh, a break, or on another device (the resume code carries the profile).
+
+    ``revealed_up_to`` is the highest section ordinal the learner has revealed (the progressive-reveal
+    boundary) and only ever moves forward. Answered practice items are NOT duplicated here — they are
+    read back from the immutable ``answers`` log."""
+
+    __tablename__ = "lesson_progress"
+    __table_args__ = (UniqueConstraint("profile_id", "lesson_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    profile_id: Mapped[int] = mapped_column(ForeignKey("profiles.id"), index=True)
+    lesson_id: Mapped[int] = mapped_column(ForeignKey("lessons.id"), index=True)
+    revealed_up_to: Mapped[int] = mapped_column(Integer, default=0)
+    # Set once the final section has been revealed (the lesson no longer counts as "in progress").
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_active_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class SectionVisual(Base):
     """A lesson section's dual-coding visual, realized ASYNCHRONOUSLY so it never blocks the section
     text from appearing. Created ``pending`` when the section is filled; a background task generates

@@ -11,7 +11,7 @@ import { useI18n } from 'vue-i18n'
 import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { useAnswerTiming } from '@/components/questions/useAnswerTiming'
-import { parseNumericAnswer } from '@/lib/format'
+import { formatNumber, parseNumericAnswer } from '@/lib/format'
 import type { AnswerEvent, ItemPublic, NumericPayload } from '@/types/question'
 import type { GradeResult } from '@/types/session'
 
@@ -22,6 +22,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -33,12 +35,26 @@ const payload = computed(() => props.item.payload as NumericPayload)
 const timing = useAnswerTiming(() => props.item.id)
 
 // Keep as string so we can validate before coercing (decimal comma, spaced thousands).
-const raw = ref('')
+function fromSubmitted(): string {
+  const v = props.submitted
+  // A replayed number is shown the way the UI language writes it ("3,5").
+  if (typeof v === 'number') return formatNumber(v, locale.value)
+  return typeof v === 'string' ? v : ''
+}
+
+const raw = ref(fromSubmitted())
 watch(
   () => props.item.id,
   () => {
-    raw.value = ''
+    raw.value = fromSubmitted()
     timing.reset()
+  },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    raw.value = fromSubmitted()
   },
 )
 

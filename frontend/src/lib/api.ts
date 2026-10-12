@@ -5,11 +5,13 @@
 
 import type { AnswerEvent, ItemPublic } from '@/types/question'
 import type {
+  AttemptStart,
   Decision,
   GamificationSnapshot,
   GradeResult,
   LearningSessionSummary,
   Lesson,
+  LessonProgress,
   LessonSection,
   ParentSummary,
   ProfileCreateOut,
@@ -106,6 +108,9 @@ export const api = {
 
   getMyRequests: () => request<LearningSessionSummary[]>('/profiles/me/requests'),
 
+  /** The unfinished lesson/quiz the learner was most recently in (with their position), or null. */
+  getContinue: () => request<LearningSessionSummary | null>('/profiles/me/continue'),
+
   /** Ready lessons/quizzes to revisit or explore next. Seed with `requestId` (a just-finished
    *  session) for "more like this"; omit it on the home screen for the learner's recent sessions. */
   getRecommendations: (params: { requestId?: string; subject?: string; limit?: number } = {}) => {
@@ -150,12 +155,24 @@ export const api = {
   /** Fetch one section (incl. current visual statuses) — used to poll pending image placeholders. */
   getSection: (lessonId: number, ordinal: number) =>
     request<LessonSection>(`/lessons/${lessonId}/sections/${ordinal}`),
+  /** Report the learner's reveal boundary and get back their saved position + already-graded answers.
+   *  Forward-only server-side, so calling it with 0 on open restores without moving anything back. */
+  syncLessonProgress: (lessonId: number, revealedUpTo: number) =>
+    request<LessonProgress>(`/lessons/${lessonId}/progress`, {
+      method: 'PUT',
+      body: { revealed_up_to: revealedUpTo },
+    }),
   getQuiz: (id: number) => request<Quiz>(`/quizzes/${id}`),
 
+  /** Starts an attempt — or resumes the learner's open one, replaying their position + answers. */
   startAttempt: (quizId: number) =>
-    request<{ attempt_id: number; started_at: string }>(`/quizzes/${quizId}/attempts`, {
-      method: 'POST',
-      body: {},
+    request<AttemptStart>(`/quizzes/${quizId}/attempts`, { method: 'POST', body: {} }),
+
+  /** Remember which question the learner moved to, so the attempt resumes there. */
+  saveAttemptPosition: (attemptId: number, currentIndex: number) =>
+    request<{ current_index: number }>(`/attempts/${attemptId}/position`, {
+      method: 'PUT',
+      body: { current_index: currentIndex },
     }),
 
   submitAnswer: (e: AnswerEvent & { attemptId?: number | null }) =>

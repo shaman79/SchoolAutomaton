@@ -63,6 +63,11 @@ class QuizAttempt(Base):
     accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     xp_awarded: Mapped[int] = mapped_column(Integer, default=0)
     combo_max: Mapped[int] = mapped_column(Integer, default=0)
+    # Resume-where-you-left-off: index (in question-ordinal order) of the question the learner is on.
+    # Only ever moves forward; the graded answers themselves are read back from ``answers``.
+    current_index: Mapped[int] = mapped_column(Integer, default=0)
+    # Last time the learner opened/advanced this attempt — orders the home screen's "Continue" pick.
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Answer(Base):

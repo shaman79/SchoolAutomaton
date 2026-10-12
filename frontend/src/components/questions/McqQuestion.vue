@@ -21,6 +21,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -31,12 +33,25 @@ const { t } = useI18n()
 const payload = computed(() => props.item.payload as McqPayload)
 const timing = useAnswerTiming(() => props.item.id)
 
-const selected = ref<Set<string>>(new Set())
+function fromSubmitted(): Set<string> {
+  const v = props.submitted
+  if (Array.isArray(v)) return new Set(v.map(String))
+  return typeof v === 'string' ? new Set([v]) : new Set()
+}
+
+const selected = ref<Set<string>>(fromSubmitted())
 watch(
   () => props.item.id,
   () => {
-    selected.value = new Set()
+    selected.value = fromSubmitted()
     timing.reset()
+  },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    selected.value = fromSubmitted()
   },
 )
 

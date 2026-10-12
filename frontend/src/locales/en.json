@@ -15,7 +15,7 @@
     "generic_error": "Something went wrong. Please try again.",
     "refuse_try": "How about one of these instead?",
     "have_code": "Have a resume code? Continue learning",
-    "continue_title": "Pick up where you left off",
+    "continue_title": "More to explore",
     "example_list": [
       "Teach me about the water cycle",
       "Quiz me on the French Revolution",
@@ -25,7 +25,8 @@
     ],
     "grade_for": "For: {grade}",
     "grade_change": "Change grade",
-    "grade_set": "Set your grade"
+    "grade_set": "Set your grade",
+    "resume_title": "Continue where you left off"
   },
   "loading": {
     "thinking": "Putting your lesson together…",
@@ -216,7 +217,8 @@
     "continue_next": "Continue →",
     "more_to_come": "Ready for the next part?",
     "preparing_next": "Preparing the next part…",
-    "next_error": "Couldn't prepare the next part. Please try again."
+    "next_error": "Couldn't prepare the next part. Please try again.",
+    "resumed": "Welcome back! You're on part {current} of {total}."
   },
   "admin": {
     "title": "Admin console",
@@ -339,7 +341,9 @@
     "load_error_title": "We couldn't load this test",
     "load_error_body": "Something went wrong fetching your quiz. Let's head back and try again.",
     "skip": "Skip for now",
-    "skip_finish": "Finish without answering"
+    "skip_finish": "Finish without answering",
+    "resumed": "Welcome back! You're on question {current} of {total}.",
+    "synced": "This quiz was updated from another tab or device — you're now up to date."
   },
   "q": {
     "mcq": {
@@ -471,5 +475,10 @@
       "A mistake is information, not failure: ask what they'd try differently next time."
     ],
     "reviews_none": "Nothing is waiting for review right now. The app keeps track of when it is time to come back to a topic."
+  },
+  "progress": {
+    "part": "Part {current} of {total}",
+    "question": "Question {current} of {total}",
+    "completed": "Completed"
   }
 }

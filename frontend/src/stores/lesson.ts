@@ -11,12 +11,17 @@
  *
  * Images never block a part: a section's visuals arrive as `pending` placeholders and we poll the
  * section until each finishes generating, swapping them in incrementally.
+ *
+ * RESUME: the server remembers each learner's reveal boundary and already holds every graded answer,
+ * so load() restores both — after a refresh, a break, or on another device with the same resume code
+ * the learner is back on the part they were reading, with their answered questions still answered.
  */
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { api } from '@/lib/api'
-import type { Lesson, LessonSection } from '@/types/session'
+import type { SubmittedValue } from '@/types/question'
+import type { GradeResult, Lesson, LessonProgress, LessonSection } from '@/types/session'
 
 const POLL_INTERVAL_MS = 2500
 const POLL_DEADLINE_MS = 90_000
@@ -31,6 +36,14 @@ export const useLessonStore = defineStore('lesson', () => {
   // when the next part was already prefetched (so advancing is instant).
   const generatingOrdinal = ref<number | null>(null)
   const failedOrdinal = ref<number | null>(null)
+  // Per-item grade results (keyed by ItemPublic.id) — feedback comes only from the grading endpoint,
+  // or from the server replaying answers the learner already had graded.
+  const feedbackByItem = ref<Record<number, GradeResult>>({})
+  // What the learner had submitted, per item id, for replayed answers (so a restored question shows
+  // their answer again, not just the verdict).
+  const submittedByItem = ref<Record<number, SubmittedValue>>({})
+  // True when load() restored earlier progress in this lesson (the view greets + repositions).
+  const resumed = ref(false)
 
   // Dedupe concurrent fetches of the same section (a silent prefetch vs a manual reveal).
   const inflight = new Map<number, Promise<LessonSection>>()
@@ -157,25 +170,64 @@ export const useLessonStore = defineStore('lesson', () => {
     void fetchSection(next).catch(() => {})
   }
 
+  /** Put the learner back where they were: answered questions answered, parts revealed up to their
+   *  saved boundary (never across a part that isn't built yet). */
+  function _restore(progress: LessonProgress): void {
+    const feedback: Record<number, GradeResult> = {}
+    const submitted: Record<number, SubmittedValue> = {}
+    for (const a of progress.answers) {
+      feedback[a.item_id] = a.result
+      submitted[a.item_id] = a.submitted_value
+    }
+    feedbackByItem.value = feedback
+    submittedByItem.value = submitted
+    let upTo = 0
+    for (const s of _sorted()) {
+      if (s.ordinal > progress.revealed_up_to || !_isReady(s)) break
+      upTo = s.ordinal
+    }
+    revealedUpTo.value = upTo
+    resumed.value = upTo > 0 || progress.answers.length > 0
+  }
+
+  /** Tell the server how far the learner has revealed, so they can resume here. Best-effort: the
+   *  server never resumes behind a part the learner answered a question in anyway. */
+  function _saveBoundary(): void {
+    const lessonId = lesson.value?.id
+    if (lessonId == null) return
+    void api.syncLessonProgress(lessonId, revealedUpTo.value).catch(() => {})
+  }
+
   async function load(id: number): Promise<void> {
+    reset() // also clears a previously-open lesson, so it never flashes while this one loads
     loading.value = true
-    error.value = null
-    revealedUpTo.value = 0
-    generatingOrdinal.value = null
-    failedOrdinal.value = null
-    loadEpoch += 1 // supersede any in-flight prefetch from a previously-loaded lesson
-    inflight.clear()
-    stopPolls()
+    const epoch = loadEpoch
     try {
-      lesson.value = await api.getLesson(id)
-      pollSectionAssets(0) // section 0 is revealed immediately; fill its images as they arrive
-      prefetchNext() // build section 1 in the background
+      // The progress call doubles as "the learner is here now" (it reports 0, which never moves the
+      // boundary back). Restoring is best-effort: without a profile, or offline, the lesson still
+      // opens from the top.
+      const [loaded, progress] = await Promise.all([
+        api.getLesson(id),
+        api.syncLessonProgress(id, 0).catch(() => null),
+      ])
+      if (epoch !== loadEpoch) return // superseded by a newer load()/reset()
+      lesson.value = loaded
+      if (progress) _restore(progress)
+      // Every revealed part is on screen (part 0 always is); fill their images as they arrive.
+      for (const s of _sorted()) if (s.ordinal <= revealedUpTo.value) pollSectionAssets(s.ordinal)
+      prefetchNext() // build the next part in the background
     } catch (e) {
+      if (epoch !== loadEpoch) return
       error.value = e instanceof Error ? e.message : 'Could not load lesson'
       throw e
     } finally {
-      loading.value = false
+      if (epoch === loadEpoch) loading.value = false
     }
+  }
+
+  /** Record the grade for a lesson-embedded practice question the learner just answered. */
+  function recordAnswer(itemId: number, result: GradeResult): void {
+    feedbackByItem.value = { ...feedbackByItem.value, [itemId]: result }
   }
 
   /** Reveal the next part (the "Continue" action). Instant when it was prefetched; otherwise shows a
@@ -199,6 +251,7 @@ export const useLessonStore = defineStore('lesson', () => {
     }
 
     revealedUpTo.value = next
+    _saveBoundary()
     // If the just-revealed part has image placeholders, refresh once now (a prefetched section may
     // hold stale 'pending' assets whose images already finished), then keep polling for the rest.
     if (_byOrdinal(next)?.assets.some((a) => a.status === 'pending')) {
@@ -215,7 +268,10 @@ export const useLessonStore = defineStore('lesson', () => {
     revealedUpTo.value = 0
     generatingOrdinal.value = null
     failedOrdinal.value = null
-    loadEpoch += 1
+    feedbackByItem.value = {}
+    submittedByItem.value = {}
+    resumed.value = false
+    loadEpoch += 1 // supersede any in-flight load/prefetch (same 12-section skeleton across lessons)
     inflight.clear()
     stopPolls()
   }
@@ -227,7 +283,11 @@ export const useLessonStore = defineStore('lesson', () => {
     revealedUpTo,
     generatingOrdinal,
     failedOrdinal,
+    feedbackByItem,
+    submittedByItem,
+    resumed,
     load,
+    recordAnswer,
     revealNext,
     prefetchNext,
     pollSectionAssets,

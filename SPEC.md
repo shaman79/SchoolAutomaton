@@ -62,6 +62,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 | 10 | Daily caps / retention | New-item daily cap: 20 (early_primary 10). `desired_retention` default 0.90 (0.85 casual / 0.95 deadline) — exposed as an *advanced* profile setting, not prominent. |
 | 11 | Leaderboards | **OFF** by default. `competitive_opt_in` flag + personal-best framing exist; ability-banded leagues NOT shipped in v1. |
 | 12 | Batches pre-gen | Mechanism provided as an **admin-triggered** action + script; no automatic nightly cron in v1. |
+| 13 | Resume where you left off | **The server owns the position.** `lesson_progress.revealed_up_to` per (profile, lesson) and `quiz_attempts.current_index` per open attempt — both forward-only, and never behind a question the learner already answered. On open the client restores from `PUT /lessons/{id}/progress` / `POST /quizzes/{id}/attempts`, which replay the learner's already-graded answers: read-only (no FSRS review, no XP) and never for an unanswered item. `GET /profiles/me/continue` feeds the home "Continue" card. The exact scroll offset is device-local (localStorage) only. A quiz is reviewable (`GET /quizzes/{id}/review`) only once an attempt is **completed**. |
 
 ## 5. Conventions (all code)
 

@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { api, getResumeCode, setResumeCode } from '@/lib/api'
+import { clearReadingAnchor } from '@/lib/readingAnchor'
 import type { GamificationSnapshot, ProfilePublic } from '@/types/session'
 
 import { useGenerationStore } from './generation'
@@ -37,6 +38,7 @@ export const useSessionStore = defineStore('session', () => {
     useTestStore().reset()
     useLessonStore().reset()
     useGenerationStore().reset()
+    clearReadingAnchor() // the previous learner's reading spot on this device
     try {
       sessionStorage.removeItem('test') // the persisted test-store key is the store id
     } catch {

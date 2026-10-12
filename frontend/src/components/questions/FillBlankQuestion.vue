@@ -23,6 +23,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -33,14 +35,27 @@ const { t } = useI18n()
 const payload = computed(() => props.item.payload as ClozePayload)
 const timing = useAnswerTiming(() => props.item.id)
 
+function fromSubmitted(): Record<string, string> {
+  const v = props.submitted
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {}
+  return Object.fromEntries(Object.entries(v).map(([id, text]) => [id, String(text ?? '')]))
+}
+
 const answers = ref<Record<string, string>>({})
 watch(
   () => props.item.id,
   () => {
-    answers.value = {}
+    answers.value = fromSubmitted()
     timing.reset()
   },
   { immediate: true },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    answers.value = fromSubmitted()
+  },
 )
 
 const locked = computed(() => props.disabled || !!props.feedback)

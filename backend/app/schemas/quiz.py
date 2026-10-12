@@ -7,6 +7,7 @@ from typing import Any
 
 from .common import AppModel, StrictModel
 from .enums import QuizType
+from .progress import RestoredAnswer
 from .questions import ItemPublic
 
 
@@ -30,8 +31,14 @@ class QuizPublic(AppModel):
 
 
 class AttemptStartOut(AppModel):
+    """Start — or resume — an attempt. When an open attempt already existed (``resumed``), the learner's
+    position and already-graded answers come back so the runner picks up exactly where they left off."""
+
     attempt_id: int
     started_at: datetime
+    resumed: bool = False
+    current_index: int = 0
+    answers: list[RestoredAnswer] = []
 
 
 class AttemptCompleteIn(StrictModel):

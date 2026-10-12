@@ -20,6 +20,8 @@ const props = withDefaults(
     sound?: boolean
     multiline?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, multiline: false, managed: false },
 )
@@ -30,12 +32,23 @@ const { t } = useI18n()
 const payload = computed(() => props.item.payload as ShortAnswerPayload)
 const timing = useAnswerTiming(() => props.item.id)
 
-const text = ref('')
+function fromSubmitted(): string {
+  return typeof props.submitted === 'string' ? props.submitted : ''
+}
+
+const text = ref(fromSubmitted())
 watch(
   () => props.item.id,
   () => {
-    text.value = ''
+    text.value = fromSubmitted()
     timing.reset()
+  },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    text.value = fromSubmitted()
   },
 )
 

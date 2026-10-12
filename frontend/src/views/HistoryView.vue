@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * HistoryView — "My lessons": the learner's past (and in-progress) lessons & quizzes, tied to their
- * resume code. Lets them re-open a session after a refresh / back / new visit. Mobile-first.
+ * resume code. Lets them re-open a session after a refresh / back / new visit — each row says how
+ * far they got, and opening it resumes at that exact spot. Mobile-first.
  */
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -9,7 +10,7 @@ import { useRouter } from 'vue-router'
 
 import SaIcon from '@/components/common/SaIcon.vue'
 import { api } from '@/lib/api'
-import { subjectLabel } from '@/lib/format'
+import { progressLabel, subjectLabel } from '@/lib/format'
 import { useSessionStore } from '@/stores/session'
 import type { LearningSessionSummary } from '@/types/session'
 
@@ -105,6 +106,14 @@ function open(it: LearningSessionSummary) {
               <span v-if="it.subject" class="sa-hist__sub">{{ subjectLabel(it.subject) }}</span>
               <span v-if="it.status === 'generating' || it.status === 'queued'" class="sa-hist__status sa-hist__status--gen">{{ t('history.in_progress') }}</span>
               <span v-else-if="it.status === 'error'" class="sa-hist__status sa-hist__status--err">{{ t('history.failed') }}</span>
+              <span
+                v-else-if="progressLabel(it)"
+                class="sa-hist__status"
+                :class="{ 'sa-hist__status--gen': !it.progress?.completed }"
+              >
+                <span v-if="it.progress?.completed" aria-hidden="true">✓</span>
+                {{ progressLabel(it) }}
+              </span>
               <span class="sa-hist__date">{{ dateFmt(it.created_at) }}</span>
             </span>
           </span>

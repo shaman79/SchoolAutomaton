@@ -24,6 +24,10 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer this learner already submitted, replayed when they resume — shown as their answer.
+     *  (`unknown`, not SubmittedValue: a prop type that includes boolean would make Vue cast an
+     *  absent prop to `false`.) */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -67,6 +71,7 @@ function onAnswer(payload: AnswerEvent) {
     :feedback="feedback"
     :sound="sound"
     :managed="managed"
+    :submitted="submitted"
     @answer="onAnswer"
   />
   <div v-else class="sa-card sa-q-unknown" role="alert">

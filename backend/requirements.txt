@@ -5,7 +5,9 @@ python-multipart>=0.0.12       # admin login form
 sse-starlette>=2.1             # Server-Sent Events for generation progress
 
 # ---- Data / persistence ----
-SQLAlchemy>=2.0.36
+# [asyncio] pulls in greenlet, which sqlalchemy.ext.asyncio needs and SQLAlchemy 2.1+ no longer
+# installs on its own (without it the app fails at import).
+SQLAlchemy[asyncio]>=2.0.36
 aiosqlite>=0.20
 alembic>=1.14
 pydantic>=2.10
