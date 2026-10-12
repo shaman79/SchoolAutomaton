@@ -10,11 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....llm.lesson_generator import generate_one_section, schedule_section_visuals
-from ....models import LearningRequest, Lesson, LessonSection
+from ....models import LearningRequest, Lesson, LessonSection, Profile
 from ....sanitization.ratelimit import rate_limit_dependency
 from ....schemas.content import LessonPublic, LessonSectionPublic
 from ....schemas.intent import StructuredIntent
-from ...deps import get_db
+from ....schemas.progress import LessonProgressIn, LessonProgressOut
+from ....services import progress_service
+from ...deps import get_db, get_profile
 from ..serializers import lesson_public, lesson_section_public
 
 router = APIRouter(prefix="/lessons", tags=["lessons"])
@@ -30,6 +32,23 @@ async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
     if lesson is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
     return await lesson_public(db, lesson)
+
+
+@router.put("/{lesson_id}/progress", response_model=LessonProgressOut)
+async def save_progress(
+    lesson_id: int,
+    body: LessonProgressIn,
+    profile: Profile = Depends(get_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    """Report the learner's reveal boundary (and that they are active in the lesson now); returns
+    the merged state: where they are + their already-graded answers. The reader calls this on open —
+    with 0, which never moves the boundary back — to restore, and again each time the learner reveals
+    the next part."""
+    lesson = await db.get(Lesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
+    return await progress_service.save_lesson_progress(db, profile, lesson, body.revealed_up_to)
 
 
 @router.get("/{lesson_id}/sections/{ordinal}", response_model=LessonSectionPublic)

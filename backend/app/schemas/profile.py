@@ -9,6 +9,7 @@ from pydantic import Field, field_validator
 from .common import AppModel, StrictModel
 from .enums import SCHOOL_YEAR_MAX, SCHOOL_YEAR_MIN, AgeBand, DailyGoal, normalize_school_year
 from .gamification import GamificationSnapshot
+from .progress import SessionProgress
 
 
 class CreateProfileIn(StrictModel):
@@ -110,6 +111,7 @@ class LearningSessionSummary(AppModel):
     subject: str | None = None
     created_at: datetime | None = None
     attempted: bool = False  # quiz only: the learner has a graded attempt (so "Review" has content)
+    progress: SessionProgress | None = None  # None = this learner hasn't opened it yet
 
 
 class TopicProgress(AppModel):

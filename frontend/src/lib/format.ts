@@ -1,6 +1,7 @@
 /** Small presentation helpers shared across views. */
 
 import { i18n } from '@/i18n'
+import type { LearningSessionSummary } from '@/types/session'
 
 /**
  * Turn a raw subject key into a human-readable label. Subjects are an open, model-generated string
@@ -45,4 +46,20 @@ export function parseNumericAnswer(raw: string, locale = ''): number | null {
 /** A number the way the UI language writes it (Czech: "3,5" and "12 500"). */
 export function formatNumber(value: number, locale: string): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 6 }).format(value)
+}
+
+/**
+ * A learner's saved position in a lesson/quiz as a short label — "Part 5 of 12", "Question 4 of 10",
+ * or "Completed". Null when they haven't opened it yet (nothing to say).
+ */
+export function progressLabel(
+  session: Pick<LearningSessionSummary, 'mode' | 'progress'>,
+): string | null {
+  const p = session.progress
+  if (!p) return null
+  if (p.completed) return i18n.global.t('progress.completed')
+  return i18n.global.t(session.mode === 'test' ? 'progress.question' : 'progress.part', {
+    current: p.position,
+    total: p.total,
+  })
 }

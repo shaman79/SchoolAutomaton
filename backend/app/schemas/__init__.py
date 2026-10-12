@@ -69,6 +69,13 @@ from .profile import (
     ProfileSettingsUpdate,
     ResumeIn,
 )
+from .progress import (
+    AttemptPosition,
+    LessonProgressIn,
+    LessonProgressOut,
+    RestoredAnswer,
+    SessionProgress,
+)
 from .questions import AnswerIn, ItemPublic, QuestionPayload
 from .quiz import AttemptStartOut, QuizPublic, QuizQuestionPublic
 
@@ -88,6 +95,8 @@ __all__ = [
     "ItemPublic", "QuestionPayload", "AnswerIn",
     # quiz public
     "QuizPublic", "QuizQuestionPublic", "AttemptStartOut",
+    # resume-where-you-left-off
+    "RestoredAnswer", "SessionProgress", "LessonProgressIn", "LessonProgressOut", "AttemptPosition",
     # gamification
     "GradeResult", "ResultsSummary", "GamificationSnapshot", "StreakInfo", "BadgeInfo",
     "BadgeAward", "LevelUp", "MasteryChange", "MisconceptionInfo", "FeedbackBlock",

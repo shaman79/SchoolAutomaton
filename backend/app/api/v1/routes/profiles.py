@@ -19,7 +19,13 @@ from ....schemas.profile import (
     ProfileSettingsUpdate,
     ResumeIn,
 )
-from ....services import profile_service, recommendation_service, summary_service, tree_service
+from ....services import (
+    profile_service,
+    progress_service,
+    recommendation_service,
+    summary_service,
+    tree_service,
+)
 from ...deps import get_db, get_profile
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
@@ -95,6 +101,13 @@ async def list_my_requests(
             )
         ).scalars().all()
     )
+    # How far the learner got in each — so the list can say "part 5 of 12" and reopening resumes there.
+    lesson_progress = await progress_service.lesson_progress_map(
+        db, profile, {lr.lesson_id for lr, _, _ in rows if lr.lesson_id is not None}
+    )
+    quiz_progress = await progress_service.quiz_progress_map(
+        db, profile, {lr.quiz_id for lr, _, _ in rows if lr.quiz_id is not None}
+    )
     return [
         LearningSessionSummary(
             request_id=lr.request_id,
@@ -106,9 +119,23 @@ async def list_my_requests(
             subject=(lesson.subject if lesson else (quiz.subject if quiz else None)),
             created_at=lr.created_at,
             attempted=(lr.quiz_id is not None and lr.quiz_id in attempted_quiz_ids),
+            progress=(
+                lesson_progress.get(lr.lesson_id)
+                if lr.lesson_id is not None
+                else quiz_progress.get(lr.quiz_id)
+            ),
         )
         for lr, lesson, quiz in rows
     ]
+
+
+@router.get("/me/continue", response_model=LearningSessionSummary | None)
+async def get_continue(
+    profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+):
+    """The unfinished lesson/quiz the learner was most recently in ("Continue where you left off"),
+    with their position; ``null`` when nothing is in progress."""
+    return await progress_service.continue_candidate(db, profile)
 
 
 @router.get("/me/recommendations", response_model=list[LearningSessionSummary])

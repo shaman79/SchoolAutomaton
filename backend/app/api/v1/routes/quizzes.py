@@ -10,8 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Answer, Item, Profile, Quiz, QuizAttempt, QuizQuestion
 from ....schemas.gamification import ResultsSummary
+from ....schemas.progress import AttemptPosition
 from ....schemas.quiz import AttemptStartOut, QuizPublic, QuizReview, QuizReviewItem
-from ....services import gamification
+from ....services import gamification, progress_service
 from ...deps import get_db, get_profile
 from ..serializers import item_public, quiz_public
 
@@ -37,7 +38,9 @@ async def start_attempt(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz not found")
     # Idempotent: if the learner already has an open (uncompleted) attempt for this quiz, resume it
     # instead of minting a duplicate. This is the server-side anchor for resume-after-refresh and
-    # stops orphaned attempts skewing stats.
+    # stops orphaned attempts skewing stats. The response replays their position + graded answers so
+    # the runner rebuilds exactly where they left off (also after a break or on another device).
+    now = datetime.now(UTC)
     existing = await db.scalar(
         select(QuizAttempt)
         .where(
@@ -48,14 +51,23 @@ async def start_attempt(
         .order_by(QuizAttempt.id.desc())
     )
     if existing is not None:
-        return AttemptStartOut(attempt_id=existing.id, started_at=existing.started_at)
+        index, answers = await progress_service.attempt_resume_state(db, profile, existing)
+        existing.last_active_at = now
+        return AttemptStartOut(
+            attempt_id=existing.id,
+            started_at=existing.started_at,
+            resumed=True,
+            current_index=index,
+            answers=answers,
+        )
     max_score = await db.scalar(
         select(func.coalesce(func.sum(QuizQuestion.points), 0)).where(QuizQuestion.quiz_id == quiz_id)
     )
     attempt = QuizAttempt(
         profile_id=profile.id,
         quiz_id=quiz_id,
-        started_at=datetime.now(UTC),
+        started_at=now,
+        last_active_at=now,
         max_score=int(max_score or 0),
     )
     db.add(attempt)
@@ -138,6 +150,23 @@ async def get_quiz_review(
         accuracy=accuracy,
         items=items,
     )
+
+
+@router.put("/attempts/{attempt_id}/position", response_model=AttemptPosition)
+async def save_attempt_position(
+    attempt_id: int,
+    body: AttemptPosition,
+    profile: Profile = Depends(get_profile),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remember which question the learner moved to (Next / Skip), so the attempt resumes there."""
+    attempt = await db.get(QuizAttempt, attempt_id)
+    if attempt is None or attempt.profile_id != profile.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attempt not found")
+    if attempt.completed_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Attempt already completed")
+    index = await progress_service.save_attempt_position(db, attempt, body.current_index)
+    return AttemptPosition(current_index=index)
 
 
 @router.post("/attempts/{attempt_id}/complete", response_model=ResultsSummary)

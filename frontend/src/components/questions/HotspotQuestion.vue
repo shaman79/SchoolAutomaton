@@ -26,6 +26,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -36,12 +38,23 @@ const { t } = useI18n()
 const payload = computed(() => props.item.payload as HotspotPayload)
 const timing = useAnswerTiming(() => props.item.id)
 
-const selected = ref<string | null>(null)
+function fromSubmitted(): string | null {
+  return typeof props.submitted === 'string' ? props.submitted : null
+}
+
+const selected = ref<string | null>(fromSubmitted())
 watch(
   () => props.item.id,
   () => {
-    selected.value = null
+    selected.value = fromSubmitted()
     timing.reset()
+  },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    selected.value = fromSubmitted()
   },
 )
 

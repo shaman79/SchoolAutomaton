@@ -19,6 +19,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -29,12 +31,23 @@ const { t } = useI18n()
 const payload = computed(() => props.item.payload as TrueFalsePayload)
 const timing = useAnswerTiming(() => props.item.id)
 
-const choice = ref<boolean | null>(null)
+function fromSubmitted(): boolean | null {
+  return typeof props.submitted === 'boolean' ? props.submitted : null
+}
+
+const choice = ref<boolean | null>(fromSubmitted())
 watch(
   () => props.item.id,
   () => {
-    choice.value = null
+    choice.value = fromSubmitted()
     timing.reset()
+  },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    choice.value = fromSubmitted()
   },
 )
 

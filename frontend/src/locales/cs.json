@@ -15,7 +15,7 @@
     "generic_error": "Něco se pokazilo. Zkus to prosím znovu.",
     "refuse_try": "Co takhle místo toho jeden z těchto?",
     "have_code": "Máš kód pro pokračování? Pokračuj v učení",
-    "continue_title": "Navaž na minulé učení",
+    "continue_title": "Co zkusit dál",
     "example_list": [
       "Procvič se mnou vyjmenovaná slova po B",
       "Vysvětli mi zlomky na obrázcích",
@@ -26,7 +26,8 @@
     ],
     "grade_for": "Pro: {grade}",
     "grade_change": "Změnit třídu",
-    "grade_set": "Nastav si svou třídu"
+    "grade_set": "Nastav si svou třídu",
+    "resume_title": "Pokračuj tam, kde to minule skončilo"
   },
   "loading": {
     "thinking": "Připravuji tvou lekci…",
@@ -219,7 +220,8 @@
     "continue_next": "Pokračovat →",
     "more_to_come": "Jdeme na další část?",
     "preparing_next": "Připravuji další část…",
-    "next_error": "Další část se nepodařilo připravit. Zkus to prosím znovu."
+    "next_error": "Další část se nepodařilo připravit. Zkus to prosím znovu.",
+    "resumed": "Vítej zpět! Jsi u části {current} z {total}."
   },
   "admin": {
     "title": "Administrátorská konzole",
@@ -342,7 +344,9 @@
     "load_error_title": "Tento test se nám nepodařilo načíst",
     "load_error_body": "Při načítání tvého kvízu se něco pokazilo. Vraťme se zpět a zkusme to znovu.",
     "skip": "Přeskočit",
-    "skip_finish": "Dokončit bez odpovědi"
+    "skip_finish": "Dokončit bez odpovědi",
+    "resumed": "Vítej zpět! Jsi u otázky {current} z {total}.",
+    "synced": "Tento kvíz se změnil v jiné záložce nebo na jiném zařízení — teď už vidíš aktuální stav."
   },
   "q": {
     "mcq": {
@@ -474,5 +478,10 @@
       "Chyba je informace, ne selhání: zeptejte se dítěte, co by příště zkusilo jinak."
     ],
     "reviews_none": "Teď nic nečeká na zopakování. Aplikace sama pohlídá, kdy je vhodné se k látce vrátit."
+  },
+  "progress": {
+    "part": "Část {current} z {total}",
+    "question": "Otázka {current} z {total}",
+    "completed": "Dokončeno"
   }
 }

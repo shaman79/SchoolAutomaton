@@ -22,6 +22,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -32,14 +34,31 @@ const { t } = useI18n()
 const payload = computed(() => props.item.payload as OrderPayload)
 const timing = useAnswerTiming(() => props.item.id)
 
+/** The delivered (shuffled) tokens, or — for a replayed answer — in the order the learner left them. */
+function fromSubmitted(): OrderToken[] {
+  const all = payload.value.tokens
+  const ids = Array.isArray(props.submitted) ? props.submitted.map(String) : []
+  const ordered = ids
+    .map((id) => all.find((tk) => tk.id === id))
+    .filter((tk): tk is OrderToken => tk != null)
+  return [...ordered, ...all.filter((tk) => !ordered.includes(tk))]
+}
+
 const tokens = ref<OrderToken[]>([])
 watch(
   () => props.item.id,
   () => {
-    tokens.value = [...payload.value.tokens]
+    tokens.value = fromSubmitted()
     timing.reset()
   },
   { immediate: true },
+)
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(
+  () => props.submitted,
+  () => {
+    tokens.value = fromSubmitted()
+  },
 )
 
 const locked = computed(() => props.disabled || !!props.feedback)

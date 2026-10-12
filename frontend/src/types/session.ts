@@ -1,6 +1,6 @@
 /** Hand-written types for what the stores/UI use. Full API surface: `src/types/api.ts` (generated). */
 
-import type { ItemPublic } from './question'
+import type { ItemPublic, SubmittedValue } from './question'
 
 export type DecisionType = 'proceed' | 'clarify' | 'refuse' | 'crisis'
 export type Mode = 'study' | 'test'
@@ -132,6 +132,16 @@ export interface LearningSessionSummary {
   created_at: string | null
   /** Quiz only: the learner has a graded attempt, so a review screen has content. */
   attempted?: boolean
+  /** How far this learner got; null/absent = they haven't opened it yet. */
+  progress?: SessionProgress | null
+}
+
+/** 1-based position in a session: lesson = parts revealed so far; quiz = the question they're on. */
+export interface SessionProgress {
+  position: number
+  total: number
+  completed: boolean
+  last_active_at: string | null
 }
 
 export interface FeedbackBlock {
@@ -153,6 +163,29 @@ export interface GradeResult {
   mastery_delta: number
   new_badges: { code: string; title: string; tier: number }[]
   level_up: { from_level: number; to_level: number } | null
+}
+
+// ----- resume where you left off -----
+/** A previously graded answer replayed by the server: what was submitted + the result shown then. */
+export interface RestoredAnswer {
+  item_id: number
+  submitted_value: SubmittedValue
+  result: GradeResult
+}
+export interface LessonProgress {
+  lesson_id: number
+  /** Highest section ordinal the learner has revealed (the reader's reveal boundary). */
+  revealed_up_to: number
+  completed: boolean
+  answers: RestoredAnswer[]
+}
+export interface AttemptStart {
+  attempt_id: number
+  started_at: string
+  /** An open attempt already existed: `current_index` + `answers` say where to pick up. */
+  resumed: boolean
+  current_index: number
+  answers: RestoredAnswer[]
 }
 
 // ----- lesson delivery -----

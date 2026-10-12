@@ -23,6 +23,8 @@ const props = withDefaults(
     feedback?: GradeResult | null
     sound?: boolean
     managed?: boolean
+    /** The answer already submitted for this item, replayed on resume (see QuestionRenderer). */
+    submitted?: unknown
   }>(),
   { disabled: false, feedback: null, sound: false, managed: false },
 )
@@ -38,13 +40,32 @@ const placed = ref<Record<string, MatchSide | null>>({})
 const pool = ref<MatchSide[]>([])
 const picked = ref<MatchSide | null>(null) // select-then-place "in hand" token
 
-function init() {
-  placed.value = Object.fromEntries(payload.value.left.map((l) => [l.id, null]))
-  pool.value = [...payload.value.right]
+/** Lay the tokens out: everything in the pool, or — for a replayed answer — the pairs the learner
+ *  had formed back in their slots. */
+function layout() {
+  const slots: Record<string, MatchSide | null> = Object.fromEntries(
+    payload.value.left.map((l) => [l.id, null]),
+  )
+  const used = new Set<string>()
+  for (const pair of Array.isArray(props.submitted) ? props.submitted : []) {
+    const { left_id, right_id } = (pair ?? {}) as { left_id?: unknown; right_id?: unknown }
+    const token = payload.value.right.find((r) => r.id === String(right_id))
+    const slot = String(left_id)
+    if (!token || !(slot in slots) || slots[slot] || used.has(token.id)) continue
+    slots[slot] = token
+    used.add(token.id)
+  }
+  placed.value = slots
+  pool.value = payload.value.right.filter((r) => !used.has(r.id))
   picked.value = null
+}
+function init() {
+  layout()
   timing.reset()
 }
 watch(() => props.item.id, init, { immediate: true })
+// A replayed answer can arrive after mount (the resume state loads alongside the content).
+watch(() => props.submitted, layout)
 
 const locked = computed(() => props.disabled || !!props.feedback)
 

@@ -10,9 +10,12 @@
  *     inline through QuestionRenderer's :feedback,
  *   - later interactive sections are GATED until earlier ones have been attempted,
  *   - a spaced-review preview + a growth-mindset closing message.
+ * RESUME: the store restores the learner's revealed parts + answered questions from the server; this
+ * view then puts the viewport back where they were reading (exact spot on this device, else the part
+ * they had reached) and keeps that spot saved as they scroll.
  * All LLM output renders via SafeContent / LessonAsset (never raw v-html). WCAG 2.2 AA throughout.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import LessonAsset from '@/components/content/LessonAsset.vue'
@@ -21,6 +24,7 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
+import { toast } from '@/components/common/useToasts'
 import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
 import { speechLang } from '@/lib/speechLang'
@@ -29,12 +33,13 @@ import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
 import { subjectLabel } from '@/lib/format'
 import { levelLabel } from '@/lib/grades'
+import { loadReadingAnchor, saveReadingAnchor } from '@/lib/readingAnchor'
 import { useGenerationStore } from '@/stores/generation'
 import { useLessonStore } from '@/stores/lesson'
 import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore } from '@/stores/session'
 import type { AnswerEvent } from '@/types/question'
-import type { GradeResult, LearningSessionSummary, LessonSection } from '@/types/session'
+import type { LearningSessionSummary, LessonSection } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
 const { t } = useI18n()
@@ -53,9 +58,6 @@ const INTERACTIVE_KINDS = new Set([
   'interleaved_review',
   'misconception_check',
 ])
-
-// Per-item grade results (keyed by ItemPublic.id) — feedback comes only from the grading endpoint.
-const feedbackByItem = ref<Record<number, GradeResult>>({})
 
 const lesson = computed(() => lessonStore.lesson)
 
@@ -84,8 +86,9 @@ const nextOrdinal = computed<number | null>(() => {
 const hasNext = computed(() => nextOrdinal.value !== null)
 const allRevealed = computed(() => !hasNext.value && visibleSections.value.length > 0)
 
-function revealNext() {
-  void lessonStore.revealNext()
+async function revealNext() {
+  await lessonStore.revealNext()
+  saveAnchor() // the boundary moved; keep the saved reading spot in step with it
 }
 
 function isInteractive(s: LessonSection): boolean {
@@ -98,7 +101,7 @@ const interactiveOrdinals = computed(() =>
 )
 
 function sectionAttempted(s: LessonSection): boolean {
-  return s.items.some((it) => feedbackByItem.value[it.id] != null)
+  return s.items.some((it) => lessonStore.feedbackByItem[it.id] != null)
 }
 
 /**
@@ -145,16 +148,87 @@ const crumbs = computed(() => {
 })
 
 async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
-  if (feedbackByItem.value[e.questionId]) return // already graded
+  if (lessonStore.feedbackByItem[e.questionId]) return // already graded
   try {
     // Lesson-embedded practice => no quiz attempt (attempt_id null, per design).
     const res = await api.submitAnswer({ ...e, attemptId: null })
-    feedbackByItem.value = { ...feedbackByItem.value, [e.questionId]: res }
+    lessonStore.recordAnswer(e.questionId, res)
     if (res.is_correct) void celebrateCorrect(target ?? null)
     if (res.xp_awarded) await session.refreshGamification().catch(() => {})
   } catch {
     /* swallow — the question component stays interactive so the learner can retry */
   }
+}
+
+// --- reading position: where on the page the learner is, kept on this device so a refresh or a
+// return visit lands on the same line (the per-part position lives on the server — see the store).
+// (Each part's card element — distinct from `sectionEls`, which holds the read-aloud text bodies.)
+const sectionCards = new Map<number, HTMLElement>()
+function setSectionCard(ordinal: number, el: unknown) {
+  if (el instanceof HTMLElement) sectionCards.set(ordinal, el)
+  else sectionCards.delete(ordinal)
+}
+
+// Off until the viewport has been placed, so the page loading at scroll 0 can't overwrite the spot.
+let tracking = false
+let saveTimer: ReturnType<typeof setTimeout> | null = null
+
+function saveAnchor() {
+  if (!tracking || !lesson.value) return
+  // The part under the top edge of the viewport = the last revealed one that starts at/above it.
+  let ordinal: number | null = null
+  let offset = Math.round(window.scrollY)
+  for (const s of visibleSections.value) {
+    const top = sectionCards.get(s.ordinal)?.getBoundingClientRect().top
+    if (top == null || top > 0) break
+    ordinal = s.ordinal
+    offset = Math.round(-top)
+  }
+  saveReadingAnchor({
+    lessonId: lesson.value.id,
+    revealedUpTo: lessonStore.revealedUpTo,
+    ordinal,
+    offset,
+  })
+}
+
+function onScroll() {
+  if (saveTimer) return
+  saveTimer = setTimeout(() => {
+    saveTimer = null
+    saveAnchor()
+  }, 300)
+}
+
+/** After a restore, put the learner back where they were reading. On this device that is the exact
+ *  spot; otherwise (another device, or they have since moved on elsewhere) the part they had reached.
+ *  A lesson they already finished reopens from the top. Always an instant jump, never an animation. */
+async function placeViewport() {
+  await nextTick() // the restored parts are in the DOM now
+  if (!lesson.value) return
+  const anchor = loadReadingAnchor(lesson.value.id)
+  if (anchor && anchor.revealedUpTo === lessonStore.revealedUpTo) {
+    const el = anchor.ordinal == null ? null : sectionCards.get(anchor.ordinal)
+    if (anchor.ordinal == null) {
+      window.scrollTo({ top: anchor.offset, behavior: 'instant' })
+    } else if (el) {
+      const top = window.scrollY + el.getBoundingClientRect().top + anchor.offset
+      window.scrollTo({ top, behavior: 'instant' })
+    }
+  } else if (lessonStore.resumed && hasNext.value) {
+    sectionCards
+      .get(lessonStore.revealedUpTo)
+      ?.scrollIntoView({ block: 'start', behavior: 'instant' })
+  }
+  if (lessonStore.resumed && hasNext.value) {
+    toast.info(
+      t('lesson.resumed', {
+        current: visibleSections.value.length,
+        total: sortedSections.value.length,
+      }),
+    )
+  }
+  tracking = true
 }
 
 onMounted(async () => {
@@ -164,8 +238,12 @@ onMounted(async () => {
       const status = await api.getRequestStatus(props.sessionId)
       id = status.lesson_id
     }
-    if (id) await lessonStore.load(id)
-    else failed.value = true
+    if (id) {
+      await lessonStore.load(id)
+      await placeViewport()
+      window.addEventListener('scroll', onScroll, { passive: true })
+      window.addEventListener('pagehide', saveAnchor)
+    } else failed.value = true
   } catch {
     failed.value = true
   }
@@ -175,6 +253,17 @@ onMounted(async () => {
   } catch {
     /* recommendations are optional */
   }
+})
+
+// Leaving the reader: save the final reading spot while the page is still scrolled there (the
+// router scrolls to the top right after), then stop listening.
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onScroll)
+  window.removeEventListener('pagehide', saveAnchor)
+  if (saveTimer) clearTimeout(saveTimer)
+  saveTimer = null
+  saveAnchor()
+  tracking = false
 })
 
 // Stop any image-polling timers when leaving the reader (the store is a singleton).
@@ -204,6 +293,7 @@ onUnmounted(() => lessonStore.stopPolls())
     <section
       v-for="s in visibleSections"
       :key="s.ordinal"
+      :ref="(el) => setSectionCard(s.ordinal, el)"
       class="sa-card sa-lesson__section"
       :class="{ 'sa-lesson__section--locked': isLocked(s) }"
       :aria-disabled="isLocked(s) ? 'true' : undefined"
@@ -246,12 +336,13 @@ onUnmounted(() => lessonStore.stopPolls())
           <div v-for="it in s.items" :key="it.id" class="sa-lesson__item">
             <QuestionRenderer
               :item="it"
-              :feedback="feedbackByItem[it.id] ?? null"
-              :disabled="!!feedbackByItem[it.id]"
+              :feedback="lessonStore.feedbackByItem[it.id] ?? null"
+              :disabled="!!lessonStore.feedbackByItem[it.id]"
+              :submitted="lessonStore.submittedByItem[it.id]"
               :sound="prefs.sound"
               @answer="(e: AnswerEvent) => onAnswer(e)"
             />
-            <CorrectAnswer :item="it" :feedback="feedbackByItem[it.id] ?? null" />
+            <CorrectAnswer :item="it" :feedback="lessonStore.feedbackByItem[it.id] ?? null" />
           </div>
         </div>
       </template>
@@ -368,6 +459,10 @@ onUnmounted(() => lessonStore.stopPolls())
 .sa-lesson__section,
 .sa-lesson__review {
   padding: 1.1rem;
+}
+.sa-lesson__section {
+  /* Resuming scrolls a part into view; keep its title clear of the sticky header. */
+  scroll-margin-top: 4.5rem;
 }
 .sa-lesson__obj-list {
   list-style: none;
