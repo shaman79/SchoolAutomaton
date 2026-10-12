@@ -130,7 +130,7 @@ export interface LearningSessionSummary {
   title: string | null
   subject: string | null
   created_at: string | null
-  /** Quiz only: the learner has a graded attempt, so a review screen has content. */
+  /** Quiz only: the learner has a finished, graded attempt, so a review screen has content. */
   attempted?: boolean
   /** How far this learner got; null/absent = they haven't opened it yet. */
   progress?: SessionProgress | null

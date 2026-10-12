@@ -79,10 +79,13 @@ async def start_attempt(
 async def get_quiz_review(
     quiz_id: int, profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
 ):
-    """Reveal the learner's most recent attempt at a quiz for review (answers + explanations).
+    """Reveal the learner's most recent FINISHED attempt at a quiz for review (answers +
+    explanations).
 
-    Picks the latest attempt that actually has graded answers, so a learner can revisit a completed
-    quiz anytime. 404 if the quiz is unknown or the learner has no attempt with answers yet."""
+    Only a completed attempt can be reviewed: the review reveals the correct answer to every question,
+    so serving it for an attempt still in progress would hand out the answers to the questions not yet
+    answered (SPEC §5 — answers are server-only until graded). Picks the latest finished attempt that
+    has graded answers; 404 if the quiz is unknown or the learner has none yet."""
     quiz = await db.get(Quiz, quiz_id)
     if quiz is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz not found")
@@ -90,7 +93,11 @@ async def get_quiz_review(
     attempts = (
         await db.execute(
             select(QuizAttempt)
-            .where(QuizAttempt.profile_id == profile.id, QuizAttempt.quiz_id == quiz_id)
+            .where(
+                QuizAttempt.profile_id == profile.id,
+                QuizAttempt.quiz_id == quiz_id,
+                QuizAttempt.completed_at.is_not(None),
+            )
             .order_by(QuizAttempt.id.desc())
         )
     ).scalars().all()

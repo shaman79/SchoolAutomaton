@@ -110,7 +110,7 @@ class LearningSessionSummary(AppModel):
     title: str | None = None  # lesson topic or quiz title
     subject: str | None = None
     created_at: datetime | None = None
-    attempted: bool = False  # quiz only: the learner has a graded attempt (so "Review" has content)
+    attempted: bool = False  # quiz only: a finished, graded attempt exists (so "Review" has content)
     progress: SessionProgress | None = None  # None = this learner hasn't opened it yet
 
 

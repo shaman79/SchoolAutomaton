@@ -89,14 +89,17 @@ async def list_my_requests(
             .limit(limit)
         )
     ).all()
-    # Which quizzes this learner has a graded attempt for — so the UI only offers "Review" where there
-    # is something to review (avoids a dead-end empty screen).
+    # Which quizzes this learner has a FINISHED, graded attempt for — so the UI only offers "Review"
+    # where there is something reviewable (an attempt still in progress is not: see get_quiz_review).
     attempted_quiz_ids = set(
         (
             await db.execute(
                 select(QuizAttempt.quiz_id)
                 .join(Answer, Answer.attempt_id == QuizAttempt.id)
-                .where(QuizAttempt.profile_id == profile.id)
+                .where(
+                    QuizAttempt.profile_id == profile.id,
+                    QuizAttempt.completed_at.is_not(None),
+                )
                 .distinct()
             )
         ).scalars().all()

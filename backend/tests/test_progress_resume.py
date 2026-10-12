@@ -218,6 +218,52 @@ async def test_quiz_resume_never_lands_behind_an_answered_question(client):
 
 
 @pytest.mark.asyncio
+async def test_quiz_in_progress_cannot_be_reviewed(client):
+    """The review reveals every correct answer, so it has to wait until the attempt is finished —
+    otherwise a learner mid-quiz could read the answers to the questions still ahead of them."""
+    headers, pid = await _new_profile(client)
+    quiz_id, (i1, _i2, _i3) = await _seed_quiz("review-open", pid)
+    review_url = f"{API}/quizzes/{quiz_id}/review"
+
+    async def history_row():
+        rows = (await client.get(f"{API}/profiles/me/requests", headers=headers)).json()
+        return next(row for row in rows if row["request_id"] == "review-open")
+
+    async def start():
+        r = await client.post(f"{API}/quizzes/{quiz_id}/attempts", headers=headers, json={})
+        return r.json()["attempt_id"]
+
+    def answer(attempt_id, value):
+        return client.post(f"{API}/answers", headers=headers, json={
+            "item_id": i1, "attempt_id": attempt_id, "submitted_value": value,
+        })
+
+    first = await start()
+    assert (await answer(first, "a")).status_code == 200
+
+    # One question answered, two to go: nothing is reviewable and the list doesn't offer it.
+    assert (await client.get(review_url, headers=headers)).status_code == 404
+    assert (await history_row())["attempted"] is False
+
+    # Finished → the whole quiz can be reviewed, unanswered questions included.
+    await client.post(f"{API}/attempts/{first}/complete", headers=headers, json={})
+    r = await client.get(review_url, headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["attempt_id"] == first and body["total"] == 3
+    assert [it["correct_answer"] for it in body["items"]] == ["a", "a", "a"]
+    assert (await history_row())["attempted"] is True
+
+    # A second go, in progress: the review still shows the finished attempt, never the open one.
+    second = await start()
+    assert second != first
+    assert (await answer(second, "b")).status_code == 200
+    body = (await client.get(review_url, headers=headers)).json()
+    assert body["attempt_id"] == first
+    assert body["items"][0]["submitted_value"] == "a"
+
+
+@pytest.mark.asyncio
 async def test_lesson_progress_restores_boundary_and_answers(client):
     headers, pid = await _new_profile(client)
     lesson_id, item_id = await _seed_lesson("resume-lesson", pid, ready=3, total=4, item_in=1)
