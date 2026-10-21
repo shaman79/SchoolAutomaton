@@ -162,6 +162,7 @@ onMounted(() => {
 
 <style scoped>
 .sa-parents {
+  container: sa-parents / inline-size;
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
@@ -187,11 +188,17 @@ onMounted(() => {
   text-align: center;
   color: var(--color-ink-soft);
 }
+/* Two tiles a row while each gets ~7rem; one a row below that (big text on a phone overflowed). */
 .sa-parents__tiles {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   margin: 0;
+}
+@container sa-parents (min-width: 15rem) {
+  .sa-parents__tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .sa-parents__tile {
   display: flex;

@@ -124,13 +124,15 @@ function submit() {
 }
 .sa-tf {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
   gap: 0.75rem;
 }
 .sa-tf__btn {
+  min-width: 0;
   font-size: 1.05rem;
-  padding: 0.9rem 1rem;
+  padding: 0.9rem 0.6rem;
   border: 2px solid var(--color-line);
+  overflow-wrap: anywhere;
 }
 .sa-tf__btn--on {
   border-color: var(--color-primary);

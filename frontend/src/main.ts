@@ -11,6 +11,8 @@ import '@fontsource/atkinson-hyperlegible/400.css'
 import '@fontsource/atkinson-hyperlegible/700.css'
 import '@fontsource/opendyslexic/400.css'
 import '@fontsource/opendyslexic/700.css'
+// KaTeX's layout rules: without them every formula rendered twice (MathML + a jumbled HTML copy).
+import 'katex/dist/katex.min.css'
 import './style/main.css'
 
 import App from './App.vue'

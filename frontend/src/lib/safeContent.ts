@@ -25,6 +25,11 @@ const md = new MarkdownIt({
   breaks: false,
 })
 
+// A wide table scrolls sideways inside its own box. Content wider than the screen made phone
+// browsers widen the whole layout, and taps then landed away from what was drawn.
+md.renderer.rules.table_open = () => '<div class="sa-table-scroll"><table>\n'
+md.renderer.rules.table_close = () => '</table></div>\n'
+
 // ---------------------------------------------------------------- KaTeX
 const KATEX_OPTS: katex.KatexOptions = {
   throwOnError: false, // never crash on bad LLM math — render the source in error color
@@ -113,11 +118,17 @@ function restoreMath(html: string, math: string[]): string {
 }
 
 // ---------------------------------------------------------------- DOMPurify configs
-// Markdown output: allow KaTeX (math/semantics/annotation + span+class) plus normal prose.
+// Markdown output: allow KaTeX (math/semantics/annotation + span+class) plus normal prose. KaTeX
+// draws radicals, stretchy arrows and wide accents as tiny inline <svg><path/></svg>, so those few
+// shape tags are allowed too. Only KaTeX can emit them: markdown-it runs with html:false, so any
+// tag in the source text arrives here escaped.
 const MD_PURIFY_CONFIG: DompurifyConfig = {
   USE_PROFILES: { html: true, mathMl: true },
-  ADD_TAGS: ['math', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub'],
-  ADD_ATTR: ['aria-hidden', 'role', 'class', 'style', 'aria-label'],
+  ADD_TAGS: ['math', 'semantics', 'annotation', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'svg', 'path', 'line'],
+  ADD_ATTR: [
+    'aria-hidden', 'role', 'class', 'style', 'aria-label',
+    'viewBox', 'preserveAspectRatio', 'd', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'stroke-width',
+  ],
   FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form', 'input', 'foreignObject'],
   FORBID_ATTR: ['srcset', 'formaction'],
 }

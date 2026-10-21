@@ -3,8 +3,10 @@
  * Global toast outlet. Renders the shared toast queue inside polite/assertive
  * aria-live regions so screen readers announce them. Mounted once near the app
  * root. Toasts use icon + color + text (never color-only). Motion is gated on
- * the reduced-motion preference. Anchored at the top (top-right on larger screens), clear of
- * safe-area insets — at the bottom they covered the primary button and inline errors on phones.
+ * the reduced-motion preference. Anchored just below the sticky header (top-right on larger
+ * screens) — at the bottom they covered the primary button and inline errors on phones, and over
+ * the header they covered its buttons. Taps go straight through a toast to whatever is under it
+ * (only its close button catches them), so a toast never swallows a learner's tap.
  */
 import { computed } from 'vue'
 
@@ -79,18 +81,18 @@ const toneClass: Record<ToastTone, string> = {
 <style scoped>
 .sa-toast-host {
   position: fixed;
-  inset: 0 0 auto 0;
+  /* --sa-header-h is published by AppHeader */
+  inset: var(--sa-header-h, 0px) 0 auto 0;
   z-index: 60;
-  padding-top: max(env(safe-area-inset-top), 0.75rem);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.75rem;
+  padding: 0.5rem 0.75rem;
   pointer-events: none;
 }
 @media (min-width: 640px) {
   .sa-toast-host {
-    inset: 0 0 auto auto;
+    inset: var(--sa-header-h, 0px) 0 auto auto;
     max-width: 24rem;
   }
 }
@@ -99,7 +101,6 @@ const toneClass: Record<ToastTone, string> = {
   align-items: flex-start;
   gap: 0.6rem;
   padding: 0.7rem 0.8rem;
-  pointer-events: auto;
   border-left: 4px solid var(--color-primary);
 }
 .sa-toast--success {
@@ -115,6 +116,7 @@ const toneClass: Record<ToastTone, string> = {
   border-left-color: var(--color-sky);
 }
 .sa-toast__close {
+  pointer-events: auto;
   display: inline-grid;
   place-items: center;
   border-radius: var(--radius-pill);

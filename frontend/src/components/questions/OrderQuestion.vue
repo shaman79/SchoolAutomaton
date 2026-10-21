@@ -116,9 +116,10 @@ function submit() {
             :aria-label="t('q.order.reorder', { item: element.text, pos: index + 1 })"
             @keydown="onHandleKey($event, index)"
           >
-            <span aria-hidden="true">⠿</span>
+            <!-- grip + position share one 44px handle, leaving the text room on narrow phones -->
+            <span class="sa-order__grip" aria-hidden="true">⠿</span>
+            <span class="sa-order__pos" aria-hidden="true">{{ index + 1 }}.</span>
           </span>
-          <span class="sa-order__pos" aria-hidden="true">{{ index + 1 }}.</span>
           <SafeContent :markdown="element.text" tag="span" class="sa-order__text" />
           <span class="sa-order__moves">
             <button
@@ -173,6 +174,7 @@ function submit() {
   margin: 0;
 }
 .sa-order {
+  container: sa-order / inline-size;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -180,10 +182,14 @@ function submit() {
   flex-direction: column;
   gap: 0.55rem;
 }
+/* Narrow (a small phone or big text): the arrows go under the text, which keeps the full width
+   beside the handle. With room for the text between handle and arrows, all three share one line. */
 .sa-order__row {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'handle text' 'handle moves';
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.35rem 0.55rem;
   min-height: var(--tap-min);
   padding: 0.5rem 0.65rem;
   border: 2px solid var(--color-line);
@@ -196,29 +202,49 @@ function submit() {
   border-color: var(--color-primary);
 }
 .sa-order__handle {
+  grid-area: handle;
   cursor: grab;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   min-width: var(--tap-min);
   min-height: var(--tap-min);
-  color: var(--color-ink-soft);
-  font-size: 1.2rem;
+  line-height: 1.1;
   touch-action: none;
+}
+.sa-order__grip {
+  color: var(--color-ink-soft);
+  font-size: 0.95rem;
 }
 .sa-order__pos {
   font-weight: 700;
   color: var(--color-primary-strong);
-  min-width: 1.6rem;
 }
 .sa-order__text {
-  flex: 1;
+  grid-area: text;
   min-width: 0;
+  overflow-wrap: anywhere; /* a long word wraps instead of running under the buttons */
 }
 .sa-order__moves {
+  grid-area: moves;
+  justify-self: end;
   display: flex;
-  flex-wrap: wrap;
   gap: 0.25rem;
+}
+@container sa-order (min-width: 14rem) {
+  .sa-order__row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'handle text moves';
+  }
+  .sa-order__moves {
+    flex-direction: column; /* ▲ above ▼, so the text keeps the width */
+  }
+}
+@container sa-order (min-width: 26rem) {
+  .sa-order__moves {
+    flex-direction: row;
+  }
 }
 .sa-order__move {
   display: inline-flex;

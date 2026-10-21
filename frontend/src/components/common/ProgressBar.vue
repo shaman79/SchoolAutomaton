@@ -52,7 +52,7 @@ const toneVar = computed(
   <div class="w-full">
     <div
       v-if="showValue && (valueText || label)"
-      class="mb-1 flex items-baseline justify-between text-xs font-semibold text-[var(--color-ink-soft)]"
+      class="mb-1 flex flex-wrap items-baseline justify-between gap-x-2 text-xs font-semibold text-[var(--color-ink-soft)]"
     >
       <span v-if="label">{{ label }}</span>
       <span v-if="valueText">{{ valueText }}</span>

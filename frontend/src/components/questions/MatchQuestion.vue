@@ -245,21 +245,24 @@ function submit() {
   flex-direction: column;
   gap: 0.55rem;
 }
+/* Prompt and slot share a line only when both get a readable width; on a phone the slot wraps
+   under its prompt at full width (side by side, a placed answer wrapped one word per line). */
 .sa-match__row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.6rem;
+  gap: 0.35rem 0.6rem;
 }
 .sa-match__leftlabel {
-  flex: 1;
+  flex: 1 1 8rem;
   min-width: 0;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .sa-match__slot {
-  flex: 1;
+  flex: 1 1 12rem;
   min-height: var(--tap-min);
-  min-width: clamp(3.5rem, 45%, 6rem);
+  min-width: 0;
   max-width: 100%;
   display: flex;
   align-items: center;
@@ -284,6 +287,11 @@ function submit() {
   background: var(--color-surface);
   min-height: var(--tap-min);
 }
+/* All placed: the pool stays a drop target, but must not look like a box still to be filled. */
+.sa-match__pool:not(:has(li)) {
+  border-style: dashed;
+  background: transparent;
+}
 .sa-match__token {
   display: inline-flex;
   align-items: center;
@@ -297,6 +305,7 @@ function submit() {
   font: inherit;
   cursor: grab;
   text-align: start;
+  overflow-wrap: anywhere;
 }
 .sa-match__token--picked {
   border-color: var(--color-primary);

@@ -3,7 +3,6 @@ import { onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
-import SaIcon from '@/components/common/SaIcon.vue'
 import ToastHost from '@/components/common/ToastHost.vue'
 import { toast } from '@/components/common/useToasts'
 import AccessibilityPanel from '@/components/layout/AccessibilityPanel.vue'
@@ -37,7 +36,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex min-h-dvh flex-col">
+  <!-- overflow-x-clip is a safety net: nothing may make the page wider than the phone. When anything
+       did, mobile browsers widened the whole layout and taps landed away from the buttons they were
+       aimed at. clip (unlike hidden) makes no scroll box, so the sticky header keeps working; and it
+       sits here, not on <body>, whose overflow the browser hands to the window instead. -->
+  <div class="flex min-h-dvh flex-col overflow-x-clip">
     <a href="#sa-main" class="sa-skip">{{ t('a11y.skip_to_content') }}</a>
 
     <AppHeader @open-settings="ui.settingsOpen = true" />
@@ -54,16 +57,8 @@ onMounted(() => {
 
     <AppFooter />
 
-    <!-- Floating, thumb-reachable accessibility trigger (always available). -->
-    <button
-      type="button"
-      class="sa-a11y-fab sa-card"
-      :aria-label="t('a11y.settings')"
-      @click="ui.settingsOpen = true"
-    >
-      <SaIcon name="settings" :size="24" />
-    </button>
-
+    <!-- Settings open from the sticky header on every screen size. (A floating button used to sit
+         bottom-right on phones too, but it covered answer options and the main button under it.) -->
     <AccessibilityPanel :open="ui.settingsOpen" @close="ui.settingsOpen = false" />
     <ToastHost />
   </div>
@@ -95,39 +90,7 @@ onMounted(() => {
 .sa-skip:focus {
   top: 0.5rem;
 }
-
-/* Floating accessibility button — bottom-right, clear of safe-area + toasts. */
-.sa-a11y-fab {
-  position: fixed;
-  right: 0.9rem;
-  bottom: calc(0.9rem + env(safe-area-inset-bottom));
-  z-index: 45;
-  display: grid;
-  place-items: center;
-  width: 3.25rem;
-  height: 3.25rem;
-  border-radius: var(--radius-pill);
-  color: var(--color-primary);
-  box-shadow: var(--shadow-pop);
-  cursor: pointer;
-  transition: transform 0.12s ease;
-}
-@media (hover: hover) {
-  .sa-a11y-fab:hover {
-    transform: translateY(-2px) rotate(15deg);
-  }
-}
-/* On larger screens the header already exposes settings; tuck the FAB away. */
-@media (min-width: 640px) {
-  .sa-a11y-fab {
-    display: none;
-  }
-}
-:root[data-reduced-motion='true'] .sa-skip,
-:root[data-reduced-motion='true'] .sa-a11y-fab {
+:root[data-reduced-motion='true'] .sa-skip {
   transition: none;
-}
-:root[data-reduced-motion='true'] .sa-a11y-fab:hover {
-  transform: none;
 }
 </style>

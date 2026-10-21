@@ -187,6 +187,9 @@ async function copySaved() {
   text-decoration: underline;
   text-underline-offset: 2px;
   min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  justify-content: center;
+  padding-inline: 0.75rem;
   display: inline-flex;
   align-items: center;
 }

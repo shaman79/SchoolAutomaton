@@ -46,9 +46,40 @@ const isSvg = computed(() => props.svg != null)
 </template>
 
 <style scoped>
+/* Nothing generated may be wider than the screen: a phone browser then widens the whole layout and
+   taps stop landing on what is drawn. Long words and links wrap; tables and display math scroll
+   sideways inside their own box; images shrink to fit. */
+.sa-safe-md {
+  overflow-wrap: anywhere;
+}
+.sa-safe-md :deep(.sa-table-scroll),
+.sa-safe-md :deep(.katex-display) {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.sa-safe-md :deep(.sa-table-scroll) {
+  margin: 0 0 0.85em;
+}
+.sa-safe-md :deep(.sa-table-scroll td),
+.sa-safe-md :deep(.sa-table-scroll th) {
+  overflow-wrap: normal; /* a cell keeps whole words; the box scrolls instead */
+}
+.sa-safe-md :deep(img) {
+  max-width: 100%;
+  height: auto;
+}
 /* Light, readable defaults for sanitized markdown; tokens keep it on-theme. */
 .sa-safe-md :deep(p) {
   margin: 0 0 0.85em;
+}
+/* No stray space around the content: answer options and cards stay evenly padded (the text sat at
+   the top of each option with an empty strip below it). */
+.sa-safe-md :deep(> :first-child) {
+  margin-top: 0;
+}
+.sa-safe-md :deep(> :last-child) {
+  margin-bottom: 0;
 }
 .sa-safe-md :deep(h1),
 .sa-safe-md :deep(h2),
@@ -89,6 +120,7 @@ const isSvg = computed(() => props.svg != null)
 .sa-safe-md :deep(table) {
   border-collapse: collapse;
   width: 100%;
+  margin: 0;
 }
 .sa-safe-md :deep(th),
 .sa-safe-md :deep(td) {

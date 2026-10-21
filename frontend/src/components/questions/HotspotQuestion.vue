@@ -228,9 +228,10 @@ function regionLabel(region: HotspotRegion, i: number) {
 }
 .sa-hotspot__region {
   position: absolute;
-  /* >=44px even for tiny normalized boxes */
-  min-width: var(--tap-min);
-  min-height: var(--tap-min);
+  /* >=44px even for tiny normalized boxes. In px, not rem: the regions sit on a picture, and growing
+     them with the text size made neighbouring regions overlap. */
+  min-width: 44px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;

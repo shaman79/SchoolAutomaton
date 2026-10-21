@@ -2,7 +2,10 @@
 /**
  * Sticky, compact app header: logo (home link) + a compact gamification bar.
  * The gamification bar (level / streak / XP) renders only for authenticated learners.
+ * Publishes its height as --sa-header-h so toasts can sit just below it instead of over its buttons.
  */
+import { useResizeObserver } from '@vueuse/core'
+import { onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppLogo from '@/components/common/AppLogo.vue'
@@ -16,17 +19,25 @@ const { t } = useI18n()
 const session = useSessionStore()
 
 const emit = defineEmits<{ (e: 'open-settings'): void }>()
+
+const headerEl = ref<HTMLElement | null>(null)
+useResizeObserver(headerEl, () => {
+  const h = headerEl.value?.offsetHeight
+  if (h) document.documentElement.style.setProperty('--sa-header-h', `${h}px`)
+})
+onBeforeUnmount(() => document.documentElement.style.removeProperty('--sa-header-h'))
 </script>
 
 <template>
   <header
+    ref="headerEl"
     class="sticky top-0 z-40 border-b border-[var(--color-line)] backdrop-blur safe-top"
     style="background: color-mix(in srgb, var(--color-surface) 86%, transparent)"
   >
     <div class="mx-auto flex w-full max-w-screen-sm items-center gap-3 px-4 py-2 lg:max-w-2xl">
       <RouterLink
         to="/"
-        class="sa-logo flex items-center gap-2 font-extrabold tracking-tight"
+        class="sa-logo sa-tap flex items-center gap-2 font-extrabold tracking-tight"
         :aria-label="t('app.name')"
       >
         <AppLogo :size="36" />
@@ -68,7 +79,7 @@ const emit = defineEmits<{ (e: 'open-settings'): void }>()
           <SaIcon name="books" :size="22" :title="t('history.title')" />
         </RouterLink>
 
-        <!-- Settings trigger lives in the header on >=sm; on phones the floating FAB (App.vue) is primary. -->
+        <!-- The one settings trigger, on every screen size (the header is sticky, so always reachable). -->
         <button
           type="button"
           class="sa-tap grid place-items-center rounded-[var(--radius-pill)] text-[var(--color-ink-soft)] hover:bg-[var(--color-surface-2)]"

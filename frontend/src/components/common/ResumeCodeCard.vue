@@ -177,10 +177,11 @@ async function shareLink() {
 }
 .sa-code__actions {
   display: flex;
+  flex-wrap: wrap; /* with big text the two buttons stack instead of running off the card */
   gap: 0.5rem;
 }
 .sa-code__actions > * {
-  flex: 1;
+  flex: 1 1 max-content;
 }
 /* Only go side-by-side when the CARD itself is wide enough for the code + both buttons; otherwise the
    code stays on its own line with the two buttons below (never overflowing a narrow panel). */
