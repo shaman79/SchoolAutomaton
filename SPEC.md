@@ -148,4 +148,6 @@ async def evaluate_badges(db, profile, event) -> list[BadgeAward]
 Prompt-injection→child-safety breakout (one-way flow + deterministic validate + red-team corpus in CI);
 XSS via LLM/SVG output (dual sanitize + CSP); cost blow-up (verify cache hits, pin megapixels=1, asset cache);
 prompt-cache silent misses (assert byte-identical prefix in tests); FSRS/mastery drift (lock formula + fixture);
-SQLite write contention (WAL + INSERT OR IGNORE + funnel writes).
+SQLite write contention (WAL + INSERT OR IGNORE + funnel writes + 30 s busy_timeout; **never await a
+model/Replicate call while the session holds an uncommitted write** — make the content first, then write
+it in one short burst; `test_generation_never_holds_the_write_lock_during_an_llm_call` guards it).

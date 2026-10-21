@@ -460,3 +460,35 @@ async def test_existing_database_gains_the_resume_columns():
         ).one()
     await engine.dispose()
     assert tuple(row) == (0, None)
+
+
+@pytest.mark.asyncio
+async def test_a_double_submit_racing_past_the_check_is_a_409_not_a_500(client, monkeypatch):
+    """Two copies of one quiz answer arriving at once both passed the "already answered?" check; the
+    second then hit the unique (attempt, item) index and the request died with a 500. Same answer,
+    same outcome as the check: a clean 409, and nothing of the second copy is kept."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    headers, pid = await _new_profile(client)
+    quiz_id, (i1, i2, i3) = await _seed_quiz("race-quiz", pid)
+    attempt_id = (
+        await client.post(f"{API}/quizzes/{quiz_id}/attempts", headers=headers, json={})
+    ).json()["attempt_id"]
+    body = {"item_id": i1, "attempt_id": attempt_id, "submitted_value": "a"}
+    assert (await client.post(f"{API}/answers", headers=headers, json=body)).status_code == 200
+    rewarded = await _reward_state(pid, [i1, i2, i3])
+
+    real_scalar = AsyncSession.scalar
+
+    async def already_check_misses(self, stmt, *args, **kwargs):  # the racing copy's view
+        sql = str(stmt)
+        if sql.startswith("SELECT answers.id") and "answers.attempt_id" in sql:
+            return None
+        return await real_scalar(self, stmt, *args, **kwargs)
+
+    monkeypatch.setattr(AsyncSession, "scalar", already_check_misses)
+    r = await client.post(f"{API}/answers", headers=headers, json=body)
+    monkeypatch.undo()
+
+    assert r.status_code == 409, r.text
+    assert await _reward_state(pid, [i1, i2, i3]) == rewarded
