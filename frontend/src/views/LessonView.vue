@@ -15,7 +15,7 @@
  * they had reached) and keeps that spot saved as they scroll.
  * All LLM output renders via SafeContent / LessonAsset (never raw v-html). WCAG 2.2 AA throughout.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import LessonAsset from '@/components/content/LessonAsset.vue'
@@ -147,8 +147,13 @@ const crumbs = computed(() => {
     .join(' · ')
 })
 
+// Questions whose answer is on its way. A double tap on Check (kids do) must not send it twice: the
+// second request failed on the server, and the question stays locked until the grade is back.
+const answering = reactive(new Set<number>())
+
 async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
-  if (lessonStore.feedbackByItem[e.questionId]) return // already graded
+  if (lessonStore.feedbackByItem[e.questionId] || answering.has(e.questionId)) return // graded / in flight
+  answering.add(e.questionId)
   try {
     // Lesson-embedded practice => no quiz attempt (attempt_id null, per design).
     const res = await api.submitAnswer({ ...e, attemptId: null })
@@ -157,6 +162,8 @@ async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
     if (res.xp_awarded) await session.refreshGamification().catch(() => {})
   } catch {
     /* swallow — the question component stays interactive so the learner can retry */
+  } finally {
+    answering.delete(e.questionId)
   }
 }
 
@@ -337,7 +344,7 @@ onUnmounted(() => lessonStore.stopPolls())
             <QuestionRenderer
               :item="it"
               :feedback="lessonStore.feedbackByItem[it.id] ?? null"
-              :disabled="!!lessonStore.feedbackByItem[it.id]"
+              :disabled="!!lessonStore.feedbackByItem[it.id] || answering.has(it.id)"
               :submitted="lessonStore.submittedByItem[it.id]"
               :sound="prefs.sound"
               @answer="(e: AnswerEvent) => onAnswer(e)"

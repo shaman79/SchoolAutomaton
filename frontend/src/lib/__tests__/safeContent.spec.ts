@@ -28,6 +28,25 @@ describe('renderMarkdown', () => {
     expect(out).toContain('katex')
   })
 
+  it("keeps the small SVG shapes KaTeX draws radicals and stretchy arrows with", () => {
+    const out = renderMarkdown('Root $\\sqrt{16}=4$ and $\\overrightarrow{AB}$')
+    expect(out.match(/<svg/g)).toHaveLength(2)
+    expect(out).toContain('<path d="')
+    expect(out).toContain('viewBox="')
+  })
+
+  it('still escapes an <svg> written in the markdown text itself', () => {
+    const out = renderMarkdown('<svg onload="alert(1)"><path d="M0 0"/></svg>')
+    expect(out).not.toContain('<svg')
+    expect(out).not.toContain('<path')
+    expect(out).toContain('&lt;svg') // inert text, not a live element
+  })
+
+  it('wraps tables in their own sideways-scrolling box', () => {
+    const out = renderMarkdown('| a | b |\n|---|---|\n| 1 | 2 |')
+    expect(out).toMatch(/<div class="sa-table-scroll"><table>[\s\S]*<\/table><\/div>/)
+  })
+
   it('treats escaped \\$ as a literal dollar sign', () => {
     const out = renderMarkdown('It costs \\$5 only.')
     expect(out).toContain('$5')

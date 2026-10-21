@@ -139,9 +139,13 @@ function open(it: LearningSessionSummary) {
 }
 .sa-sugg__name {
   font-weight: 700;
+  /* up to two lines, not one: on a phone a one-line title was cut down to its first word or two */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .sa-sugg__meta {
   display: flex;

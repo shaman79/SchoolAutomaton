@@ -236,9 +236,13 @@ function open(it: LearningSessionSummary) {
 }
 .sa-hist__name {
   font-weight: 700;
+  /* up to two lines, not one: on a phone a one-line title was cut down to its first word or two */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .sa-hist__meta {
   display: flex;
@@ -278,6 +282,9 @@ function open(it: LearningSessionSummary) {
 .sa-hist__home {
   align-self: center;
   min-height: var(--tap-min);
+  min-width: var(--tap-min);
+  justify-content: center;
+  padding-inline: 0.75rem;
   display: inline-flex;
   align-items: center;
   color: var(--color-primary);

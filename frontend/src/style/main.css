@@ -98,6 +98,13 @@
     /* No page-wide smooth scrolling: it turned the scroll-to-top on every screen change into an
        animation, so the new screen was still moving under the learner's first tap. */
   }
+  /* Touch screens never go below 16px: iOS zooms into a text field set smaller than that when it is
+     tapped and leaves the whole page zoomed in afterwards (at the 90% text size fields were 15.3px). */
+  @media (pointer: coarse) {
+    html {
+      font-size: max(16px, calc(17px * var(--font-scale)));
+    }
+  }
   body {
     margin: 0;
     min-height: 100dvh;
@@ -107,6 +114,9 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     line-height: 1.6;
+    /* A word too long for its line breaks instead of making the page wider than the phone (see the
+       overflow-x-clip on the app root in App.vue). */
+    overflow-wrap: break-word;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }

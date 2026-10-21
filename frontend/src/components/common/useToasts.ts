@@ -28,6 +28,8 @@ interface ToastOptions {
 const state = reactive<{ items: Toast[] }>({ items: [] })
 const timers = new Map<number, ReturnType<typeof setTimeout>>()
 let seq = 0
+/** More than this and a phone screen is mostly toasts; the oldest non-error one makes room. */
+const MAX_VISIBLE = 3
 
 const DEFAULT_ICON: Record<ToastTone, IconName> = {
   info: 'sparkle',
@@ -52,6 +54,10 @@ function push(message: string, opts: ToastOptions = {}): number {
   const timeout = opts.timeout ?? (tone === 'error' ? 6000 : 4000)
   state.items.push({ id, message, tone, icon: opts.icon ?? DEFAULT_ICON[tone], timeout })
   if (timeout > 0) timers.set(id, setTimeout(() => dismiss(id), timeout))
+  if (state.items.length > MAX_VISIBLE) {
+    const oldest = state.items.find((x) => x.tone !== 'error' && x.id !== id)
+    if (oldest) dismiss(oldest.id)
+  }
   return id
 }
 

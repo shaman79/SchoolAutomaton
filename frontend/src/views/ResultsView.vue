@@ -163,6 +163,7 @@ onMounted(async () => {
 
 <style scoped>
 .sa-results {
+  container: sa-results / inline-size;
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -188,12 +189,32 @@ onMounted(async () => {
   font-size: clamp(1.6rem, 6vw, 2.1rem);
   font-weight: 800;
 }
+/* Columns follow the width actually available (in rem, so a bigger text size counts too): 2-up on
+   phones — 3 tiles squeezed in a row overflowed the screen, the labels are single long words — with
+   an odd last tile spanning the row; 3-up (or 4-up with the combo tile) once they fit. */
 .sa-results__stats {
   display: grid;
-  /* 3-up so the common Score/Accuracy/XP set is one balanced row (no orphaned 3rd card); the rare
-     4-card combo run gets a tidy 2x2 at >=480px below. */
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.6rem;
+}
+.sa-results__stats > .sa-stat:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+@container sa-results (min-width: 24rem) {
+  .sa-results__stats {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .sa-results__stats > .sa-stat:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+  .sa-results__stats:has(> .sa-stat:nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container sa-results (min-width: 32rem) {
+  .sa-results__stats:has(> .sa-stat:nth-child(4)) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 .sa-stat {
   display: flex;
@@ -220,6 +241,8 @@ onMounted(async () => {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: var(--color-ink-soft);
+  text-align: center;
+  overflow-wrap: anywhere; /* last resort: never wider than its tile */
 }
 .sa-results__row {
   display: flex;
@@ -279,9 +302,13 @@ onMounted(async () => {
   font-weight: 600;
   grid-column: 1 / 2;
   min-width: 0;
+  /* up to two lines, not one: on a phone a one-line title was cut down to its first word or two */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .sa-results__growth-delta {
   grid-column: 2 / 3;
@@ -307,10 +334,5 @@ onMounted(async () => {
   flex-direction: column;
   gap: 0.6rem;
   margin-top: 0.5rem;
-}
-@media (min-width: 480px) {
-  .sa-results__stats {
-    grid-template-columns: repeat(4, 1fr);
-  }
 }
 </style>

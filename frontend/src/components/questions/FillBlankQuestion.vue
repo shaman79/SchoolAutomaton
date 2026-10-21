@@ -208,7 +208,7 @@ function submit() {
   font: inherit;
   color: var(--color-ink);
   box-sizing: border-box;
-  max-width: 100%;
+  max-width: calc(100% - 0.3rem); /* minus the inline margins, or a wide one spills off the line */
 }
 .sa-cloze__input {
   min-width: min(6rem, 40%);
