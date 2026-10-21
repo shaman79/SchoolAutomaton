@@ -24,8 +24,10 @@ from ..schemas.intent import StructuredIntent
 from . import prompts
 from .client import generate_structured
 from .lesson_generator import (
+    HotspotImages,
     _ensure_misconception,
-    _realize_hotspot_image,
+    _link_hotspot_image,
+    _prepare_hotspot_images,
     _slugify,
     _upsert_concept,
 )
@@ -54,6 +56,7 @@ async def _persist_quiz_item(
     quiz: Quiz,
     concept_cache: dict[str, Concept],
     misconception_cache: dict[tuple[int, str], int],
+    hotspot_images: HotspotImages | None = None,
 ) -> Item | None:
     """Persist one quiz question as a shared Item, mapping distractor misconceptions to ids.
 
@@ -103,14 +106,7 @@ async def _persist_quiz_item(
     )
     db.add(item)
     await db.flush()
-    await _realize_hotspot_image(
-        db,
-        item,
-        gen,
-        language=quiz.language,
-        grade_band=quiz.grade_band,
-        layout_slot=LayoutSlot.QUIZ_THUMB,
-    )
+    await _link_hotspot_image(db, item, (hotspot_images or {}).get(id(gen)))
     return item
 
 
@@ -126,15 +122,12 @@ async def generate_quiz(
     """Generate + persist a quiz from the validated intent. Returns the Quiz row."""
     request_id: str = request.request_id
 
-    # Anchor the quiz to the topic concept (upsert by slug) so we can seed known misconceptions.
-    primary_concept = await _upsert_concept(
-        db,
-        intent.topic or intent.subject.value,
-        name=intent.topic or intent.subject.value,
-        subject=intent.subject.value,
-        grade=intent.grade_band.value,
-    )
-    known = await _known_misconceptions(db, primary_concept.id)
+    # Known misconceptions of the topic concept seed the prompt. Only READ before the model call: any
+    # write (even an INSERT OR IGNORE) takes SQLite's single write lock, and holding it through a
+    # minute-long generation made every other learner's answer and progress save time out.
+    topic = intent.topic or intent.subject.value
+    existing = await db.scalar(select(Concept).where(Concept.slug == _slugify(topic)))
+    known = await _known_misconceptions(db, existing.id if existing else None)
 
     gen_quiz, _ = await generate_structured(
         system_blocks=prompts.system_pedagogy(intent.language),
@@ -155,6 +148,16 @@ async def generate_quiz(
         client=client,
     )
 
+    # Hotspot pictures are provider calls too: also before any write (see _prepare_hotspot_images).
+    hotspots = await _prepare_hotspot_images(
+        db, list(gen_quiz.questions), language=intent.language, grade_band=intent.grade_band.value,
+        layout_slot=LayoutSlot.QUIZ_THUMB,
+    )
+
+    # Anchor the quiz to the topic concept (upsert by slug) — now that the provider calls are done.
+    primary_concept = await _upsert_concept(
+        db, topic, name=topic, subject=intent.subject.value, grade=intent.grade_band.value
+    )
     quiz = Quiz(
         request_id=request_id,
         title=(gen_quiz.title or intent.topic or "Quiz")[:200],
@@ -181,6 +184,7 @@ async def generate_quiz(
             quiz=quiz,
             concept_cache=concept_cache,
             misconception_cache=misconception_cache,
+            hotspot_images=hotspots,
         )
         if item is None:
             continue

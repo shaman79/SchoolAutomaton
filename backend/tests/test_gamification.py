@@ -762,3 +762,34 @@ async def test_wrong_mcq_option_reports_its_own_misconception(db):
     assert res.is_correct is False
     assert res.misconception is not None
     assert res.misconception.description == "Po b se vždy píše měkké i."
+
+
+# --------------------------------------------------------------------------- concurrent answers
+@pytest.mark.asyncio
+async def test_card_already_created_by_a_concurrent_answer_is_reused(db, monkeypatch):
+    """The same answer arriving twice at once (a double tap on Check, two tabs) raced to create the
+    item's FSRS card: the loser's INSERT hit the unique (profile, item) constraint and the whole answer
+    failed with a 500. Simulated here: the card exists, but this request's first lookup missed it."""
+    profile = await _make_profile(db)
+    concept = await _make_concept(db)
+    item = await _make_item(db, concept.id, "true_false", {"kind": "true_false", "answer": True})
+    now = datetime.now(UTC)
+    winner = await gamification._get_or_create_card(db, profile, item, now)
+
+    real_scalar = db.scalar
+    lookups = 0
+
+    async def first_lookup_misses(*args, **kwargs):
+        nonlocal lookups
+        lookups += 1
+        return None if lookups == 1 else await real_scalar(*args, **kwargs)
+
+    monkeypatch.setattr(db, "scalar", first_lookup_misses)
+    card = await gamification._get_or_create_card(db, profile, item, now)
+
+    assert card.id == winner.id
+    monkeypatch.undo()
+    count = await db.scalar(
+        select(func.count()).select_from(ItemFsrsCard).where(ItemFsrsCard.item_id == item.id)
+    )
+    assert count == 1

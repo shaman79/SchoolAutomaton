@@ -679,3 +679,47 @@ async def test_objectives_sharing_a_concept_do_not_violate_unique(db):
     links = list(await db.scalars(select(LessonConcept).where(LessonConcept.lesson_id == lesson.id)))
     assert sorted(lc.relation for lc in links) == ["taught", "taught"]  # one per distinct concept
     assert len(lesson.objectives_json) == 3  # every objective is kept
+
+
+# --------------------------------------------------------------------------- SQLite write lock
+
+
+def _record_open_writes(client, raw_conn) -> list[bool]:
+    """Wrap the mock's provider calls to note, at each call, whether the SQLite connection holds an
+    open write transaction (sqlite3 only opens one at the first INSERT/UPDATE/DELETE)."""
+    seen: list[bool] = []
+    for name in ("create", "parse"):
+        inner = getattr(client.messages, name)
+
+        async def wrapped(*args, _inner=inner, **kwargs):
+            seen.append(raw_conn.in_transaction)
+            return await _inner(*args, **kwargs)
+
+        setattr(client.messages, name, wrapped)
+    return seen
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", [Mode.STUDY, Mode.TEST])
+async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode):
+    """SQLite has ONE write lock. A generator that writes and then waits a minute for the model kept
+    it all that time, so every other learner's answer and progress save timed out ("database is
+    locked") while any lesson or quiz was being generated. The model is called with nothing written."""
+    client = _make_mock_client()
+    raw = (await db.connection()).sync_connection.connection.driver_connection
+    lr = await _seed_request(db, mode)
+    await db.commit()  # as in production: the orchestrator commits 'generating' before generating
+    seen = _record_open_writes(client, raw)
+
+    if mode == Mode.STUDY:
+        lesson = await lesson_generator.generate_lesson(db, lr, _intent(mode), client=client)
+        await db.commit()
+        # ...and the same for a part generated later, on demand.
+        await lesson_generator.generate_one_section(db, lesson, _intent(mode), 3, client=client)
+        await db.commit()
+    else:
+        await quiz_generator.generate_quiz(db, lr, _intent(mode), client=client)
+        await db.commit()
+
+    assert seen, "the mock model was never called"
+    assert not any(seen), f"a write was open during {sum(seen)} of {len(seen)} model calls"

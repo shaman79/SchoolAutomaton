@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.constants import (
@@ -261,15 +262,25 @@ async def _get_or_create_card(
         )
     )
     if card is None:
-        card = ItemFsrsCard(
-            profile_id=profile.id,
-            item_id=item.id,
-            state=0,
-            fsrs_card_json=srs_service.new_card(now),
-            due=now,
+        # INSERT OR IGNORE, then read back: the same answer arriving twice at once (a double tap on
+        # Check, two tabs) raced to create this card, and the loser's plain INSERT hit the unique
+        # (profile, item) constraint and failed the whole answer.
+        await db.execute(
+            sqlite_insert(ItemFsrsCard)
+            .values(
+                profile_id=profile.id,
+                item_id=item.id,
+                state=0,
+                fsrs_card_json=srs_service.new_card(now),
+                due=now,
+            )
+            .on_conflict_do_nothing(index_elements=["profile_id", "item_id"])
         )
-        db.add(card)
-        await db.flush()
+        card = await db.scalar(
+            select(ItemFsrsCard).where(
+                ItemFsrsCard.profile_id == profile.id, ItemFsrsCard.item_id == item.id
+            )
+        )
     return card
 
 

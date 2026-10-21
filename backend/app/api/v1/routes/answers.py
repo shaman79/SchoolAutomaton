@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Answer, Item, Profile, QuizAttempt, QuizQuestion
@@ -62,4 +63,15 @@ async def submit_answer(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "This item must be answered within a quiz attempt"
             )
-    return await gamification.grade_and_reward(db, profile, item, body, body.attempt_id)
+    try:
+        return await gamification.grade_and_reward(db, profile, item, body, body.attempt_id)
+    except IntegrityError:
+        if body.attempt_id is None:
+            raise
+        # Two copies arriving at once both pass the check above; the unique (attempt, item) index
+        # stops the second. Same answer, same outcome as the check — not a 500. Nothing of this copy
+        # is kept (no second XP award).
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "This item was already answered in this attempt"
+        ) from None

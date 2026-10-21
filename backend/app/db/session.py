@@ -35,7 +35,11 @@ if _is_sqlite:
         cur = dbapi_conn.cursor()
         cur.execute("PRAGMA journal_mode=WAL")
         cur.execute("PRAGMA foreign_keys=ON")
-        cur.execute("PRAGMA busy_timeout=5000")
+        # A write waits up to 30s for SQLite's single write lock before "database is locked". Writes
+        # hold it for milliseconds (no provider call ever runs inside a write — see the generators),
+        # but a classroom's worth of answers + progress saves arriving at once queue behind each
+        # other, and at 5s the tail of that queue failed: a save that takes a moment beats an error.
+        cur.execute("PRAGMA busy_timeout=30000")
         cur.execute("PRAGMA synchronous=NORMAL")
         cur.close()
 

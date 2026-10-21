@@ -161,37 +161,63 @@ async def _ensure_misconception(
 # --------------------------------------------------------------------------- item persistence
 
 
-async def _realize_hotspot_image(
-    db: AsyncSession,
-    item: Item,
-    gen: GenItem,
-    *,
-    language: str,
-    grade_band: str,
-    layout_slot: LayoutSlot = LayoutSlot.INLINE_FIGURE,
-) -> None:
-    """Realize a hotspot item's ``image_request`` into a visual asset and link it via an item-level
-    AssetsRef so the serializer can fill ``image_url``. Guarded like ``_attach_visuals`` so a visuals
-    outage never breaks generation. ``item`` must already have an id (flushed)."""
+# A hotspot picture as generated ahead of its item: (asset, the spec it was made from).
+HotspotImages = dict[int, tuple[Any, GenVisualSpec]]
+
+
+def _hotspot_spec(gen: GenItem, layout_slot: LayoutSlot) -> GenVisualSpec | None:
     image_request = (gen.payload or {}).get("image_request")
     if gen.item_type != ItemType.HOTSPOT or not image_request:
-        return
-    spec = GenVisualSpec(
+        return None
+    return GenVisualSpec(
         section_ordinal=0,
         visual_kind=VisualKind.LABELED_FIGURE,
         layout_slot=layout_slot,
         image_prompt=image_request,
         alt_text=(gen.stem_markdown[:200] if gen.stem_markdown else "") or "hotspot image",
     )
-    try:
-        from ..visuals import ensure_visual  # lazy, mirrors _attach_visuals
 
-        asset = await asyncio.wait_for(
-            ensure_visual(db, spec, language=language, grade_band=grade_band),
-            timeout=settings.per_visual_timeout_s,
-        )
-    except Exception:  # noqa: BLE001 - timeout or any error: degrade gracefully, never break generation
+
+async def _prepare_hotspot_images(
+    db: AsyncSession,
+    items: list[GenItem],
+    *,
+    language: str,
+    grade_band: str,
+    layout_slot: LayoutSlot,
+) -> HotspotImages:
+    """Realize the pictures of hotspot items BEFORE anything of theirs is written, keyed by
+    ``id(gen_item)``. Each is a provider call of up to ``per_visual_timeout_s``; made while a write was
+    open it held SQLite's single write lock, so every other learner's answer and progress save timed
+    out meanwhile. Each asset (a content-addressed cache row) is committed at once, so the next call
+    starts lock-free too. Guarded like ``_attach_visuals``: a visuals outage never breaks generation."""
+    from ..visuals import ensure_visual  # lazy, mirrors _attach_visuals
+
+    prepared: HotspotImages = {}
+    for gen in items:
+        spec = _hotspot_spec(gen, layout_slot)
+        if spec is None:
+            continue
+        try:
+            asset = await asyncio.wait_for(
+                ensure_visual(db, spec, language=language, grade_band=grade_band),
+                timeout=settings.per_visual_timeout_s,
+            )
+            await db.commit()
+        except Exception:  # noqa: BLE001 - timeout or any error: degrade gracefully
+            continue
+        prepared[id(gen)] = (asset, spec)
+    return prepared
+
+
+async def _link_hotspot_image(
+    db: AsyncSession, item: Item, prepared: tuple[Any, GenVisualSpec] | None
+) -> None:
+    """Link a hotspot item to its ready picture via an item-level AssetsRef (the serializer fills
+    ``image_url`` from it). ``item`` must already have an id (flushed)."""
+    if prepared is None:
         return
+    asset, spec = prepared
     db.add(
         AssetsRef(
             item_id=item.id,
@@ -211,6 +237,7 @@ async def _persist_item(
     section: LessonSection,
     concept_cache: dict[str, Concept],
     misconception_cache: dict[tuple[int, str], int],
+    hotspot_images: HotspotImages | None = None,
 ) -> Item | None:
     """Persist one GenItem, mapping distractor misconceptions to Misconception ids.
 
@@ -262,14 +289,7 @@ async def _persist_item(
     )
     db.add(item)
     await db.flush()
-    await _realize_hotspot_image(
-        db,
-        item,
-        gen,
-        language=lesson.detected_language,
-        grade_band=lesson.grade_band,
-        layout_slot=LayoutSlot.INLINE_FIGURE,
-    )
+    await _link_hotspot_image(db, item, (hotspot_images or {}).get(id(gen)))
     return item
 
 
@@ -514,6 +534,16 @@ async def generate_lesson(
         },
     )
 
+    # The first part — model call and pictures — is made BEFORE anything is written: SQLite has a
+    # single write lock, and holding it through a minute of generation made every other learner's
+    # answer and progress save time out meanwhile. Everything below is quick writes only.
+    ordered_stubs = _ordered_stubs(plan)
+    first = (
+        await _make_section(db, intent, ordered_stubs[0], request_id=request_id, client=client)
+        if ordered_stubs
+        else None
+    )
+
     target_band = READABILITY_TARGETS.get(intent.grade_band.value, READABILITY_TARGETS["unknown"])
     lesson = Lesson(
         request_id=request_id,
@@ -576,7 +606,6 @@ async def generate_lesson(
     # PROGRESSIVE GENERATION: persist all section skeletons as 'pending'; fill ONLY the first
     # section now. The rest are generated on demand (POST /lessons/{id}/sections/{ordinal}/generate)
     # as the learner advances — so an abandoned lesson never pays to generate sections never read.
-    ordered_stubs = _ordered_stubs(plan)
     sections: list[LessonSection] = []
     for ordinal, stub in enumerate(ordered_stubs):
         row = LessonSection(
@@ -590,10 +619,8 @@ async def generate_lesson(
         sections.append(row)
     await db.flush()
 
-    if sections:
-        await _fill_section(
-            db, lesson, request_id, intent, ordered_stubs[0], sections[0], client=client
-        )
+    if sections and first is not None:
+        await _persist_section(db, lesson, request_id, intent, sections[0], first)
         await task_registry.publish(
             request_id,
             "section",
@@ -623,8 +650,43 @@ async def _fill_section(
 
     Shared by the eager first-section build and the on-demand endpoint. Concepts are upserted
     idempotently (INSERT-OR-IGNORE on slug), so fresh per-call caches are safe."""
+    made = await _make_section(db, intent, stub, request_id=request_id, client=client)
+    return await _persist_section(db, lesson, request_id, intent, row, made)
+
+
+# A section as generated, before anything of it is written: (content, usage records, hotspot pictures).
+MadeSection = tuple[GenSection, list[Any], HotspotImages]
+
+
+async def _make_section(
+    db: AsyncSession,
+    intent: StructuredIntent,
+    stub: LessonPlanStub,
+    *,
+    request_id: str,
+    client: Any = None,
+) -> MadeSection:
+    """Every slow provider call for one section — the model, then its hotspot pictures — with nothing
+    of the section written yet, so SQLite's single write lock is never held while waiting on them."""
     sem = asyncio.Semaphore(1)
     gen, usages = await _generate_section(intent, stub, request_id=request_id, sem=sem, client=client)
+    hotspots = await _prepare_hotspot_images(
+        db, list(gen.items), language=intent.language, grade_band=intent.grade_band.value,
+        layout_slot=LayoutSlot.INLINE_FIGURE,
+    )
+    return gen, usages, hotspots
+
+
+async def _persist_section(
+    db: AsyncSession,
+    lesson: Lesson,
+    request_id: str,
+    intent: StructuredIntent,
+    row: LessonSection,
+    made: MadeSection,
+) -> LessonSection:
+    """Write a made section onto ``row`` (gen_status→ready): quick, no provider calls."""
+    gen, usages, hotspots = made
     for usage in usages:
         db.add(usage_row(usage, request_id=request_id))
 
@@ -644,6 +706,7 @@ async def _fill_section(
         await _persist_item(
             db, gi, lesson=lesson, section=row,
             concept_cache=concept_cache, misconception_cache=misconception_cache,
+            hotspot_images=hotspots,
         )
     await db.flush()
 
