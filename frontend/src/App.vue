@@ -42,7 +42,9 @@ onMounted(() => {
 
     <AppHeader @open-settings="ui.settingsOpen = true" />
 
-    <main id="sa-main" class="mx-auto w-full max-w-screen-sm flex-1 px-4 safe-top safe-bottom lg:max-w-2xl">
+    <!-- Fixed padding, not safe-area: the sticky header above already clears the top inset, and
+         padding that follows the (changing) insets moved every element on the page at once. -->
+    <main id="sa-main" class="mx-auto w-full max-w-screen-sm flex-1 px-4 pb-3 pt-2 lg:max-w-2xl">
       <RouterView v-slot="{ Component }">
         <Transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -55,7 +57,7 @@ onMounted(() => {
     <!-- Floating, thumb-reachable accessibility trigger (always available). -->
     <button
       type="button"
-      class="sa-a11y-fab sa-card safe-bottom"
+      class="sa-a11y-fab sa-card"
       :aria-label="t('a11y.settings')"
       @click="ui.settingsOpen = true"
     >
