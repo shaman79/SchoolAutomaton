@@ -15,6 +15,7 @@ import './style/main.css'
 
 import App from './App.vue'
 import { EDUCATION_LOCALES, educationLocaleFromBrowser, i18n, setLocale } from './i18n'
+import { installViewportResync } from './lib/viewportResync'
 import router from './router'
 import { usePrefsStore } from './stores/prefs'
 
@@ -57,5 +58,8 @@ function readStoredPrefs(): Record<string, unknown> | null {
 // Apply persisted accessibility prefs to <html> before first paint.
 prefs.applyToDom()
 setLocale(prefs.locale)
+
+// iOS: after the keyboard closes, taps can land away from where buttons are drawn (see the module).
+installViewportResync()
 
 app.mount('#app')
