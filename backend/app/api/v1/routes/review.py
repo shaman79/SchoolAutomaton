@@ -66,7 +66,7 @@ async def review_item(
             .limit(1)
         )
     ) is not None
-    if not graded_before:
+    if item is None or card is None or not graded_before:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
     if not gamification.card_is_due(card, datetime.now(UTC)):
         raise HTTPException(status.HTTP_409_CONFLICT, _NOT_DUE)

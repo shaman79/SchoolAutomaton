@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Answer, LearningRequest, Lesson, Profile, Quiz, QuizAttempt
+from ....sanitization import ratelimit
 from ....schemas.gamification import GamificationSnapshot, TreeResponse
 from ....schemas.profile import (
     CreateProfileIn,
@@ -19,7 +20,6 @@ from ....schemas.profile import (
     ProfileSettingsUpdate,
     ResumeIn,
 )
-from ....sanitization import ratelimit
 from ....services import (
     profile_service,
     progress_service,

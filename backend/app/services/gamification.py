@@ -11,10 +11,11 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.constants import (
@@ -99,7 +100,7 @@ async def _claim_due_card(
         .values(due=next_due)
         .execution_options(synchronize_session=False)
     )
-    if result.rowcount != 1:
+    if cast(CursorResult, result).rowcount != 1:
         raise CardNotDue()
 
 
@@ -256,6 +257,7 @@ async def _grade_free_text(
     if await cost_guard.ai_budget_exceeded(db):
         return _grade_free_text_deterministic(item, submitted)
     await _release_connection(db)
+    result: tuple[bool, float, str | None, str, str]
     try:
         from ..llm import grader as llm_grader  # noqa: PLC0415  (lazy by design)
 

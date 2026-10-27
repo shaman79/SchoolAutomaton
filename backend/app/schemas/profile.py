@@ -11,7 +11,6 @@ from .enums import SCHOOL_YEAR_MAX, SCHOOL_YEAR_MIN, AgeBand, DailyGoal, normali
 from .gamification import GamificationSnapshot
 from .progress import SessionProgress
 
-
 # Size caps on learner-chosen settings (they are stored, echoed back and fed to every view; an
 # unbounded string or number here broke other endpoints). Column sizes: models/profile.py.
 _SHORT = 20  # theme / font names
