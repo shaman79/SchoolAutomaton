@@ -113,12 +113,17 @@ export interface ProfileCreateOut {
   settings: ProfileSettings
 }
 
+/** Why generation failed (SSE `failed` event `code`, `GET /requests/{id}` `error_code`). */
+export type GenerationErrorCode = 'busy' | 'unavailable' | 'budget' | 'failed'
+
 export interface RequestStatus {
   request_id: string
   status: 'queued' | 'generating' | 'ready' | 'error'
   mode: Mode | null
   lesson_id: number | null
   quiz_id: number | null
+  /** Set only when `status === 'error'`. */
+  error_code?: GenerationErrorCode | null
 }
 
 export interface LearningSessionSummary {
@@ -163,6 +168,17 @@ export interface GradeResult {
   mastery_delta: number
   new_badges: { code: string; title: string; tier: number }[]
   level_up: { from_level: number; to_level: number } | null
+  /** Crisis net on free-text answers: when set, the answer was NOT graded or recorded (is_correct
+   *  false, no XP, no correct answer). Show the support block instead of feedback and keep the
+   *  question answerable. */
+  support?: AnswerSupport | null
+}
+
+/** Same content as the crisis Decision: a supportive message, help resources, AI disclosure. */
+export interface AnswerSupport {
+  message: string
+  resources: CrisisResource[]
+  disclosure: string
 }
 
 // ----- resume where you left off -----

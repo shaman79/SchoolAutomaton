@@ -29,7 +29,8 @@ export function useGeneration(requestId: string) {
   // fills the title — that transition is our "this part is done" signal for the checklist tick.
   const builtOrdinals = ref<Set<number>>(new Set())
 
-  /** Begin generation + SSE. Safe to call once on mount; resets any prior run. */
+  /** Begin generation + SSE. Safe to call once on mount; resets any prior run. Never rejects — a
+   *  failure shows up as `isError` + `errorCode`. */
   async function begin(): Promise<void> {
     builtOrdinals.value = new Set()
     await gen.start(requestId)
@@ -76,7 +77,8 @@ export function useGeneration(requestId: string) {
 
   const isError = computed(() => gen.status === 'error')
   const isReady = computed(() => gen.status === 'ready')
-  const errorMessage = computed(() => gen.message)
+  /** Why it failed — picks the friendly `loading.err_<code>` message (server text is never shown). */
+  const errorCode = computed(() => gen.errorCode)
 
   /** Where to go once ready. `null` until we know (and until a valid id is present). */
   const destination = computed<RouteLocationRaw | null>(() => {
@@ -90,6 +92,7 @@ export function useGeneration(requestId: string) {
     return null
   })
 
+  // Leaving the screen closes the stream and cancels polling / a start still in flight.
   onBeforeUnmount(stop)
 
   return {
@@ -107,7 +110,7 @@ export function useGeneration(requestId: string) {
     phase,
     isError,
     isReady,
-    errorMessage,
+    errorCode,
     destination,
     resultMode: computed(() => gen.resultMode),
   }
