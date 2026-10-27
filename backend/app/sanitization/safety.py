@@ -9,6 +9,7 @@ copy, and uses ``grade_band``/``age`` to AVOID over-blocking legitimate older-st
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -183,3 +184,62 @@ _REDIRECT_SUGGESTIONS: dict[str, tuple[str, ...]] = {
 def refusal_redirect_suggestions(intent: StructuredIntent) -> list[str]:
     """Friendly, on-task alternatives offered when a prompt is refused (growth-mindset framing)."""
     return list(_REDIRECT_SUGGESTIONS[_lang_key(intent.language, _REDIRECT_SUGGESTIONS)])
+
+
+# --------------------------------------------------------------------------- typed answers
+# A child's typed answer (free text, cloze blanks) is screened before it is graded, with the prompt
+# path's normalization (L1 preprocess) but only the FIRST-PERSON phrases: an answer is often ABOUT
+# the topic ("How did Juliet die?" -> "suicide", "sebevražda"), and since a flagged answer is not
+# graded, a bare topic word would show the crisis card every time and leave that question unanswerable.
+# No LLM is involved.
+_ANSWER_SELF_HARM_PHRASES: tuple[str, ...] = (
+    "kill myself", "killing myself", "want to die", "wanna die", "end my life", "hurt myself",
+    "cut myself", "no reason to live", "don't want to live", "dont want to live",
+    "i'm suicidal", "im suicidal", "i am suicidal", "i feel suicidal",
+    # Czech
+    "chci se zabít", "zabiju se", "chci umřít", "nechci žít", "ublížím si", "chci si ublížit",
+    "nemá cenu žít", "nemá cenu, abych žil", "nemá cenu, abych žila",
+)
+_DEFAULT_CRISIS_MESSAGE = (
+    "It sounds like you might be going through something really hard. You're not alone, and help "
+    "is available."
+)
+
+
+@dataclass(frozen=True)
+class AnswerCrisisSupport:
+    """Localized crisis-card content for a typed answer (mirrors ``CrisisDecision``)."""
+
+    message: str
+    resources: list[CrisisResource]
+    disclosure: str
+    nudge: str
+    language: str
+
+
+def typed_text_signals_crisis(text: str) -> bool:
+    """The prompt path's L1 normalization (strip invisibles/bidi, NFKC), then the first-person net."""
+    from .preprocess import preprocess  # noqa: PLC0415
+
+    low = preprocess(text or "").clean_text.lower().replace("\u2019", "'")
+    return any(p in low for p in _ANSWER_SELF_HARM_PHRASES)
+
+
+def answer_crisis_support(text: str, *, education_locale: str | None = None) -> AnswerCrisisSupport:
+    """Crisis-card content for an answer that tripped :func:`typed_text_signals_crisis`, localized
+    exactly like the prompt path: copy in the language the child wrote in, resources for the country
+    of their education locale (plus the global fallback)."""
+    from ..llm.prompts.curriculum import country_of, normalize_education_locale  # noqa: PLC0415
+    from .classifier import detect_language  # noqa: PLC0415
+    from .preprocess import preprocess  # noqa: PLC0415
+
+    language = detect_language(preprocess(text or "").clean_text)
+    country = country_of(normalize_education_locale(education_locale))
+    card = crisis_card_copy(language)
+    return AnswerCrisisSupport(
+        message=card["message"] or _DEFAULT_CRISIS_MESSAGE,
+        resources=select_crisis_resources(language, country),
+        disclosure=crisis_disclosure(language),
+        nudge=card["nudge"],
+        language=language,
+    )

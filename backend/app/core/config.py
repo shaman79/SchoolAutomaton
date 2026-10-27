@@ -68,13 +68,32 @@ class Settings(BaseSettings):
     audit_raw_retention_days: int = Field(default=30, alias="SA_AUDIT_RAW_RETENTION_DAYS")
 
     # ---- Rate limiting ----
+    # Generation limits (prompts, generation starts, section fills). Keyed per LEARNER (resume code)
+    # when the request carries a valid one, else per client IP; every IP also has a ceiling of
+    # ``rate_ip_multiplier`` × these, so rotating codes can't lift one machine past it while a whole
+    # classroom behind one school NAT still gets its own per-learner allowance.
     rate_per_min: int = Field(default=20, alias="SA_RATE_PER_MIN")
     rate_per_day: int = Field(default=300, alias="SA_RATE_PER_DAY")
+    rate_ip_multiplier: int = Field(default=10, alias="SA_RATE_IP_MULTIPLIER")
     max_prompt_chars: int = 2000
+    # Answer submissions (POST /answers, POST /review/{id}) per learner per minute; the tighter
+    # second limit applies to answers graded by the AI (free text), each of which is a paid call.
+    answer_rate_per_min: int = Field(default=60, alias="SA_ANSWER_RATE_PER_MIN")
+    answer_llm_rate_per_min: int = Field(default=20, alias="SA_ANSWER_LLM_RATE_PER_MIN")
+    # New anonymous profiles per client IP per hour (a class of ~35 starts at once).
+    profile_create_per_hour: int = Field(default=60, alias="SA_PROFILE_CREATE_PER_HOUR")
+    # Resume-code guessing: distinct UNKNOWN codes one IP may try per window before new codes get
+    # 429 (codes already proven valid from that IP keep working).
+    resume_fail_limit: int = Field(default=30, alias="SA_RESUME_FAIL_LIMIT")
+    resume_fail_window_s: int = Field(default=600, alias="SA_RESUME_FAIL_WINDOW_S")
+    # Admin login: failed attempts per minute (per IP and per username) before an escalating lockout.
+    admin_login_fail_limit: int = Field(default=5, alias="SA_ADMIN_LOGIN_FAIL_LIMIT")
 
     # ---- Cost guardrails ----
     video_enabled: bool = Field(default=False, alias="SA_VIDEO_ENABLED")
     daily_video_quota: int = Field(default=0, alias="SA_DAILY_VIDEO_QUOTA")
+    # Global AI spend cap per UTC day (sum of generation_usage.est_cost_usd). 0 disables the cap.
+    daily_budget_usd: float = Field(default=100.0, alias="SA_DAILY_BUDGET_USD")
 
     # ---- Derived paths ----
     @computed_field  # type: ignore[prop-decorator]

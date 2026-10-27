@@ -9,11 +9,13 @@ Design refs: gamification_design (XP/combo/streaks), pedagogy_framework (rating,
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.constants import (
@@ -42,6 +44,7 @@ from ..models import (
 )
 from ..schemas.enums import AgeBand, FsrsRating, NodeState, XpReason
 from ..schemas.gamification import (
+    AnswerSupport,
     FeedbackBlock,
     GradeResult,
     LevelUp,
@@ -55,6 +58,50 @@ from . import badges, leveling, mastery, srs_service
 
 # Free-text item types graded by the LLM (B2's app.llm.grader); the rest are deterministic.
 _LLM_GRADED = frozenset({"short_answer", "numeric", "explain"})
+# Types whose answer the child TYPES (free text + cloze blanks) — screened for crisis before grading.
+_TYPED_TEXT = _LLM_GRADED | {"cloze"}
+
+logger = logging.getLogger("schoolautomaton.safety")
+
+
+class CardNotDue(Exception):
+    """A due-only review (POST /review/{id}) found the learner's card no longer due — typically a
+    concurrent copy of the same review got there first. Nothing of this attempt may be kept."""
+
+
+def uses_llm_grader(item: Item, submitted: Any) -> bool:
+    """Will grading this submission call the (paid) AI grader? Free-text types with a non-blank
+    answer do; blank answers short-circuit to incorrect and everything else is deterministic."""
+    return item.item_type in _LLM_GRADED and not _is_blank_submission(submitted)
+
+
+def card_is_due(card: ItemFsrsCard, now: datetime) -> bool:
+    """FSRS says this card may be reviewed now (new cards always may)."""
+    if card.state == 0 or card.due is None:
+        return True
+    due = card.due if card.due.tzinfo else card.due.replace(tzinfo=UTC)
+    return due <= now
+
+
+async def _claim_due_card(
+    db: AsyncSession, card: ItemFsrsCard, next_due: datetime, now: datetime
+) -> None:
+    """Atomically move a DUE card's due date forward, or raise :class:`CardNotDue`.
+
+    A conditional UPDATE, so of two concurrent reviews of one due card exactly one wins: SQLite runs
+    one writer at a time and the loser's WHERE sees the winner's new (future) due date. Without it,
+    a burst of parallel copies of one review would each award XP."""
+    result = await db.execute(
+        update(ItemFsrsCard)
+        .where(
+            ItemFsrsCard.id == card.id,
+            or_(ItemFsrsCard.state == 0, ItemFsrsCard.due.is_(None), ItemFsrsCard.due <= now),
+        )
+        .values(due=next_due)
+        .execution_options(synchronize_session=False)
+    )
+    if cast(CursorResult, result).rowcount != 1:
+        raise CardNotDue()
 
 
 # --------------------------------------------------------------------------- deterministic grading
@@ -164,17 +211,61 @@ def _grade_deterministic(item: Item, submitted: Any) -> tuple[bool, float, str |
     return False, 0.0, None
 
 
+def _grade_free_text_deterministic(
+    item: Item, submitted: Any
+) -> tuple[bool, float, str | None, str, str]:
+    """Deterministic safety net for free text: numeric tolerance / casefolded text equality (or an
+    accepted variant). Used when the AI grader fails or today's AI budget is spent."""
+    payload = item.payload_json or {}
+    if (payload.get("kind") or item.item_type) == "numeric":
+        try:
+            ans = float(payload.get("answer"))
+            tol = float(payload.get("tolerance", 0.0) or 0.0)
+            ok = abs(float(submitted) - ans) <= tol
+        except (TypeError, ValueError):
+            ok = False
+        return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
+    given = _norm_text(submitted)
+    ok = (item.expected_answer is not None and given == _norm_text(item.expected_answer)) or (
+        given != "" and given in _accepted_variants(item)
+    )
+    return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
+
+
+async def _release_connection(db: AsyncSession) -> None:
+    """End the request's transaction before a slow model call, so its pooled connection goes back
+    to the pool for the call's duration (a class answering free text at once used to hold every
+    pooled connection and stall all other requests).
+
+    Grading writes nothing before the model call — only reads have happened — so this commit
+    normally just ends a read transaction (anything a caller did stage is flushed in one short burst
+    here rather than held across the call). ``expire_on_commit=False`` keeps the loaded profile and
+    item usable afterwards; the next query opens a fresh transaction."""
+    if db.in_transaction():
+        await db.commit()
+
+
 async def _grade_free_text(
-    item: Item, submitted: Any, language: str
+    db: AsyncSession, profile: Profile, item: Item, submitted: Any, language: str
 ) -> tuple[bool, float, str | None, str, str]:
     """Grade short_answer/numeric/explain via the LLM grader (B2). Imported LAZILY so this module
     imports even while B2's grader is mid-write. Falls back to deterministic numeric/text on any
-    failure so grading never hard-fails for the learner."""
+    failure — and, without calling the model, once today's AI budget is spent — so grading never
+    hard-fails for the learner."""
+    from . import cost_guard  # noqa: PLC0415
+
+    if await cost_guard.ai_budget_exceeded(db):
+        return _grade_free_text_deterministic(item, submitted)
+    await _release_connection(db)
+    result: tuple[bool, float, str | None, str, str]
     try:
         from ..llm import grader as llm_grader  # noqa: PLC0415  (lazy by design)
 
-        out = await llm_grader.grade_free_text(item, submitted, language=language)
-        return (
+        # The grader stages its usage rows on ``db`` after the call returns (never during it).
+        out = await llm_grader.grade_free_text(
+            item, submitted, language=language, db=db, profile_id=profile.id
+        )
+        result = (
             bool(out.correct),
             float(out.partial_credit),
             out.misconception,
@@ -182,21 +273,12 @@ async def _grade_free_text(
             out.encouragement_focus,
         )
     except Exception:
-        # Deterministic safety net: numeric tolerance / casefolded text equality.
-        payload = item.payload_json or {}
-        if (payload.get("kind") or item.item_type) == "numeric":
-            try:
-                ans = float(payload.get("answer"))
-                tol = float(payload.get("tolerance", 0.0) or 0.0)
-                ok = abs(float(submitted) - ans) <= tol
-            except (TypeError, ValueError):
-                ok = False
-            return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
-        given = _norm_text(submitted)
-        ok = (item.expected_answer is not None and given == _norm_text(item.expected_answer)) or (
-            given != "" and given in _accepted_variants(item)
-        )
-        return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
+        result = _grade_free_text_deterministic(item, submitted)
+    if profile in db:
+        # The profile was read before the (seconds-long) call; re-read it so the XP added below
+        # builds on any XP this learner earned meanwhile (e.g. a second tab).
+        await db.refresh(profile)
+    return result
 
 
 # --------------------------------------------------------------------------- reveal / feedback
@@ -429,6 +511,65 @@ async def _attempt_combo(db: AsyncSession, attempt_id: int | None) -> int:
     return combo
 
 
+# --------------------------------------------------------------------------- crisis screening
+def _typed_text(item: Item, submitted: Any) -> str:
+    """The text the learner TYPED into this answer (free text, cloze blanks); '' for answer types
+    that are picked rather than typed (option/region/token ids are generated, not the child's)."""
+    kind = (item.payload_json or {}).get("kind")
+    if item.item_type not in _TYPED_TEXT and kind not in _TYPED_TEXT:
+        return ""
+    parts: list[str] = []
+    stack = [submitted]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, str):
+            parts.append(node)
+        elif isinstance(node, dict):
+            stack.extend(node.values())
+        elif isinstance(node, list | tuple):
+            stack.extend(node)
+    return " | ".join(parts)
+
+
+async def _crisis_support_result(
+    db: AsyncSession, profile: Profile, item: Item, submitted: Any
+) -> GradeResult | None:
+    """Screen a typed answer with the prompt path's deterministic self-harm net. On a hit, return
+    the support result INSTEAD of grading: the answer never reaches the AI grader and nothing is
+    saved (no answer row, no FSRS review, no XP) — the caller returns it as is."""
+    text = _typed_text(item, submitted)
+    if not text.strip():
+        return None
+    from ..sanitization import safety  # noqa: PLC0415
+
+    if not safety.typed_text_signals_crisis(text):
+        return None
+    prefs = await db.get(ProfileSettings, profile.id)
+    found = safety.answer_crisis_support(
+        text, education_locale=prefs.education_locale if prefs is not None else None
+    )
+    # No answer text in the log — only that the card was shown, and for which item.
+    logger.warning("Crisis support shown instead of grading an answer (item %s)", item.id)
+    return GradeResult(
+        is_correct=False,
+        partial_credit=0.0,
+        correct_answer=None,
+        fsrs_rating=int(FsrsRating.AGAIN),  # required by the schema; meaningless here
+        next_due=None,
+        explanation=None,
+        misconception=None,
+        feedback=FeedbackBlock(text=found.nudge or found.message, encouragement_focus="effort"),
+        xp_awarded=0,
+        combo_multiplier=1.0,
+        mastery_delta=0.0,
+        new_badges=[],
+        level_up=None,
+        support=AnswerSupport(
+            message=found.message, resources=found.resources, disclosure=found.disclosure
+        ),
+    )
+
+
 # --------------------------------------------------------------------------- public orchestration
 async def grade_and_reward(
     db: AsyncSession,
@@ -437,14 +578,28 @@ async def grade_and_reward(
     answer: AnswerIn,
     attempt_id: int | None,
     now: datetime | None = None,
+    *,
+    only_if_due: bool = False,
 ) -> GradeResult:
     """Grade one answer and apply all reward/scheduling side-effects. Returns the public GradeResult
-    (reveals the correct answer here, never at delivery)."""
+    (reveals the correct answer here, never at delivery).
+
+    ``only_if_due`` (the spaced-review path): apply the review only if the learner's card is still
+    due when it is written, else raise :class:`CardNotDue` (the caller rolls back) — so repeated or
+    parallel copies of one review can't farm XP.
+
+    A typed answer that trips the self-harm net is not graded at all: the result carries
+    ``support`` (localized crisis resources) and nothing is persisted."""
     now = now or datetime.now(UTC)
     # Feedback should match the CONTENT language (a Czech lesson gets Czech feedback), falling back
     # to the learner's UI language, then English.
     language = item.language or profile.primary_language or "en"
     item_type = item.item_type
+
+    # 0) Child safety first: a typed answer is screened like a prompt before anything else happens.
+    support = await _crisis_support_result(db, profile, item, answer.submitted_value)
+    if support is not None:
+        return support
 
     # 1) Grade (deterministic for closed-form; LLM for free-text/explain).
     misconception_text: str | None = None
@@ -457,7 +612,7 @@ async def grade_and_reward(
             )
         else:
             is_correct, partial, misconception_text, explanation, focus = await _grade_free_text(
-                item, answer.submitted_value, language
+                db, profile, item, answer.submitted_value, language
             )
     else:
         is_correct, partial, distractor_text = _grade_deterministic(item, answer.submitted_value)
@@ -474,6 +629,8 @@ async def grade_and_reward(
     new_json, next_due = srs_service.review(
         card.fsrs_card_json, rating, now, desired_retention=profile.desired_retention
     )
+    if only_if_due:
+        await _claim_due_card(db, card, next_due, now)
     card.fsrs_card_json = new_json
     card.state = srs_service.card_state(new_json)
     card.due = next_due
@@ -600,12 +757,14 @@ async def review_with_rating(
     used_hint: bool = False,
     latency_ms: int | None = None,
     now: datetime | None = None,
+    only_if_due: bool = False,
 ) -> GradeResult:
     """Advance an item's FSRS card from an EXPLICIT self-rating (1..4) — the rating-only review path.
 
     Used by POST /review/{item_id} when the learner submits a rating with no answer value. Skips
     correctness grading; ``correct`` is derived from rating>=GOOD (Again/Hard are not 'correct' for
-    XP, matching derive_rating's Again=incorrect mapping but honoring the explicit rating for FSRS)."""
+    XP, matching derive_rating's Again=incorrect mapping but honoring the explicit rating for FSRS).
+    ``only_if_due``: as in :func:`grade_and_reward`."""
     now = now or datetime.now(UTC)
     rating = max(1, min(4, int(rating)))
     is_correct = rating >= int(FsrsRating.GOOD)
@@ -618,6 +777,8 @@ async def review_with_rating(
     new_json, next_due = srs_service.review(
         card.fsrs_card_json, rating, now, desired_retention=profile.desired_retention
     )
+    if only_if_due:
+        await _claim_due_card(db, card, next_due, now)
     card.fsrs_card_json = new_json
     card.state = srs_service.card_state(new_json)
     card.due = next_due

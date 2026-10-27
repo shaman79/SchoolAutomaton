@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....core.config import settings as cfg
-from ....core.security import create_admin_token, encrypt_secret, verify_password
+from ....core.security import create_admin_token, encrypt_secret, verify_password_off_loop
+from ....core.throttle import admin_login_throttle
 from ....models import (
     AdminUser,
     AppSetting,
@@ -31,16 +32,26 @@ from ....schemas.admin import (
     TokenOut,
 )
 from ....schemas.common import Page
-from ...deps import get_current_admin, get_db
+from ...deps import client_ip_hash, get_current_admin, get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
 @router.post("/auth/login", response_model=TokenOut)
-async def login(body: AdminLoginIn, db: AsyncSession = Depends(get_db)):
+async def login(body: AdminLoginIn, request: Request, db: AsyncSession = Depends(get_db)):
+    # Throttled per client IP and per username (escalating lockout → 429 + Retry-After). The attempt
+    # is counted up front and forgiven on success, so parallel guesses can't all slip through.
+    keys = [f"ip:{client_ip_hash(request)}", f"user:{body.username.strip().casefold()}"]
+    admin_login_throttle.begin(keys)
     admin = await db.scalar(select(AdminUser).where(AdminUser.username == body.username))
-    if admin is None or not admin.is_active or not verify_password(body.password, admin.password_hash):
+    # Argon2 runs in a worker thread (it would stall the event loop), and an unknown username is
+    # checked against a dummy hash so it answers no faster than a real one.
+    ok = await verify_password_off_loop(
+        body.password, admin.password_hash if admin is not None else None
+    )
+    if admin is None or not admin.is_active or not ok:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
+    admin_login_throttle.succeeded(keys)
     admin.last_login_at = datetime.now(UTC)
     token = create_admin_token(subject=admin.username, role=admin.role)
     return TokenOut(access_token=token, expires_in=cfg.jwt_expire_minutes * 60)

@@ -220,7 +220,7 @@ async def test_hotspot_grading(db):
 async def test_short_answer_uses_mocked_grader(db, monkeypatch):
     from app.schemas.generation import GraderOutput
 
-    async def fake_grade_free_text(item, submitted, *, language="en"):
+    async def fake_grade_free_text(item, submitted, *, language="en", **_kw):
         return GraderOutput(
             correct=True, partial_credit=1.0, explanation="Well reasoned.",
             encouragement_focus="progress",

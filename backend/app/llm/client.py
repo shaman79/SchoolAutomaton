@@ -12,8 +12,10 @@ Every Opus 4.8 call goes through :func:`generate_structured`. It:
 * checks ``stop_reason`` (refusal / max_tokens / pause) before trusting the parse;
 * retries up to twice on Pydantic ``ValidationError``, appending a corrective instruction that
   restates the numeric/length bounds (Opus 4.8 strips schema ``minimum/maximum`` — SPEC §5);
-* logs a :class:`GenerationUsage` row (input / cache_creation / cache_read / output tokens) and
-  asserts the cache hit/creation is observable.
+* logs a :class:`GenerationUsage` row (input / cache_creation / cache_read / output tokens, plus the
+  estimated USD cost from ``core.pricing``) and asserts the cache hit/creation is observable. A
+  caller that must not stage a write while the call is in flight passes ``usage_sink`` instead of
+  ``db`` and stages the rows itself once the call has returned (see ``grader.py``).
 
 The Anthropic client is created lazily and can be injected (``set_client`` / the ``client=`` arg)
 so generators are unit-testable with a mock — no network, no key.
@@ -32,6 +34,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.pricing import estimate_cost_usd
 from ..models import GenerationUsage
 
 # Opus 4.8 minimum cacheable prefix; we never send temperature/top_p/top_k/prefill.
@@ -115,7 +118,10 @@ def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
 
 
 def usage_row(usage: Usage, *, request_id: str | None, profile_id: int | None = None) -> GenerationUsage:
-    """Build (do not add) a GenerationUsage row from normalized usage. cache_read>0 verifies caching."""
+    """Build (do not add) a GenerationUsage row from normalized usage. cache_read>0 verifies caching.
+
+    ``est_cost_usd`` comes from the single price table in ``core.pricing`` (None for an unknown model);
+    the admin dashboard and the daily AI budget (``services.cost_guard``) sum it."""
     return GenerationUsage(
         profile_id=profile_id,
         request_id=request_id,
@@ -125,6 +131,13 @@ def usage_row(usage: Usage, *, request_id: str | None, profile_id: int | None = 
         cache_creation_tokens=usage.cache_creation_tokens,
         cache_read_tokens=usage.cache_read_tokens,
         output_tokens=usage.output_tokens,
+        est_cost_usd=estimate_cost_usd(
+            usage.model,
+            input_tokens=usage.input_tokens,
+            cache_creation_tokens=usage.cache_creation_tokens,
+            cache_read_tokens=usage.cache_read_tokens,
+            output_tokens=usage.output_tokens,
+        ),
         anthropic_request_id=usage.anthropic_request_id,
     )
 
@@ -279,6 +292,7 @@ async def generate_structured[OutputT: BaseModel](
     use_tools_fallback: bool = False,
     use_thinking: bool = True,
     use_json_mode: bool = False,
+    usage_sink: list[Usage] | None = None,
 ) -> tuple[OutputT, Usage]:
     """Run one structured Opus 4.8 call and parse it into ``output_model``.
 
@@ -289,6 +303,11 @@ async def generate_structured[OutputT: BaseModel](
     ``use_json_mode`` skips grammar-constrained decoding entirely (the schema goes in the prompt and
     we validate the returned JSON in Python). Use it for big/nested content schemas whose compiled
     grammar would exceed Anthropic's cap; keep the default (parse) for small schemas.
+
+    ``usage_sink`` (optional) receives the :class:`Usage` of EVERY provider call made, including
+    attempts that failed validation and were retried — all of them were billed. Pass it (with
+    ``db=None``) to log usage yourself after the call returns instead of having a row staged on the
+    session between retries.
     """
     # Fail fast with a clear, actionable error only when there is genuinely no client available:
     # no explicit client arg, no injected singleton (tests use set_client), and no API key.
@@ -346,6 +365,8 @@ async def generate_structured[OutputT: BaseModel](
                 or getattr(message, "id", None)
             )
             usage = _coerce_usage(getattr(message, "usage", None), model, raw_request_id)
+            if usage_sink is not None:
+                usage_sink.append(usage)
             _log_usage(db, usage, request_id=request_id, profile_id=profile_id)
 
             _check_stop_reason(getattr(message, "stop_reason", None))
