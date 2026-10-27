@@ -12,9 +12,16 @@ from .gamification import GamificationSnapshot
 from .progress import SessionProgress
 
 
+# Size caps on learner-chosen settings (they are stored, echoed back and fed to every view; an
+# unbounded string or number here broke other endpoints). Column sizes: models/profile.py.
+_SHORT = 20  # theme / font names
+_LOCALE = 12  # BCP-47 tags we use: 'en', 'cs-CZ', 'en-GB'
+
+
 class CreateProfileIn(StrictModel):
-    locale: str = "en"
-    education_locale: str | None = None  # BCP-47 region setting (en-US/en-GB/cs-CZ)
+    locale: str = Field(default="en", max_length=_LOCALE)
+    # BCP-47 region setting (en-US/en-GB/cs-CZ)
+    education_locale: str | None = Field(default=None, max_length=_LOCALE)
     school_year: int | None = None  # the learner's class (exact school year); None = not set
     age_band: AgeBand = AgeBand.UNKNOWN
     display_name: str | None = Field(default=None, max_length=40)
@@ -26,7 +33,7 @@ class CreateProfileIn(StrictModel):
 
 
 class ResumeIn(StrictModel):
-    resume_code: str
+    resume_code: str = Field(max_length=64)
 
 
 class ProfileSettingsPublic(AppModel):
@@ -45,18 +52,18 @@ class ProfileSettingsPublic(AppModel):
 
 
 class ProfileSettingsUpdate(StrictModel):
-    theme: str | None = None
-    font: str | None = None
-    font_scale: float | None = None
+    theme: str | None = Field(default=None, max_length=_SHORT)
+    font: str | None = Field(default=None, max_length=_SHORT)
+    font_scale: float | None = Field(default=None, ge=0.5, le=3.0)
     reduced_motion: bool | None = None
     sound: bool | None = None
-    locale: str | None = None
-    education_locale: str | None = None
+    locale: str | None = Field(default=None, max_length=_LOCALE)
+    education_locale: str | None = Field(default=None, max_length=_LOCALE)
     # Explicit null clears the class setting (unlike the other fields, where null means "unchanged").
     school_year: int | None = None
     daily_goal: DailyGoal | None = None
-    interleave_strength: float | None = None
-    rest_days_per_week: int | None = None
+    interleave_strength: float | None = Field(default=None, ge=0.0, le=1.0)
+    rest_days_per_week: int | None = Field(default=None, ge=0, le=7)
     desired_retention: float | None = Field(default=None, ge=0.80, le=0.97)
     display_name: str | None = Field(default=None, max_length=40)
 

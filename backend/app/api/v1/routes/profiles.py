@@ -3,7 +3,7 @@ snapshot, knowledge tree."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from ....schemas.profile import (
     ProfileSettingsUpdate,
     ResumeIn,
 )
+from ....sanitization import ratelimit
 from ....services import (
     profile_service,
     progress_service,
@@ -26,13 +27,18 @@ from ....services import (
     summary_service,
     tree_service,
 )
-from ...deps import get_db, get_profile
+from ...deps import client_ip_hash, get_db, get_profile, lookup_profile_by_code
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
 
 
 @router.post("", response_model=ProfileCreateOut, status_code=status.HTTP_201_CREATED)
-async def create_profile(body: CreateProfileIn, db: AsyncSession = Depends(get_db)):
+async def create_profile(
+    body: CreateProfileIn, request: Request, db: AsyncSession = Depends(get_db)
+):
+    # Per-IP cap on new anonymous profiles: generous enough for a class starting at once, but fresh
+    # codes can't be minted without limit (each one carries its own generation allowance).
+    ratelimit.check_profile_create(client_ip_hash(request))
     code, profile = await profile_service.create_profile(
         db,
         locale=body.locale,
@@ -50,8 +56,9 @@ async def create_profile(body: CreateProfileIn, db: AsyncSession = Depends(get_d
 
 
 @router.post("/resume", response_model=ProfileEnvelope)
-async def resume_profile(body: ResumeIn, db: AsyncSession = Depends(get_db)):
-    profile = await profile_service.get_by_code(db, body.resume_code)
+async def resume_profile(body: ResumeIn, request: Request, db: AsyncSession = Depends(get_db)):
+    # Guarded lookup: unknown codes are throttled per client IP against guessing.
+    profile = await lookup_profile_by_code(db, request, body.resume_code)
     if profile is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown resume code")
     await profile_service.touch_last_active(db, profile)
