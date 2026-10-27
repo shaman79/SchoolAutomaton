@@ -8,9 +8,11 @@ server-only until grading)."""
 
 from __future__ import annotations
 
+import json
+import math
 from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from .common import StrictModel
 from .enums import ItemType
@@ -109,17 +111,67 @@ class ItemPublic(StrictModel):
     hint_available: bool = False
 
 
+# --------------------------------------------------------------------------- answer size bounds
+# A submitted answer is stored verbatim and free text is sent to the (paid) AI grader, so every
+# submission is bounded; anything larger is a 422.
+MAX_ANSWER_TEXT_CHARS = 2000  # any one string: free text, a cloze blank, an option/token id
+MAX_ANSWER_BYTES = 8 * 1024  # the whole value serialized as compact UTF-8 JSON
+MAX_ANSWER_DEPTH = 3  # nested lists/objects (a match answer, list -> {left_id,right_id}, uses 2)
+MAX_ANSWER_ITEMS = 200  # list elements + object entries, in total
+
+
+def check_submitted_value(value: Any) -> Any:
+    """Validate an answer's size/shape bounds (shared by ``AnswerIn`` and ``ReviewRatingIn``).
+
+    Walks iteratively (no recursion on hostile nesting) and fails fast; raises ``ValueError``, which
+    Pydantic turns into a 422."""
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    entries = 0
+    while stack:
+        node, depth = stack.pop()
+        if isinstance(node, str):
+            if len(node) > MAX_ANSWER_TEXT_CHARS:
+                raise ValueError(f"answer text must be at most {MAX_ANSWER_TEXT_CHARS} characters")
+        elif node is None or isinstance(node, bool | int):
+            continue
+        elif isinstance(node, float):
+            if not math.isfinite(node):
+                raise ValueError("answer numbers must be finite")
+        elif isinstance(node, list | dict):
+            if depth >= MAX_ANSWER_DEPTH:
+                raise ValueError("answer is nested too deeply")
+            entries += len(node)
+            if entries > MAX_ANSWER_ITEMS:
+                raise ValueError(f"answer has more than {MAX_ANSWER_ITEMS} parts")
+            children = list(node.keys()) + list(node.values()) if isinstance(node, dict) else node
+            stack.extend((child, depth + 1) for child in children)
+        else:
+            raise ValueError("unsupported answer value")
+    size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    if size > MAX_ANSWER_BYTES:
+        raise ValueError(f"answer must be at most {MAX_ANSWER_BYTES} bytes")
+    return value
+
+
 class AnswerIn(StrictModel):
     """Answer submission. ``submitted_value`` shape depends on item_type (see ANSWER_VALUE_DOC):
     mcq: str | list[str] (option id(s)); true_false: bool; cloze: {blank_id: str};
     short_answer: str; numeric: number; match: list[{left_id,right_id}];
-    order: list[str] (token ids in chosen order); hotspot: str (region id)."""
+    order: list[str] (token ids in chosen order); hotspot: str (region id).
+
+    Bounded (422 beyond): each string <= 2000 chars, the whole value <= 8 KB as JSON, nesting <= 3,
+    <= 200 parts."""
 
     item_id: int
     attempt_id: int | None = None
     submitted_value: Any
     used_hint: bool = False
     latency_ms: int | None = Field(default=None, ge=0)
+
+    @field_validator("submitted_value")
+    @classmethod
+    def _bounded(cls, v: Any) -> Any:
+        return check_submitted_value(v)
 
 
 # Human-readable doc of the per-type submitted_value contract (kept next to the schema on purpose).
