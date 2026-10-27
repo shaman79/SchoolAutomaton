@@ -8,7 +8,10 @@
 # Each rule:
 #   id:       stable identifier recorded in the audit row (heuristic_hit_ids).
 #   pattern:  Python `re` regex, applied case-insensitively (re.IGNORECASE) and DOTALL-free.
-#   weight:   contribution to suspicion_score (clamped to 1.0 overall in preprocess.py).
+#   weight:   contribution to suspicion_score (clamped to 1.0 overall in preprocess.py). Rules that
+#             weigh >= 0.35 (classifier.FORCE_INJECTION_SCORE) mark the prompt as an injection even
+#             when the classifier says it's clean; 0.3 "framing" rules only do so together with
+#             another signal, since they also match ordinary study questions.
 #   desc:     human note for admin/audit.
 #
 # Patterns are intentionally conservative on legitimate study language ("the system of the body",

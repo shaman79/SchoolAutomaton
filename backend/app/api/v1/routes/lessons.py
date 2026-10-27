@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ....core.tasks import task_registry
 from ....llm.lesson_generator import generate_one_section, schedule_section_visuals
 from ....models import LearningRequest, Lesson, LessonSection, Profile
 from ....sanitization.ratelimit import rate_limit_dependency
@@ -106,8 +107,11 @@ async def generate_section(
         intent = StructuredIntent.model_validate(request.structured_intent_json)
 
         try:
-            await generate_one_section(db, lesson, intent, ordinal)
-            await db.commit()
+            # No daily-budget check here on purpose: the budget gates NEW lessons, and a child who
+            # has started one gets to finish it. Counted as in-flight work so a deploy waits for it.
+            with task_registry.working(f"section:{lesson_id}:{ordinal}"):
+                await generate_one_section(db, lesson, intent, ordinal)
+                await db.commit()
             # The section text + items are ready now; realize its (pending) visuals in the background
             # so they fill in as placeholders without blocking this response.
             schedule_section_visuals(section.id)

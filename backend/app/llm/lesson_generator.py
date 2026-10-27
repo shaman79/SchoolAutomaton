@@ -198,6 +198,10 @@ async def _prepare_hotspot_images(
         spec = _hotspot_spec(gen, layout_slot)
         if spec is None:
             continue
+        # Rows staged earlier (the model call's usage record) would otherwise be flushed by the
+        # picture-cache lookup — opening a write that then stays open through the picture call.
+        # Committing them now is a millisecond write, and hands the connection back meanwhile.
+        await db.commit()
         try:
             asset = await asyncio.wait_for(
                 ensure_visual(db, spec, language=language, grade_band=grade_band),
@@ -668,6 +672,10 @@ async def _make_section(
 ) -> MadeSection:
     """Every slow provider call for one section — the model, then its hotspot pictures — with nothing
     of the section written yet, so SQLite's single write lock is never held while waiting on them."""
+    # End the session's transaction first: nothing is written here, and its pooled connection
+    # shouldn't sit idle through a model call that can take a minute (the pool is shared with every
+    # learner's requests).
+    await db.commit()
     sem = asyncio.Semaphore(1)
     gen, usages = await _generate_section(intent, stub, request_id=request_id, sem=sem, client=client)
     hotspots = await _prepare_hotspot_images(

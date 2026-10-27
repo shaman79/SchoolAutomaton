@@ -112,9 +112,13 @@ def _scrub_topic(value: str) -> str:
     cleaned = _INJECTION_PHRASE_RE.sub(" ", cleaned)
     # Remove a single leading imperative ("teach me about ...").
     cleaned = _LEADING_IMPERATIVE_RE.sub("", cleaned)
-    # Drop leftover connector words / 'and also' joins from removed clauses.
-    cleaned = re.sub(r"\b(also|and|then|plus)\b", " ", cleaned, flags=re.IGNORECASE)
+    # Trim connector words left dangling at either END by a removed clause ("... and also", "then
+    # ..."). Not inside: "Romeo and Juliet", "addition and subtraction" are the topic itself.
+    connectors = r"(?:also|and|then|plus)"
+    edge = rf"^(?:\s*{connectors}\b[\s,]*)+|(?:[\s,]*\b{connectors})+\s*$"
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,!?;:-")
+    cleaned = re.sub(edge, "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip(" .,!?;:-")
     return cleaned[:120]
 
 

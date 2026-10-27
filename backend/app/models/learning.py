@@ -18,7 +18,9 @@ class LearningRequest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     request_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)  # uuid4 = sessionId
-    profile_id: Mapped[int | None] = mapped_column(ForeignKey("profiles.id"), nullable=True)
+    profile_id: Mapped[int | None] = mapped_column(
+        ForeignKey("profiles.id"), nullable=True, index=True
+    )
     decision_type: Mapped[str] = mapped_column(String(12))  # proceed|clarify|refuse|crisis
     mode: Mapped[str | None] = mapped_column(String(8), nullable=True)  # study|test
     structured_intent_json: Mapped[dict] = mapped_column(JSON)
@@ -28,6 +30,9 @@ class LearningRequest(Base):
     lesson_id: Mapped[int | None] = mapped_column(ForeignKey("lessons.id"), nullable=True)
     quiz_id: Mapped[int | None] = mapped_column(ForeignKey("quizzes.id"), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Why it failed, for the loading screen to explain in the child's language: busy | unavailable |
+    # budget | failed (null unless status == 'error'). The message above is for the operator's log.
+    error_code: Mapped[str | None] = mapped_column(String(16), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String(20))
     model_id: Mapped[str] = mapped_column(String(48))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

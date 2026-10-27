@@ -53,6 +53,11 @@ _CS_HINT_RE = re.compile(
 )
 
 
+# Suspicion at which the deterministic heuristics override a clean classifier verdict. Every strong
+# rule in patterns.yaml weighs >= 0.35; the weak "framing" ones weigh 0.3.
+FORCE_INJECTION_SCORE = 0.35
+
+
 class ClassifierUnavailable(RuntimeError):
     """Raised when the LLM classifier cannot run (no API key / transient provider failure).
 
@@ -102,7 +107,15 @@ async def classify(clean_text: str, pre: PreprocessResult) -> StructuredIntent:
     if not isinstance(intent, StructuredIntent):
         raise ClassifierUnavailable("classifier returned no structured intent")
 
-    # Layer-1 (deterministic) injection signal wins — the model can't clear it.
-    if pre.heuristic_hit_ids and not intent.injection_detected:
+    # Layer-1 (deterministic) injection signal wins — the model can't clear it. But a single weak
+    # framing hit on its own is everyday study language ("enzymes act as catalysts", "imagine you are
+    # a red blood cell", "a hypothetical planet") and forcing the flag cost those children their topic
+    # (validate.py drops the topic of flagged prompts). It stays advisory (audited); a strong rule, or
+    # weak signals together (e.g. roleplay + homoglyphs), still force it.
+    if (
+        pre.heuristic_hit_ids
+        and pre.suspicion_score >= FORCE_INJECTION_SCORE
+        and not intent.injection_detected
+    ):
         intent = intent.model_copy(update={"injection_detected": True})
     return intent

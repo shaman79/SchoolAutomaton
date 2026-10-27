@@ -7,6 +7,7 @@ concurrent generation, grading and asset-cache inserts don't immediately error o
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator
 
 from sqlalchemy import event, text
@@ -16,12 +17,19 @@ from sqlalchemy.pool import StaticPool
 from ..core.config import settings
 from .base import Base
 
+logger = logging.getLogger("schoolautomaton.db")
+
 _is_sqlite = settings.database_url.startswith("sqlite")
 
 _engine_kwargs: dict = {"echo": settings.debug and settings.env == "development", "future": True}
 if _is_sqlite and ":memory:" in settings.database_url:
     # Tests: one shared in-memory connection.
     _engine_kwargs.update(poolclass=StaticPool, connect_args={"check_same_thread": False})
+elif _is_sqlite:
+    # SQLite connections are cheap (WAL: many readers, one writer), and the default 5 + 10 ran out
+    # when a classroom was waiting on slow work at once — every other request then failed after the
+    # pool timeout. Long waits release their connection anyway (see the generators); this is headroom.
+    _engine_kwargs.update(pool_size=10, max_overflow=40)
 
 engine = create_async_engine(settings.database_url, **_engine_kwargs)
 
@@ -84,7 +92,19 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
         "ALTER TABLE quiz_attempts ADD COLUMN current_index INTEGER NOT NULL DEFAULT 0",
     ),
     ("quiz_attempts", "last_active_at", "ALTER TABLE quiz_attempts ADD COLUMN last_active_at DATETIME"),
+    # Why a generation failed (busy | unavailable | budget | failed), for the loading screen.
+    ("learning_requests", "error_code", "ALTER TABLE learning_requests ADD COLUMN error_code VARCHAR(16)"),
 )
+
+# Before the unique (attempt, item) answer index can be built on a database that predates it, drop
+# the extra copies a double-tap race could store then (the first answer is the one that counted).
+_DEDUPE_ATTEMPT_ANSWERS = """
+DELETE FROM answers
+WHERE attempt_id IS NOT NULL
+  AND id NOT IN (
+    SELECT MIN(id) FROM answers WHERE attempt_id IS NOT NULL GROUP BY attempt_id, item_id
+  )
+"""
 
 
 async def _ensure_sqlite_columns(conn) -> None:
@@ -92,6 +112,31 @@ async def _ensure_sqlite_columns(conn) -> None:
         rows = (await conn.execute(text(f"PRAGMA table_info({table})"))).all()
         if rows and column not in {r[1] for r in rows}:  # table exists but lacks the column
             await conn.execute(text(ddl))
+
+
+async def _ensure_sqlite_indexes(conn) -> None:
+    """create_all builds whole tables, but not an index added later to a table that already exists —
+    so an upgraded database silently lacked e.g. the unique (attempt, item) answer index that stops a
+    double-tapped answer from counting twice. Create any missing index in place."""
+    exists = (
+        await conn.execute(
+            text("SELECT 1 FROM sqlite_master WHERE type='index' AND name='uq_answer_attempt_item'")
+        )
+    ).first()
+    answers = (
+        await conn.execute(text("SELECT 1 FROM sqlite_master WHERE type='table' AND name='answers'"))
+    ).first()
+    if answers and not exists:
+        removed = (await conn.execute(text(_DEDUPE_ATTEMPT_ANSWERS))).rowcount
+        if removed:
+            logger.warning("Removed %s duplicate quiz answer(s) before indexing", removed)
+
+    def _create(sync_conn) -> None:  # noqa: ANN001
+        for table in Base.metadata.sorted_tables:
+            for index in table.indexes:
+                index.create(sync_conn, checkfirst=True)
+
+    await conn.run_sync(_create)
 
 
 async def init_db() -> None:
@@ -105,3 +150,4 @@ async def init_db() -> None:
         if _is_sqlite:
             await conn.execute(text("PRAGMA journal_mode=WAL"))
             await _ensure_sqlite_columns(conn)
+            await _ensure_sqlite_indexes(conn)
