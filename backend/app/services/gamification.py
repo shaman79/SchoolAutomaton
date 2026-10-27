@@ -204,17 +204,60 @@ def _grade_deterministic(item: Item, submitted: Any) -> tuple[bool, float, str |
     return False, 0.0, None
 
 
+def _grade_free_text_deterministic(
+    item: Item, submitted: Any
+) -> tuple[bool, float, str | None, str, str]:
+    """Deterministic safety net for free text: numeric tolerance / casefolded text equality (or an
+    accepted variant). Used when the AI grader fails or today's AI budget is spent."""
+    payload = item.payload_json or {}
+    if (payload.get("kind") or item.item_type) == "numeric":
+        try:
+            ans = float(payload.get("answer"))
+            tol = float(payload.get("tolerance", 0.0) or 0.0)
+            ok = abs(float(submitted) - ans) <= tol
+        except (TypeError, ValueError):
+            ok = False
+        return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
+    given = _norm_text(submitted)
+    ok = (item.expected_answer is not None and given == _norm_text(item.expected_answer)) or (
+        given != "" and given in _accepted_variants(item)
+    )
+    return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
+
+
+async def _release_connection(db: AsyncSession) -> None:
+    """End the request's transaction before a slow model call, so its pooled connection goes back
+    to the pool for the call's duration (a class answering free text at once used to hold every
+    pooled connection and stall all other requests).
+
+    Grading writes nothing before the model call — only reads have happened — so this commit
+    normally just ends a read transaction (anything a caller did stage is flushed in one short burst
+    here rather than held across the call). ``expire_on_commit=False`` keeps the loaded profile and
+    item usable afterwards; the next query opens a fresh transaction."""
+    if db.in_transaction():
+        await db.commit()
+
+
 async def _grade_free_text(
-    item: Item, submitted: Any, language: str
+    db: AsyncSession, profile: Profile, item: Item, submitted: Any, language: str
 ) -> tuple[bool, float, str | None, str, str]:
     """Grade short_answer/numeric/explain via the LLM grader (B2). Imported LAZILY so this module
     imports even while B2's grader is mid-write. Falls back to deterministic numeric/text on any
-    failure so grading never hard-fails for the learner."""
+    failure — and, without calling the model, once today's AI budget is spent — so grading never
+    hard-fails for the learner."""
+    from . import cost_guard  # noqa: PLC0415
+
+    if await cost_guard.ai_budget_exceeded(db):
+        return _grade_free_text_deterministic(item, submitted)
+    await _release_connection(db)
     try:
         from ..llm import grader as llm_grader  # noqa: PLC0415  (lazy by design)
 
-        out = await llm_grader.grade_free_text(item, submitted, language=language)
-        return (
+        # The grader stages its usage rows on ``db`` after the call returns (never during it).
+        out = await llm_grader.grade_free_text(
+            item, submitted, language=language, db=db, profile_id=profile.id
+        )
+        result = (
             bool(out.correct),
             float(out.partial_credit),
             out.misconception,
@@ -222,21 +265,12 @@ async def _grade_free_text(
             out.encouragement_focus,
         )
     except Exception:
-        # Deterministic safety net: numeric tolerance / casefolded text equality.
-        payload = item.payload_json or {}
-        if (payload.get("kind") or item.item_type) == "numeric":
-            try:
-                ans = float(payload.get("answer"))
-                tol = float(payload.get("tolerance", 0.0) or 0.0)
-                ok = abs(float(submitted) - ans) <= tol
-            except (TypeError, ValueError):
-                ok = False
-            return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
-        given = _norm_text(submitted)
-        ok = (item.expected_answer is not None and given == _norm_text(item.expected_answer)) or (
-            given != "" and given in _accepted_variants(item)
-        )
-        return ok, (1.0 if ok else 0.0), None, (item.explanation or ""), "strategy"
+        result = _grade_free_text_deterministic(item, submitted)
+    if profile in db:
+        # The profile was read before the (seconds-long) call; re-read it so the XP added below
+        # builds on any XP this learner earned meanwhile (e.g. a second tab).
+        await db.refresh(profile)
+    return result
 
 
 # --------------------------------------------------------------------------- reveal / feedback
@@ -503,7 +537,7 @@ async def grade_and_reward(
             )
         else:
             is_correct, partial, misconception_text, explanation, focus = await _grade_free_text(
-                item, answer.submitted_value, language
+                db, profile, item, answer.submitted_value, language
             )
     else:
         is_correct, partial, distractor_text = _grade_deterministic(item, answer.submitted_value)
