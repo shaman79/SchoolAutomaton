@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { renderMarkdown, renderMathString, renderSvg } from '@/lib/safeContent'
+import { renderMarkdown, renderMarkdownInline, renderMathString, renderSvg } from '@/lib/safeContent'
 
 describe('renderMarkdown', () => {
   it('renders basic markdown', () => {
@@ -53,10 +53,53 @@ describe('renderMarkdown', () => {
     expect(out).not.toContain('katex')
   })
 
-  it('forces safe attributes on links', () => {
-    const out = renderMarkdown('[x](https://example.com)')
-    expect(out).toContain('rel="noopener noreferrer nofollow"')
-    expect(out).toContain('target="_blank"')
+})
+
+// Model-written content must never send a child to another site: links keep their words, lose the
+// anchor and its address.
+describe('no clickable links in model content', () => {
+  it('renders a markdown link as its plain text', () => {
+    const out = renderMarkdown('Read [this page](https://example.com/x) first.')
+    expect(out).not.toContain('<a')
+    expect(out).not.toContain('href')
+    expect(out).not.toContain('example.com')
+    expect(out).toContain('this page')
+  })
+
+  it('leaves a bare URL as plain text (no linkify)', () => {
+    const out = renderMarkdown('See https://example.com and www.example.org today.')
+    expect(out).not.toContain('<a')
+    expect(out).toContain('https://example.com')
+  })
+
+  it('unwraps autolinks and links inside inline snippets', () => {
+    expect(renderMarkdown('<https://example.com>')).not.toContain('<a')
+    const inline = renderMarkdownInline('the [river](https://example.com/river) flows')
+    expect(inline).not.toContain('<a')
+    expect(inline).not.toContain('example.com')
+    expect(inline).toBe('the river flows')
+  })
+
+  it('keeps raw HTML anchors inert in markdown', () => {
+    const out = renderMarkdown('<a href="https://example.com">click</a>')
+    expect(out).not.toMatch(/<a[\s>]/)
+  })
+
+  it('unwraps an <a> inside an SVG but keeps what it wrapped', () => {
+    const out = renderSvg(
+      '<svg viewBox="0 0 10 10"><a href="https://example.com"><text x="1" y="5">Label</text></a></svg>',
+    )
+    expect(out).not.toMatch(/<a[\s>]/)
+    expect(out).not.toContain('example.com')
+    expect(out).toContain('<text')
+    expect(out).toContain('Label')
+  })
+
+  it('still renders KaTeX (svg/path allowance intact) next to a link', () => {
+    const out = renderMarkdown('[root](https://example.com) $\\sqrt{2}$')
+    expect(out).not.toMatch(/<a[\s>]/) // (KaTeX's <annotation> is fine)
+    expect(out).toContain('katex')
+    expect(out).toContain('<path d="')
   })
 })
 

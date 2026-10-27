@@ -3,8 +3,12 @@
  * ALL LLM / Replicate output is untrusted. Nothing in here may ever be bound to v-html
  * before it has passed through DOMPurify.
  *
- *   renderMarkdown(md)  markdown-it {html:false} + KaTeX for $...$ / $$...$$  -> DOMPurify
+ *   renderMarkdown(md)  markdown-it {html:false, linkify:false} + KaTeX for $...$ / $$...$$  -> DOMPurify
  *   renderSvg(svg)      DOMPurify SVG profile, FORBID <script>/<foreignObject> + on* attrs
+ *
+ * NO LINKS: model-written content must never send a child to another site. Bare URLs stay plain
+ * text (linkify off), and every <a> — a markdown [text](url), an autolink, an SVG <a> — is unwrapped
+ * by DOMPurify: its text stays, the anchor (and its href) is dropped.
  *
  * Both return a string of sanitized HTML safe to bind via v-html (and only via v-html
  * inside <SafeContent>). KaTeX runs in trust:false / restrictive maxExpand so a malicious
@@ -16,11 +20,12 @@ import katex from 'katex'
 import MarkdownIt from 'markdown-it'
 
 // ---------------------------------------------------------------- markdown engine
-// html:false => raw HTML in the markdown source is escaped, not parsed. linkify keeps
-// bare URLs clickable; typographer adds nice quotes. Output is DOMPurified afterwards.
+// html:false => raw HTML in the markdown source is escaped, not parsed. linkify is OFF so a bare
+// URL stays plain text (no clickable links in model output); typographer adds nice quotes. Output
+// is DOMPurified afterwards, which also unwraps any <a> markdown itself produced.
 const md = new MarkdownIt({
   html: false,
-  linkify: true,
+  linkify: false,
   typographer: true,
   breaks: false,
 })
@@ -129,14 +134,16 @@ const MD_PURIFY_CONFIG: DompurifyConfig = {
     'aria-hidden', 'role', 'class', 'style', 'aria-label',
     'viewBox', 'preserveAspectRatio', 'd', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'stroke-width',
   ],
-  FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form', 'input', 'foreignObject'],
+  // 'a': links are unwrapped (DOMPurify's KEEP_CONTENT keeps the link text, drops the anchor).
+  FORBID_TAGS: ['a', 'style', 'script', 'iframe', 'object', 'embed', 'form', 'input', 'foreignObject'],
   FORBID_ATTR: ['srcset', 'formaction'],
 }
 
 const SVG_PURIFY_CONFIG: DompurifyConfig = {
   USE_PROFILES: { svg: true, svgFilters: true },
   // <style> CSS can smuggle external url()/@import; mirror the server lxml sanitizer's FORBIDDEN_TAGS.
-  FORBID_TAGS: ['script', 'foreignObject', 'style'],
+  // SVG <a> would be a clickable link out of the app: unwrapped, its shapes/text kept.
+  FORBID_TAGS: ['a', 'script', 'foreignObject', 'style'],
   // belt-and-braces: explicitly strip common event handlers (the afterSanitize hook also
   // removes ANY on* attribute; DOMPurify already blocks javascript: protocols).
   FORBID_ATTR: ['onload', 'onclick', 'onerror', 'onmouseover', 'onfocus', 'onbegin'],
@@ -147,11 +154,7 @@ function installHooks(): void {
   if (hooksInstalled) return
   hooksInstalled = true
   DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-    // Harden links: external links open safely; never trust LLM-authored hrefs for target.
-    if (node.tagName === 'A' && node.hasAttribute('href')) {
-      node.setAttribute('target', '_blank')
-      node.setAttribute('rel', 'noopener noreferrer nofollow')
-    }
+    // (No link hardening needed: <a> is in FORBID_TAGS, so no anchor survives to get here.)
     // Strip any lingering on* event handler defensively.
     for (const attr of Array.from(node.attributes)) {
       if (/^on/i.test(attr.name)) node.removeAttribute(attr.name)
