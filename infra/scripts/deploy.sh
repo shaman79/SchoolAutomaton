@@ -8,8 +8,9 @@
 #    1. check (and optionally install) Docker Engine + the Compose v2 plugin
 #    2. ask for settings (web port, public URL, admin login, API keys) — pressing
 #       Enter keeps the current/sane default; APP_SECRET is generated for you
-#    3. write .env (chmod 600), build the images, and start the stack
-#    4. verify the backend is healthy and the web port responds
+#    3. write .env (chmod 600), build the images (--pull), and start the stack
+#    4. health-gate it through nginx (/api/v1/health + the SPA); on failure roll back to the
+#       previously running images (re-deploys) and alert via SA_ALERT_WEBHOOK_URL
 #
 #  Re-run any time to change settings or update (data on the sa-data volume is kept).
 #  Serve it publicly by pointing your Cloudflare tunnel at http://localhost:<port>.
@@ -61,6 +62,7 @@ ensure_compose() {
 }
 ensure_docker
 ensure_compose
+have curl || c_die "curl is required (the deploy health check uses it): sudo apt-get install -y curl"
 
 # ---------- 2. configure .env ----------
 [ -f .env ] || { cp .env.example .env; c_ok "Created .env from template."; }
@@ -144,39 +146,49 @@ setkv SA_ENV production   # reflect the real runtime in .env (compose also enfor
 setkv SA_DEBUG false
 c_ok "Wrote .env (chmod 600)."
 
-# ---------- 3. build + run ----------
-c_say "Building images (first build can take a few minutes)..."
-dc build
-c_say "Starting the stack..."
-dc up -d
-
-# ---------- 4. verify ----------
-c_say "Verifying the backend is healthy..."
-cid="$(dc ps -q backend || true)"
-healthy=0
-if [ -z "$cid" ]; then
-  c_warn "Backend container not found — check: docker compose ps && docker compose logs backend"
-else
-  for ((i = 1; i <= 40; i++)); do
-    status="$("${DOCKER[@]}" inspect -f '{{ if .State.Health }}{{ .State.Health.Status }}{{ else }}none{{ end }}' "$cid" 2>/dev/null || echo unknown)"
-    if [ "$status" = healthy ]; then healthy=1; break; fi
-    # No healthcheck defined? accept a running container.
-    if [ "$status" = none ]; then
-      if "${DOCKER[@]}" inspect -f '{{.State.Running}}' "$cid" 2>/dev/null | grep -q true; then healthy=1; break; fi
-    fi
-    if [ $((i % 5)) -eq 0 ]; then printf '  … still starting (%ss elapsed)\n' "$((i * 3))"; fi
-    sleep 3
-  done
+# ---------- 3. build + run, health-gated (same procedure as update.sh) ----------
+# Tags the running images :previous, builds with --pull, waits (bounded) for lesson generations in
+# flight, starts the new release and checks /api/v1/health + the SPA through nginx; if that fails
+# it rolls back to :previous (when there is one).
+SA_LOG_TAG=deploy
+# shellcheck source=lib/ops-common.sh
+. infra/scripts/lib/ops-common.sh
+if have flock; then
+  exec 9>"$SA_LOCK_FILE"
+  if ! flock -n 9; then
+    c_say "An auto-update/backup is running — waiting for it to finish..."
+    flock -w 1800 9 || c_die "Timed out waiting for the lock ($SA_LOCK_FILE)."
+  fi
 fi
-if [ "$healthy" = 1 ]; then c_ok "Backend is up."; else c_warn "Backend not healthy yet — check: docker compose logs backend"; fi
+mkdir -p "$SA_STATE_DIR" "$SA_LOG_DIR"
+sa_rotate_log "$SA_LOG_DIR/update.log"
 
-web_ok=0
-if have curl; then
-  if curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:${port}/" 2>/dev/null; then web_ok=1; fi
-elif have wget; then
-  if wget -q -O /dev/null "http://127.0.0.1:${port}/" 2>/dev/null; then web_ok=1; fi
-fi
-if [ "$web_ok" = 1 ]; then c_ok "Web app responds on 127.0.0.1:${port}."; else c_warn "Could not confirm the web port locally (it may still be fine via the tunnel)."; fi
+c_say "Building and starting (first build can take a few minutes)..."
+set +e
+sa_deploy 2>&1 | tee -a "$SA_LOG_DIR/update.log"
+rc=${PIPESTATUS[0]}
+set -e
+commit="$(git rev-parse HEAD 2>/dev/null || echo none)"
+
+# ---------- 4. outcome ----------
+case "$rc" in
+  0)
+    echo "$commit" > "$SA_STATE_DIR/deployed-commit"; rm -f "$SA_STATE_DIR/bad-commit"
+    "${DOCKER[@]}" image prune -f >/dev/null 2>&1 || true   # dangling only; :previous is kept
+    c_ok "Healthy: the API (/api/v1/health) and the web app respond on $(sa_base_url)."
+    ;;
+  10)
+    c_die "Image build failed — nothing was changed (a previous release, if any, keeps running). See the output above."
+    ;;
+  20)
+    sa_alert "deploy-unhealthy-$commit" "deploy.sh: ${commit:0:7} did not become healthy — rolled back to the previous release." >/dev/null
+    c_die "The new release did not become healthy — ROLLED BACK to the previous one (still serving). Details: logs/update.log"
+    ;;
+  *)
+    sa_alert "deploy-down-$commit" "deploy.sh: ${commit:0:7} did not become healthy and there is no healthy previous release — site may be down." urgent >/dev/null
+    c_die "The stack did not become healthy. Check: docker compose ps && docker compose logs backend (details: logs/update.log)"
+    ;;
+esac
 
 # ---------- done ----------
 pub="${url%%,*}"   # first origin if SA_CORS_ORIGINS holds a comma-separated list
@@ -193,6 +205,9 @@ $(printf '\033[1;32m✔ SchoolAutomaton is deployed.\033[0m')
       service:  http://localhost:${port}
 
   Logs:    docker compose logs -f
-  Update:  ./infra/scripts/update.sh
+  Update:  ./infra/scripts/update.sh   (health-gated, rolls back on failure)
+  Auto-update every 15 min + nightly DB backup:
+           sudo ./infra/scripts/install-auto-update.sh
+  Alerts:  set SA_ALERT_WEBHOOK_URL in .env (e.g. an ntfy.sh topic) — see DEPLOY.md
 EOF
 [ -n "$akey" ] || c_warn "No Anthropic key set — lesson/quiz generation is disabled until you add ANTHROPIC_API_KEY (re-run this script)."
