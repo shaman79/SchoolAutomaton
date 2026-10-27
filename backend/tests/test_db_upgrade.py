@@ -62,3 +62,21 @@ async def test_missing_indexes_are_added_and_duplicate_answers_dropped(tmp_path)
             await _ensure_sqlite_indexes(conn)
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_an_index_that_cannot_be_built_does_not_stop_the_app(tmp_path, caplog):
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'odd.db'}")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text("DROP INDEX ix_learning_requests_profile_id"))
+            # Something unexpected on a real database: the index name is taken by a TABLE.
+            await conn.execute(text("CREATE TABLE ix_learning_requests_profile_id (x INTEGER)"))
+        async with engine.begin() as conn:
+            await _ensure_sqlite_indexes(conn)  # must not raise
+        assert "ix_learning_requests_profile_id" in caplog.text
+        async with engine.begin() as conn:
+            assert "uq_answer_attempt_item" in await _indexes(conn)  # the others still built
+    finally:
+        await engine.dispose()

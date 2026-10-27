@@ -134,7 +134,14 @@ async def _ensure_sqlite_indexes(conn) -> None:
     def _create(sync_conn) -> None:  # noqa: ANN001
         for table in Base.metadata.sorted_tables:
             for index in table.indexes:
-                index.create(sync_conn, checkfirst=True)
+                # One that can't be built must not keep the app from starting (a missing index
+                # costs speed or a backstop; a backend that won't boot costs every child their
+                # lessons): log it and carry on.
+                try:
+                    with sync_conn.begin_nested():
+                        index.create(sync_conn, checkfirst=True)
+                except Exception:  # noqa: BLE001
+                    logger.exception("Could not create index %s; continuing without it", index.name)
 
     await conn.run_sync(_create)
 
