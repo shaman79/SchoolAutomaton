@@ -13,11 +13,16 @@
  * RESUME: the store restores the learner's revealed parts + answered questions from the server; this
  * view then puts the viewport back where they were reading (exact spot on this device, else the part
  * they had reached) and keeps that spot saved as they scroll.
+ * The ROUTE decides which lesson opens (a lesson generated earlier in this tab never overrides it),
+ * and nothing from a previously opened lesson is shown while this one loads.
+ * A failed answer leaves the question answerable with a friendly toast; an answer the server met with
+ * a support block (crisis net) shows that block instead of feedback, ungraded and still answerable.
  * All LLM output renders via SafeContent / LessonAsset (never raw v-html). WCAG 2.2 AA throughout.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import CrisisCard from '@/components/CrisisCard.vue'
 import LessonAsset from '@/components/content/LessonAsset.vue'
 import SafeContent from '@/components/content/SafeContent.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -31,6 +36,7 @@ import { speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
+import { answerErrorKey } from '@/lib/errors'
 import { subjectLabel } from '@/lib/format'
 import { levelLabel } from '@/lib/grades'
 import { loadReadingAnchor, saveReadingAnchor } from '@/lib/readingAnchor'
@@ -39,7 +45,7 @@ import { useLessonStore } from '@/stores/lesson'
 import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore } from '@/stores/session'
 import type { AnswerEvent } from '@/types/question'
-import type { LearningSessionSummary, LessonSection } from '@/types/session'
+import type { AnswerSupport, LearningSessionSummary, LessonSection } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
 const { t } = useI18n()
@@ -51,6 +57,10 @@ const { celebrateCorrect } = useCelebration()
 
 const failed = ref(false)
 const suggestions = ref<LearningSessionSummary[]>([])
+// Set once this view is being torn down: async work that finishes later must not touch the page.
+let leaving = false
+// Support blocks (crisis net) per item id: shown in place of feedback, the question stays open.
+const supportByItem = reactive<Record<number, AnswerSupport>>({})
 
 const INTERACTIVE_KINDS = new Set([
   'pretest',
@@ -59,7 +69,11 @@ const INTERACTIVE_KINDS = new Set([
   'misconception_check',
 ])
 
-const lesson = computed(() => lessonStore.lesson)
+// Only the lesson of THIS route: the store still holds the previously opened lesson until load()
+// replaces it, and that must never flash up here.
+const lesson = computed(() =>
+  lessonStore.lesson?.request_id === props.sessionId ? lessonStore.lesson : null,
+)
 
 const sortedSections = computed<LessonSection[]>(() =>
   lesson.value ? [...lesson.value.sections].sort((a, b) => a.ordinal - b.ordinal) : [],
@@ -157,11 +171,17 @@ async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
   try {
     // Lesson-embedded practice => no quiz attempt (attempt_id null, per design).
     const res = await api.submitAnswer({ ...e, attemptId: null })
+    if (res.support) {
+      // Not graded, not recorded: show the help block, no "wrong" verdict, question stays open.
+      supportByItem[e.questionId] = res.support
+      return
+    }
     lessonStore.recordAnswer(e.questionId, res)
     if (res.is_correct) void celebrateCorrect(target ?? null)
     if (res.xp_awarded) await session.refreshGamification().catch(() => {})
-  } catch {
-    /* swallow — the question component stays interactive so the learner can retry */
+  } catch (err) {
+    // The question stays answerable with the learner's input in place; say what happened.
+    if (!leaving) toast.error(t(answerErrorKey(err)))
   } finally {
     answering.delete(e.questionId)
   }
@@ -212,7 +232,7 @@ function onScroll() {
  *  A lesson they already finished reopens from the top. Always an instant jump, never an animation. */
 async function placeViewport() {
   await nextTick() // the restored parts are in the DOM now
-  if (!lesson.value) return
+  if (leaving || !lesson.value) return
   const anchor = loadReadingAnchor(lesson.value.id)
   if (anchor && anchor.revealedUpTo === lessonStore.revealedUpTo) {
     const el = anchor.ordinal == null ? null : sectionCards.get(anchor.ordinal)
@@ -238,33 +258,51 @@ async function placeViewport() {
   tracking = true
 }
 
-onMounted(async () => {
+/** The lesson id for THIS route. The generation store's id is used only when it was generated for
+ *  this very request (the usual hop from the loading screen) — otherwise ask the server. */
+async function resolveLessonId(): Promise<number | null> {
+  if (gen.requestId === props.sessionId && gen.lessonId) return gen.lessonId
+  return (await api.getRequestStatus(props.sessionId)).lesson_id
+}
+
+let listening = false
+async function openLesson() {
+  failed.value = false
   try {
-    let id = gen.lessonId
+    const id = await resolveLessonId()
+    if (leaving) return
     if (!id) {
-      const status = await api.getRequestStatus(props.sessionId)
-      id = status.lesson_id
+      failed.value = true
+      return
     }
-    if (id) {
-      await lessonStore.load(id)
-      await placeViewport()
-      window.addEventListener('scroll', onScroll, { passive: true })
-      window.addEventListener('pagehide', saveAnchor)
-    } else failed.value = true
+    await lessonStore.load(id)
+    if (leaving) return
+    await placeViewport()
+    if (leaving || listening) return
+    listening = true
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('pagehide', saveAnchor)
   } catch {
-    failed.value = true
+    if (!leaving) failed.value = true
   }
+}
+
+onMounted(async () => {
+  await openLesson()
   // "More like this" picks for the closing — best-effort, never blocks the lesson.
   try {
-    suggestions.value = await api.getRecommendations({ requestId: props.sessionId, limit: 3 })
+    const recs = await api.getRecommendations({ requestId: props.sessionId, limit: 3 })
+    if (!leaving) suggestions.value = recs
   } catch {
     /* recommendations are optional */
   }
 })
 
 // Leaving the reader: save the final reading spot while the page is still scrolled there (the
-// router scrolls to the top right after), then stop listening.
+// router scrolls to the top right after), then stop listening. Anything still loading checks
+// `leaving` when it lands, so no listener, toast or saved spot can appear after this.
 onBeforeUnmount(() => {
+  leaving = true
   window.removeEventListener('scroll', onScroll)
   window.removeEventListener('pagehide', saveAnchor)
   if (saveTimer) clearTimeout(saveTimer)
@@ -349,6 +387,12 @@ onUnmounted(() => lessonStore.stopPolls())
               :sound="prefs.sound"
               @answer="(e: AnswerEvent) => onAnswer(e)"
             />
+            <CrisisCard
+              v-if="supportByItem[it.id]"
+              :message="supportByItem[it.id].message"
+              :disclosure="supportByItem[it.id].disclosure"
+              :resources="supportByItem[it.id].resources"
+            />
             <CorrectAnswer :item="it" :feedback="lessonStore.feedbackByItem[it.id] ?? null" />
           </div>
         </div>
@@ -417,7 +461,8 @@ onUnmounted(() => lessonStore.stopPolls())
     :description="t('lesson.load_error_body')"
     announce
   >
-    <SaButton variant="primary" to="/" icon="home">{{ t('common.back') }}</SaButton>
+    <SaButton variant="primary" icon="sparkle" @click="openLesson">{{ t('common.retry') }}</SaButton>
+    <SaButton variant="ghost" to="/" icon="home">{{ t('common.back') }}</SaButton>
   </EmptyState>
 
   <div v-else class="sa-lesson__loading">
