@@ -9,6 +9,7 @@ Design refs: gamification_design (XP/combo/streaks), pedagogy_framework (rating,
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -42,6 +43,7 @@ from ..models import (
 )
 from ..schemas.enums import AgeBand, FsrsRating, NodeState, XpReason
 from ..schemas.gamification import (
+    AnswerSupport,
     FeedbackBlock,
     GradeResult,
     LevelUp,
@@ -55,6 +57,10 @@ from . import badges, leveling, mastery, srs_service
 
 # Free-text item types graded by the LLM (B2's app.llm.grader); the rest are deterministic.
 _LLM_GRADED = frozenset({"short_answer", "numeric", "explain"})
+# Types whose answer the child TYPES (free text + cloze blanks) — screened for crisis before grading.
+_TYPED_TEXT = _LLM_GRADED | {"cloze"}
+
+logger = logging.getLogger("schoolautomaton.safety")
 
 
 class CardNotDue(Exception):
@@ -503,6 +509,65 @@ async def _attempt_combo(db: AsyncSession, attempt_id: int | None) -> int:
     return combo
 
 
+# --------------------------------------------------------------------------- crisis screening
+def _typed_text(item: Item, submitted: Any) -> str:
+    """The text the learner TYPED into this answer (free text, cloze blanks); '' for answer types
+    that are picked rather than typed (option/region/token ids are generated, not the child's)."""
+    kind = (item.payload_json or {}).get("kind")
+    if item.item_type not in _TYPED_TEXT and kind not in _TYPED_TEXT:
+        return ""
+    parts: list[str] = []
+    stack = [submitted]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, str):
+            parts.append(node)
+        elif isinstance(node, dict):
+            stack.extend(node.values())
+        elif isinstance(node, list | tuple):
+            stack.extend(node)
+    return " | ".join(parts)
+
+
+async def _crisis_support_result(
+    db: AsyncSession, profile: Profile, item: Item, submitted: Any
+) -> GradeResult | None:
+    """Screen a typed answer with the prompt path's deterministic self-harm net. On a hit, return
+    the support result INSTEAD of grading: the answer never reaches the AI grader and nothing is
+    saved (no answer row, no FSRS review, no XP) — the caller returns it as is."""
+    text = _typed_text(item, submitted)
+    if not text.strip():
+        return None
+    from ..sanitization import safety  # noqa: PLC0415
+
+    if not safety.typed_text_signals_crisis(text):
+        return None
+    prefs = await db.get(ProfileSettings, profile.id)
+    found = safety.answer_crisis_support(
+        text, education_locale=prefs.education_locale if prefs is not None else None
+    )
+    # No answer text in the log — only that the card was shown, and for which item.
+    logger.warning("Crisis support shown instead of grading an answer (item %s)", item.id)
+    return GradeResult(
+        is_correct=False,
+        partial_credit=0.0,
+        correct_answer=None,
+        fsrs_rating=int(FsrsRating.AGAIN),  # required by the schema; meaningless here
+        next_due=None,
+        explanation=None,
+        misconception=None,
+        feedback=FeedbackBlock(text=found.nudge or found.message, encouragement_focus="effort"),
+        xp_awarded=0,
+        combo_multiplier=1.0,
+        mastery_delta=0.0,
+        new_badges=[],
+        level_up=None,
+        support=AnswerSupport(
+            message=found.message, resources=found.resources, disclosure=found.disclosure
+        ),
+    )
+
+
 # --------------------------------------------------------------------------- public orchestration
 async def grade_and_reward(
     db: AsyncSession,
@@ -519,12 +584,20 @@ async def grade_and_reward(
 
     ``only_if_due`` (the spaced-review path): apply the review only if the learner's card is still
     due when it is written, else raise :class:`CardNotDue` (the caller rolls back) — so repeated or
-    parallel copies of one review can't farm XP."""
+    parallel copies of one review can't farm XP.
+
+    A typed answer that trips the self-harm net is not graded at all: the result carries
+    ``support`` (localized crisis resources) and nothing is persisted."""
     now = now or datetime.now(UTC)
     # Feedback should match the CONTENT language (a Czech lesson gets Czech feedback), falling back
     # to the learner's UI language, then English.
     language = item.language or profile.primary_language or "en"
     item_type = item.item_type
+
+    # 0) Child safety first: a typed answer is screened like a prompt before anything else happens.
+    support = await _crisis_support_result(db, profile, item, answer.submitted_value)
+    if support is not None:
+        return support
 
     # 1) Grade (deterministic for closed-form; LLM for free-text/explain).
     misconception_text: str | None = None

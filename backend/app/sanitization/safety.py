@@ -9,6 +9,7 @@ copy, and uses ``grade_band``/``age`` to AVOID over-blocking legitimate older-st
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
@@ -183,3 +184,50 @@ _REDIRECT_SUGGESTIONS: dict[str, tuple[str, ...]] = {
 def refusal_redirect_suggestions(intent: StructuredIntent) -> list[str]:
     """Friendly, on-task alternatives offered when a prompt is refused (growth-mindset framing)."""
     return list(_REDIRECT_SUGGESTIONS[_lang_key(intent.language, _REDIRECT_SUGGESTIONS)])
+
+
+# --------------------------------------------------------------------------- typed answers
+# A child's typed answer (free text, cloze blanks) is screened with the SAME deterministic net as a
+# prompt (L1 preprocess -> looks_like_crisis) before it is graded. No LLM is involved.
+_DEFAULT_CRISIS_MESSAGE = (
+    "It sounds like you might be going through something really hard. You're not alone, and help "
+    "is available."
+)
+
+
+@dataclass(frozen=True)
+class AnswerCrisisSupport:
+    """Localized crisis-card content for a typed answer (mirrors ``CrisisDecision``)."""
+
+    message: str
+    resources: list[CrisisResource]
+    disclosure: str
+    nudge: str
+    language: str
+
+
+def typed_text_signals_crisis(text: str) -> bool:
+    """The prompt path's L1 + L1.5: normalize (strip invisibles/bidi, NFKC) then the phrase net."""
+    from .preprocess import preprocess  # noqa: PLC0415
+
+    return looks_like_crisis(preprocess(text or "").clean_text)
+
+
+def answer_crisis_support(text: str, *, education_locale: str | None = None) -> AnswerCrisisSupport:
+    """Crisis-card content for an answer that tripped :func:`typed_text_signals_crisis`, localized
+    exactly like the prompt path: copy in the language the child wrote in, resources for the country
+    of their education locale (plus the global fallback)."""
+    from ..llm.prompts.curriculum import country_of, normalize_education_locale  # noqa: PLC0415
+    from .classifier import detect_language  # noqa: PLC0415
+    from .preprocess import preprocess  # noqa: PLC0415
+
+    language = detect_language(preprocess(text or "").clean_text)
+    country = country_of(normalize_education_locale(education_locale))
+    card = crisis_card_copy(language)
+    return AnswerCrisisSupport(
+        message=card["message"] or _DEFAULT_CRISIS_MESSAGE,
+        resources=select_crisis_resources(language, country),
+        disclosure=crisis_disclosure(language),
+        nudge=card["nudge"],
+        language=language,
+    )
