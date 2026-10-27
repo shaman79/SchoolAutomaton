@@ -43,7 +43,9 @@ def xp_to_next(total_xp: int) -> int:
 def level_progress_pct(total_xp: int) -> float:
     """Percent (0..100) of the way from the current level's floor to the next level."""
     level = level_from_xp(total_xp)
-    floor_xp = xp_total_for_level(level)
+    # A new learner is level 1 from 0 XP (level_from_xp), so level 1's bar starts at 0 — measured
+    # from xp_total_for_level(1) = 100 it stayed empty for the whole first 100 XP.
+    floor_xp = 0 if level == 1 else xp_total_for_level(level)
     ceil_xp = xp_total_for_level(level + 1)
     span = ceil_xp - floor_xp
     if span <= 0:
