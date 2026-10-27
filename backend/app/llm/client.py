@@ -48,15 +48,21 @@ def set_client(client: anthropic.AsyncAnthropic | None) -> None:
     _client = client
 
 
+# The SDK retries 429/5xx/529 and timeouts with backoff. Each try may run the full request timeout,
+# so 5 retries meant a child could watch the loading screen for 6 x 2 minutes before hearing it
+# failed; 2 rides out a blip and keeps the worst case to minutes, not a quarter of an hour.
+SDK_MAX_RETRIES = 2
+
+
 def get_client() -> anthropic.AsyncAnthropic:
-    """Lazily construct the shared AsyncAnthropic client (max_retries=5 auto-retries 429/5xx/529).
+    """Lazily construct the shared AsyncAnthropic client (auto-retries 429/5xx/529 + timeouts).
 
     A request timeout is set so a single call can never hang the generation pipeline indefinitely."""
     global _client
     if _client is None:
         _client = anthropic.AsyncAnthropic(
             api_key=settings.anthropic_api_key or "missing-key",
-            max_retries=5,
+            max_retries=SDK_MAX_RETRIES,
             timeout=settings.llm_request_timeout_s,
         )
     return _client
@@ -81,6 +87,12 @@ class Usage:
 
 class GenerationError(RuntimeError):
     """Raised when a call refuses, truncates, or never yields a valid structured payload."""
+
+
+class StopReasonError(GenerationError):
+    """The model stopped in a way the same request would only repeat (refusal, max_tokens,
+    pause_turn). Not retried with a correction: a retry re-bills up to max_tokens of output and makes
+    the child wait minutes longer for the same failure."""
 
 
 def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
@@ -152,11 +164,11 @@ def _system_blocks(system_blocks: list[str] | str) -> list[dict[str, Any]]:
 
 def _check_stop_reason(stop_reason: str | None) -> None:
     if stop_reason == "refusal":
-        raise GenerationError("Model refused to generate the requested content.")
+        raise StopReasonError("Model refused to generate the requested content.")
     if stop_reason == "max_tokens":
-        raise GenerationError("Generation hit max_tokens before completing the structured output.")
+        raise StopReasonError("Generation hit max_tokens before completing the structured output.")
     if stop_reason == "pause_turn":
-        raise GenerationError("Generation paused unexpectedly (pause_turn).")
+        raise StopReasonError("Generation paused unexpectedly (pause_turn).")
 
 
 def _extract_parsed[OutputT: BaseModel](message: Any, output_model: type[OutputT]) -> OutputT | None:
@@ -352,6 +364,8 @@ async def generate_structured[OutputT: BaseModel](
                 result = _extract_parsed(message, output_model)
                 if result is None:
                     raise GenerationError("No parsable structured output in response.")
+        except StopReasonError:
+            raise
         except (pydantic.ValidationError, GenerationError, json.JSONDecodeError) as exc:
             last_error = exc
             correction = (
