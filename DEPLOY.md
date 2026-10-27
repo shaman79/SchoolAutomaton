@@ -28,8 +28,10 @@ That's it. The script:
    - **Admin username / password** (it requires a real, non-default password)
    - **Anthropic API key** and **Replicate API token** (blank = skip; generation stays off until set)
    - **APP_SECRET** is generated for you.
-3. **Writes `.env`** (chmod 600), **builds** the images, **starts** the stack, and **verifies** the
-   backend is healthy and the web port responds.
+3. **Writes `.env`** (chmod 600), **builds** the images (`--pull`), **starts** the stack, and
+   **health-gates** it the same way auto-update does (§4): `/api/v1/health` and the web app must
+   answer through nginx within ~2 minutes, otherwise it rolls back to the previously running images
+   (on a re-run) and exits with an error.
 
 Re-run `./infra/scripts/deploy.sh` any time to change settings (it pre-fills your current values) or
 after a code update. The SQLite DB and generated-image cache live on the `sa-data` Docker volume and
@@ -61,48 +63,159 @@ origin via nginx.
 
 Open `https://schoolautomaton.avercode.com` and sign in at `…/admin/login`. Locally:
 ```bash
-curl -fsS http://127.0.0.1:8080/ >/dev/null && echo "web OK"     # match your port
+curl -fsS http://127.0.0.1:8080/api/v1/health; echo              # {"status":"ok","db":"ok",...} — match your port
+curl -fsS http://127.0.0.1:8080/ >/dev/null && echo "web OK"
 docker compose ps                                                # both services Up/healthy
 ```
 
-## 4. Automatic updates (every 15 minutes)
+## 4. Automatic updates + nightly backups
 
-Schedule it once and the server keeps itself current — `update.sh` pulls from git and **only rebuilds
-+ restarts when there are actually new commits** (otherwise it's a fast no-op, so there's no needless
-downtime), with a lock so runs never overlap.
+Schedule it once and the server keeps itself current and backed up:
 
 ```bash
-sudo ./infra/scripts/install-auto-update.sh        # every 15 min (systemd timer; cron fallback)
-# custom interval:  sudo ./infra/scripts/install-auto-update.sh 30
-# stop auto-updates: sudo ./infra/scripts/install-auto-update.sh --uninstall
+sudo ./infra/scripts/install-auto-update.sh        # updates every 15 min + DB backup daily at 03:30
+# custom update interval:  sudo ./infra/scripts/install-auto-update.sh 30
+# other backup time:       sudo SA_BACKUP_TIME=02:15 ./infra/scripts/install-auto-update.sh
+# remove both schedules:   sudo ./infra/scripts/install-auto-update.sh --uninstall
 ```
-Watch it:
+It installs systemd timers (`schoolautomaton-update`, `schoolautomaton-backup`; cron fallback). It is
+idempotent — **re-run it after pulling this version** to add the backup schedule to an existing box.
+
+Every run of `update.sh`:
+1. `git pull`. If `HEAD` is the last successfully deployed commit → fast no-op (no rebuild, no
+   restart). If it is a commit that already **failed** → skipped (no rebuild loop every 15 min); a
+   newer commit is tried as soon as it lands.
+2. Tags the running images `schoolautomaton-{backend,frontend}:previous`, then builds with `--pull`
+   (base-image security updates; if the registry is unreachable it retries once from cache).
+   A failed build changes nothing — the old containers keep serving.
+3. If the backend image changed and `/api/v1/health` reports `active_generations > 0`, waits for the
+   lessons/tests being generated (polls every 10 s, at most `SA_DEPLOY_MAX_WAIT_S`, default 600 s),
+   then restarts anyway. Restarting mid-generation would lose a child's lesson.
+4. `docker compose up -d`, then the **health gate**: through nginx, `GET /api/v1/health` must return
+   200 `"status":"ok"` and the SPA shell plus its JS bundle must load — twice in a row — within
+   `SA_DEPLOY_HEALTH_TIMEOUT_S` (default 120 s).
+5. Unhealthy → container status + log tails go to the log, it **rolls back** to `:previous`, checks
+   that is healthy, records the commit as bad (`.sa-deploy/bad-commit`) and **alerts** (§5).
+   Healthy → records the commit (`.sa-deploy/deployed-commit`) and prunes *dangling* images only
+   (`:previous` is kept for the next rollback).
+
+Runs never overlap: update, deploy, backup and restore share one lock (`.sa-update.lock`).
+`git pull` failing 4 runs in a row (~1 h) also alerts. Watch it:
 ```bash
-systemctl list-timers schoolautomaton-update.timer       # next run
-journalctl -u schoolautomaton-update.service -f          # live logs
+tail -f logs/update.log                                   # also: journalctl -u schoolautomaton-update -f
+systemctl list-timers 'schoolautomaton-*'                 # next runs
+./infra/scripts/update.sh --force                         # redeploy current HEAD (also retries a bad commit)
 ```
 Requirements: the deploy must be a **git clone** (so it can `git pull`) and the deploy user must be
-in the `docker` group (the deploy script arranges this). Auto-update runs as that user.
+in the `docker` group (the deploy script arranges this). Timers run as that user — don't run the
+scripts with `sudo` (root-owned lock/log files would block later runs).
 
 > Note: on boot the app creates missing tables and adds missing nullable columns in place (additive
 > migrations in `backend/app/db/session.py`), so such releases update themselves and keep the data.
 > Only destructive schema changes (renaming/dropping columns, changing types) need a manual
-> migration or a fresh `sa-data`.
+> migration or a fresh `sa-data`. A rollback restores the previous *images*, not the database: a
+> release that changed the schema stays changed.
 >
-> There is no CI: `update.sh` pulls and rebuilds whatever lands on the checked-out branch (`main`),
-> so run the tests before merging. A failing image build aborts the update and the running
-> containers stay up — but the pull already happened, so later scheduled runs see no new commit and
-> won't retry: push a fix or run `./infra/scripts/update.sh --force`.
+> There is no CI: `update.sh` pulls and rebuilds whatever lands on `main`, so run the tests before
+> merging. The health gate catches a release that doesn't come up; it can't catch wrong behaviour.
+>
+> Health contract (backend): `GET /api/v1/health` → 200 `{"status":"ok","db":"ok","active_generations":N}`,
+> 503 when the DB is unreachable. Until a backend with that endpoint is deployed, the gate accepts
+> FastAPI's JSON 404 for it as proof that nginx → backend works.
 
-## 5. Update / operate manually
+## 5. Alerts
+
+Set `SA_ALERT_WEBHOOK_URL` in `.env` and failed deploys, rollbacks, a stuck `git pull` and failed
+backups are POSTed there as one short plain-text message (also always written to `logs/`). Without
+it, alerts are only logged. The same alert is repeated at most every 6 h (`SA_ALERT_REPEAT_S`).
+
+**ntfy (simplest, phone push):** install the ntfy app, subscribe to a hard-to-guess topic, then
+```bash
+echo 'SA_ALERT_WEBHOOK_URL=https://ntfy.sh/sa-alerts-<random-string>' >> .env
+```
+(ntfy topics are public to anyone who knows the name — use a long random one, or your own ntfy
+server.) The scripts send ntfy's `Title`/`Priority`/`Tags` headers; "site may be down" is `urgent`.
+Test it: `curl -d "test from $(hostname)" https://ntfy.sh/sa-alerts-<random-string>`.
+
+**Slack / Discord** incoming webhooks need JSON, so also set the format:
+```bash
+SA_ALERT_WEBHOOK_URL=https://hooks.slack.com/services/…      SA_ALERT_FORMAT=slack     # {"text": …}
+SA_ALERT_WEBHOOK_URL=https://discord.com/api/webhooks/…      SA_ALERT_FORMAT=discord   # {"content": …}
+```
+
+## 6. Backups and restore
+
+**What:** the SQLite database (`/app/data/schoolautomaton.db` on the `sa-data` volume) — learners'
+profiles, progress, lessons and settings. The generated-image cache (`/app/data/cache`) is **not**
+backed up: it is regenerated on demand.
+
+**How:** `infra/scripts/backup.sh` (nightly via the timer above, or run it by hand at any time) uses
+SQLite's backup API inside the backend container — a consistent copy while the app keeps writing —
+runs `PRAGMA integrity_check` on the copy, gzips it and stores it **outside** the Docker volume:
+```
+backups/daily/schoolautomaton-YYYY-MM-DD.db.gz    newest 14 kept   (SA_BACKUP_KEEP_DAILY)
+backups/weekly/schoolautomaton-YYYY-Www.db.gz     newest 8 kept    (SA_BACKUP_KEEP_WEEKLY)
+```
+`backups/` (or `SA_BACKUP_DIR`) is chmod 700 and gitignored. Any failure alerts (§5) and never prunes
+older backups. Log: `logs/backup.log`. Two more things for a real disaster:
+- **Copy backups off the machine** (e.g. `rclone`/`rsync` of `backups/` from another box) — a dead
+  disk takes `./backups` with it.
+- **Keep a copy of `.env`** somewhere safe: provider keys saved from the admin Settings page are
+  encrypted with `APP_SECRET`; a restored DB with a different secret can't decrypt them.
+
+> Don't back up by tar-ing the volume while the app runs: the DB is in WAL mode, so copying the
+> `.db`/`-wal`/`-shm` files independently can produce an inconsistent or corrupt copy.
+
+**Restore** (stops the backend for a few seconds; the app shell stays up):
+```bash
+ls -l backups/daily backups/weekly
+./infra/scripts/restore.sh backups/daily/schoolautomaton-2026-10-27.db.gz
+```
+It checks the file, saves a safety snapshot of the current DB to `backups/pre-restore/`, stops the
+backend, writes the backup into the volume (as the app user), runs `integrity_check`, **deletes the
+stale `-wal`/`-shm` files** (they belong to the old DB and would corrupt the restored one), starts the
+backend and waits for `/api/v1/health`. `--yes` skips the prompt; `--skip-safety-copy` if the current
+DB is too broken to copy. The same by hand:
+```bash
+docker compose stop backend
+gunzip -c backups/daily/schoolautomaton-2026-10-27.db.gz | docker compose run --rm --no-deps -T backend \
+  sh -c 'cat > /app/data/restore.tmp && rm -f /app/data/schoolautomaton.db-wal /app/data/schoolautomaton.db-shm \
+         && mv /app/data/restore.tmp /app/data/schoolautomaton.db'
+docker compose start backend
+```
+
+## 7. Operate manually
 
 | Task | Command |
 |---|---|
 | Update now | `./infra/scripts/update.sh` (no-op if nothing new; `--force` to rebuild anyway) |
 | Change settings/port | re-run `./infra/scripts/deploy.sh` (then update the tunnel port) |
-| Logs | `docker compose logs -f` (or `… logs -f backend`) |
+| Logs | `docker compose logs -f` (or `… logs -f backend`) · deploys: `logs/update.log` |
 | Restart / stop | `docker compose restart` · `docker compose down` (keeps `sa-data`) |
-| Backup data | `docker run --rm -v schoolautomaton_sa-data:/d -v "$PWD":/b alpine tar czf /b/sa-data-backup.tgz -C /d .` |
+| Backup now | `./infra/scripts/backup.sh` |
+| Restore | `./infra/scripts/restore.sh <backup.db.gz>` (§6) |
+| Roll back by hand | `for s in backend frontend; do docker image tag schoolautomaton-$s:previous schoolautomaton-$s:latest; done && docker compose up -d --no-build --force-recreate` (auto-update won't redeploy the current commit; fix or revert it on `main`) |
+
+Settings read by the ops scripts (environment or `.env`):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SA_ALERT_WEBHOOK_URL` | – | where alerts are POSTed (§5) |
+| `SA_ALERT_FORMAT` | `text` | `text` (ntfy-style) · `slack` · `discord` |
+| `SA_DEPLOY_MAX_WAIT_S` | `600` | max wait for in-flight generations before restarting the backend |
+| `SA_DEPLOY_HEALTH_TIMEOUT_S` | `120` | how long a new release gets to become healthy |
+| `SA_BACKUP_DIR` | `backups` | backup location (relative to the repo, or absolute) |
+| `SA_BACKUP_KEEP_DAILY` / `_WEEKLY` | `14` / `8` | rotation |
 
 > Provider keys can also be managed at runtime from the admin **Settings** page (stored
 > Fernet-encrypted); env values win at boot.
+
+## 8. Images and dependencies
+
+Builds are reproducible: `backend/requirements*.txt` pin **exact** versions of the whole tree, the
+frontend installs with `npm ci` from `package-lock.json`, and base images follow a pinned line
+(`python:3.12-slim-trixie`, `node:24-alpine` = current LTS, `nginx:1.30-alpine-slim` = current stable) —
+`--pull` brings their patch/security releases. The NLTK `cmudict` corpus (textstat) is baked into the
+backend image. To upgrade a Python package: bump its pin, build a fresh venv from the file, run the
+backend tests and `pip-audit -r backend/requirements.txt`, commit. Containers run with
+`no-new-privileges`, the backend as non-root `appuser` (uid 1000), and Docker logs rotate at 3 × 10 MB.
