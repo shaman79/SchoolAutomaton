@@ -3,6 +3,7 @@ import { onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
+import ConnectionBanner from '@/components/common/ConnectionBanner.vue'
 import ToastHost from '@/components/common/ToastHost.vue'
 import { toast } from '@/components/common/useToasts'
 import AccessibilityPanel from '@/components/layout/AccessibilityPanel.vue'
@@ -27,8 +28,8 @@ watch(
 /**
  * We do NOT create a profile here (that stays lazy, at the first prompt — SPEC flow). But a returning
  * learner's existing profile is loaded right away, so their class, language and progress show on the
- * first screen instead of only after they submit something. Errors are swallowed (offline / stale
- * code); ensureProfile recovers at the first prompt.
+ * first screen instead of only after they submit something. A connection problem keeps the code and
+ * shows the ConnectionBanner (with Retry); a code the server doesn't know is left to ensureProfile.
  */
 onMounted(() => {
   if (session.resumeCode) void session.loadExisting()
@@ -48,6 +49,7 @@ onMounted(() => {
     <!-- Fixed padding, not safe-area: the sticky header above already clears the top inset, and
          padding that follows the (changing) insets moved every element on the page at once. -->
     <main id="sa-main" class="mx-auto w-full max-w-screen-sm flex-1 px-4 pb-3 pt-2 lg:max-w-2xl">
+      <ConnectionBanner />
       <!-- Keyed by the path: opening another lesson/quiz (same route, new :sessionId) builds a fresh
            view instead of reusing the previous one with its state. (Path, not fullPath: no screen
            changes only its query/hash, and /resume drops its ?code= in place.) -->

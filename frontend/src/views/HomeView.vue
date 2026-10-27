@@ -26,7 +26,9 @@ import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
+import { friendlyErrorKey } from '@/lib/errors'
 import { progressLabel } from '@/lib/format'
+import { MAX_PROMPT_CHARS } from '@/lib/limits'
 import { schoolYearLabel } from '@/lib/grades'
 import { useVoiceInput, voiceInputSupported } from '@/composables/useVoiceInput'
 import { usePrefsStore } from '@/stores/prefs'
@@ -119,7 +121,10 @@ async function go() {
     }
     // clarify / refuse / crisis stay on this view and render inline below.
   } catch (e) {
-    errorMsg.value = e instanceof Error ? e.message : t('home.generic_error')
+    // Never the raw error: a friendly, localized reason. When the learner's own profile couldn't be
+    // loaded, the app-wide "can't reach the server" banner (with Retry) already says so — and their
+    // code is kept; the "Let's go!" button here retries too.
+    errorMsg.value = session.unreachable ? null : t(friendlyErrorKey(e))
   } finally {
     busy.value = false
   }
@@ -200,6 +205,7 @@ function applyRedirect(suggestion: string) {
           ref="promptEl"
           v-model="text"
           rows="3"
+          :maxlength="MAX_PROMPT_CHARS"
           :placeholder="t('home.prompt_placeholder')"
           :aria-describedby="errorMsg ? 'prompt-error' : undefined"
           class="sa-prompt__input"
