@@ -51,7 +51,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 | # | Decision | Resolution |
 |---|----------|------------|
 | 1 | Resume code | 8-char Crockford base32, dash-grouped (`K7QF-2M9X`). Shown once on create; re-showable on demand in Settings. QR/deeplink = post-v1. No passphrase (keep frictionless). Server stores only `resume_code_hash` (sha256); raw code shown to client once and cached in localStorage. |
-| 2 | Real-time transport | **SSE** (`GET /requests/{id}/stream`) for generation progress. Poll fallback endpoint provided. No WebSockets in v1. |
+| 2 | Real-time transport | **SSE** (`GET /requests/{id}/stream`) for generation progress. Poll fallback endpoint provided (`GET /requests/{id}`). A failure is the `failed` event with `{message, code}`, code ∈ busy/unavailable/budget/failed (`error_code` on the poll endpoint); the client words it per code, never shows `message` or exception text. `POST /requests/{id}/generate` starts at most one generation (conditional-UPDATE claim). No WebSockets in v1. |
 | 3 | Background tasks | **In-process** `asyncio` task registry + FastAPI `BackgroundTasks` (SQLite single-writer + Compose favors in-process). A small `app/core/tasks.py` registry tracks status for SSE. No external broker in v1. |
 | 4 | Replicate | **100% hosted** (pay-per-use, license-safe for flux-2-dev non-commercial weights). No self-hosting in v1. |
 | 5 | Mastery formula | `mastery = clamp01( Σ wₛ·R(t,S) / Σ wₛ )` over a concept's items, weights `w`: Review=1.0, Relearning=0.7, Learning=0.5, New=0.0. New-only concept ⇒ mastery 0. `mastered` ≥ 0.85; `needs_review` when `now > decay_due_at`. Frozen in `app/services/mastery.py` + fixture `tests/test_mastery.py`. |
@@ -150,4 +150,8 @@ XSS via LLM/SVG output (dual sanitize + CSP); cost blow-up (verify cache hits, p
 prompt-cache silent misses (assert byte-identical prefix in tests); FSRS/mastery drift (lock formula + fixture);
 SQLite write contention (WAL + INSERT OR IGNORE + funnel writes + 30 s busy_timeout; **never await a
 model/Replicate call while the session holds an uncommitted write** — make the content first, then write
-it in one short burst; `test_generation_never_holds_the_write_lock_during_an_llm_call` guards it).
+it in one short burst; `test_generation_never_holds_the_write_lock_during_an_llm_call` guards it). The
+connection pool is shared by everyone: a long wait (model call, picture, open SSE stream) must not hold a
+pooled connection either — end the transaction first, and streaming routes take no request-scoped session.
+Deploys: `GET /api/v1/health` reports `active_generations`; `infra/scripts/update.sh` waits for 0, gates on
+health, and rolls back to the previous images on failure.
