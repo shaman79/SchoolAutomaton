@@ -23,10 +23,17 @@ backend/data/
 **/*.db
 **/*.db-*
 
-# Secrets / local env
-.env
-.env.*
-!.env.example
+# Secrets / local env — anywhere in the tree (e.g. backend/.env, frontend/.env.local), not just
+# the root. (.env.example is kept: harmless template, no secrets.)
+**/.env
+**/.env.*
+!**/.env.example
+
+# Ops runtime: DB backups hold learners' data; logs, deploy state and locks are host-local.
+backups/
+logs/
+.sa-deploy/
+.sa-*.lock
 
 # VCS / editor / OS / docs
 .git/
