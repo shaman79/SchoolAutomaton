@@ -6,10 +6,12 @@ Admin auth = username/password (Argon2id) → short-lived JWT. Two fully separat
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
+from functools import cache
 
 import jwt
 from argon2 import PasswordHasher
@@ -67,6 +69,27 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def needs_rehash(password_hash: str) -> bool:
     return _ph.check_needs_rehash(password_hash)
+
+
+@cache
+def _dummy_hash() -> str:
+    """An Argon2 hash of a random secret, made once: unknown usernames are verified against it so
+    a login for a name that doesn't exist costs the same as one that does (no timing oracle)."""
+    return _ph.hash(secrets.token_urlsafe(32))
+
+
+def _verify_or_dummy(password: str, password_hash: str | None) -> bool:
+    if password_hash is None:
+        verify_password(password, _dummy_hash())
+        return False
+    return verify_password(password, password_hash)
+
+
+async def verify_password_off_loop(password: str, password_hash: str | None) -> bool:
+    """Verify a password in a worker thread (Argon2 takes ~100+ ms of CPU and would stall every
+    request on the event loop). ``password_hash=None`` (unknown user) verifies against a dummy hash
+    and returns False, taking the same time as a real check."""
+    return await asyncio.to_thread(_verify_or_dummy, password, password_hash)
 
 
 # --------------------------------------------------------------------------- admin JWT
