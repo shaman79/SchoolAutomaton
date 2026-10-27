@@ -5,8 +5,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
+from pydantic import Field, field_validator
+
 from .common import AppModel
 from .enums import NodeState
+from .intent import CrisisResource
+from .questions import check_submitted_value
 
 
 # --------------------------------------------------------------------------- grading
@@ -33,8 +37,22 @@ class LevelUp(AppModel):
     to_level: int
 
 
+class AnswerSupport(AppModel):
+    """Shown INSTEAD of a grade when a typed answer trips the deterministic self-harm net (the same
+    one that screens prompts). Mirrors ``CrisisDecision``: localized message, curated human help lines
+    (learner's country + global fallback) and the AI disclosure. Never LLM counseling."""
+
+    message: str
+    resources: list[CrisisResource] = []
+    disclosure: str
+
+
 class GradeResult(AppModel):
-    """Returned by POST /answers and POST /review/{item_id}. Reveals the correct answer HERE."""
+    """Returned by POST /answers and POST /review/{item_id}. Reveals the correct answer HERE.
+
+    When ``support`` is set the answer was NOT graded and nothing was saved (no answer row, no FSRS
+    review, no XP): ``is_correct`` is false, ``partial_credit``/``xp_awarded`` are 0,
+    ``correct_answer``/``explanation`` are null and ``fsrs_rating`` (1) carries no meaning."""
 
     is_correct: bool
     partial_credit: float = 0.0
@@ -49,6 +67,7 @@ class GradeResult(AppModel):
     mastery_delta: float = 0.0
     new_badges: list[BadgeAward] = []
     level_up: LevelUp | None = None
+    support: AnswerSupport | None = None
 
 
 # --------------------------------------------------------------------------- snapshots
@@ -118,9 +137,14 @@ class ReviewDueResponse(AppModel):
 
 class ReviewRatingIn(AppModel):
     rating: int | None = None    # 1..4 explicit, OR provide the grading fields below
-    submitted_value: Any | None = None
+    submitted_value: Any | None = None  # same bounds as AnswerIn.submitted_value (422 beyond)
     used_hint: bool = False
-    latency_ms: int | None = None
+    latency_ms: int | None = Field(default=None, ge=0)
+
+    @field_validator("submitted_value")
+    @classmethod
+    def _bounded(cls, v: Any) -> Any:
+        return check_submitted_value(v)
 
 
 class TreeNode(AppModel):

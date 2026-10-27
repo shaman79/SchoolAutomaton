@@ -4,9 +4,11 @@
  */
 
 import type { AnswerEvent, ItemPublic } from '@/types/question'
+import { ApiError, NETWORK_ERROR_STATUS, parseRetryAfter } from './apiError'
 import type {
   AttemptStart,
   Decision,
+  GenerationErrorCode,
   GamificationSnapshot,
   GradeResult,
   LearningSessionSummary,
@@ -36,16 +38,9 @@ export function getResumeCode(): string | null {
   return resumeCode
 }
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public code?: string,
-  ) {
-    super(message)
-    this.name = 'ApiError'
-  }
-}
+// The error type lives in its own module so the friendly-error mapper (lib/errors) keeps working
+// when a test mocks this one.
+export { ApiError, NETWORK_ERROR_STATUS, parseRetryAfter } from './apiError'
 
 interface RequestOpts {
   method?: string
@@ -60,24 +55,34 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   if (resumeCode) headers['X-Resume-Code'] = resumeCode
   if (opts.bearer) headers['Authorization'] = `Bearer ${opts.bearer}`
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: opts.method ?? 'GET',
-    headers,
-    body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-  })
+  let res: Response
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      method: opts.method ?? 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      signal: opts.signal,
+    })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') throw e
+    // fetch only rejects when no HTTP answer arrived at all (offline, connection dropped, DNS…).
+    throw new ApiError(NETWORK_ERROR_STATUS, 'Network request failed', 'network')
+  }
 
   if (!res.ok) {
-    let detail = res.statusText
+    let detail: unknown = undefined
     let code: string | undefined
     try {
       const data = await res.json()
-      detail = data.detail ?? detail
-      code = data.code
+      detail = data?.detail
+      if (typeof data?.code === 'string') code = data.code
     } catch {
-      /* non-JSON error */
+      /* non-JSON error (e.g. a proxy's HTML 502 page) */
     }
-    throw new ApiError(res.status, detail, code)
+    // `message` is always a plain string (FastAPI's 422 `detail` is a list, which used to surface
+    // as "[object Object]"). Views never show it anyway — they map the status via lib/errors.
+    const message = typeof detail === 'string' ? detail : res.statusText || `HTTP ${res.status}`
+    throw new ApiError(res.status, message, code, detail, parseRetryAfter(res.headers.get('Retry-After')))
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -135,8 +140,9 @@ export const api = {
       body: { prompt, locale, school_year: schoolYear ?? null },
     }),
 
+  /** Idempotent: an already queued/generating/ready request just reports its status. */
   startGeneration: (requestId: string) =>
-    request<{ request_id: string; status: string }>(`/requests/${requestId}/generate`, {
+    request<{ request_id: string; status: 'queued' | 'generating' | 'ready' }>(`/requests/${requestId}/generate`, {
       method: 'POST',
       body: {},
     }),
@@ -225,42 +231,54 @@ export interface GenerationStreamHandlers {
   onStatus?: (d: { status: string }) => void
   onPlan?: (d: unknown) => void
   onSection?: (d: { ordinal: number; kind: string; title?: string }) => void
-  onReady?: (d: { mode: string; lesson_id?: number; quiz_id?: number }) => void
-  onError?: (d: { message: string }) => void
+  onReady?: (d: { mode: string; lesson_id?: number | null; quiz_id?: number | null }) => void
+  /** Terminal server-side failure (`failed` event). `message` is for logs only — never shown. */
+  onFailed?: (d: { message?: string; code?: GenerationErrorCode | string | null }) => void
+  /** The stream itself broke (dropped connection, proxy error, server restart). The stream is
+   *  already closed when this fires; the caller falls back to polling `GET /requests/{id}`. */
+  onConnectionLost?: () => void
 }
 
 export function streamGeneration(requestId: string, h: GenerationStreamHandlers): EventSource {
   const es = new EventSource(`${API_BASE}/requests/${requestId}/stream`)
+  let closed = false
+  const close = () => {
+    closed = true
+    es.close()
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const on = (name: string, cb?: (d: any) => void) => {
     if (!cb) return
     es.addEventListener(name, (ev: MessageEvent) => {
+      if (closed) return
+      let data: unknown
       try {
-        cb(JSON.parse(ev.data))
+        data = JSON.parse(ev.data)
       } catch {
-        /* ignore malformed frame */
+        return /* ignore malformed frame */
       }
+      cb(data)
     })
   }
   on('status', h.onStatus)
   on('plan', h.onPlan)
   on('section', h.onSection)
   on('ready', (d) => {
-    h.onReady?.(d)
-    es.close()
+    close()
+    h.onReady?.(d ?? {})
   })
   // Backend terminal failure event is named 'failed' (not 'error') so it doesn't shadow the native
   // EventSource 'error' event that fires on transport drops.
   on('failed', (d) => {
-    h.onError?.(d)
-    es.close()
+    close()
+    h.onFailed?.(d ?? {})
   })
-  // Native transport error (connection drop / server gone). EventSource auto-reconnects while the
-  // readyState is CONNECTING; only surface a hard failure once it's CLOSED.
+  // Native transport error. EventSource would quietly keep reconnecting (forever on some phones), so
+  // hand over to the caller's status polling instead — it is cheap and always reaches an end.
   es.onerror = () => {
-    if (es.readyState === EventSource.CLOSED) {
-      h.onError?.({ message: 'Connection lost. Please try again.' })
-    }
+    if (closed) return
+    close()
+    h.onConnectionLost?.()
   }
   return es
 }

@@ -128,6 +128,8 @@ async def generate_quiz(
     topic = intent.topic or intent.subject.value
     existing = await db.scalar(select(Concept).where(Concept.slug == _slugify(topic)))
     known = await _known_misconceptions(db, existing.id if existing else None)
+    # And hand the pooled connection back for the duration of the model call (nothing is staged).
+    await db.commit()
 
     gen_quiz, _ = await generate_structured(
         system_blocks=prompts.system_pedagogy(intent.language),

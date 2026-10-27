@@ -7,12 +7,16 @@
  * "Next" advances; after the final question it calls test.complete() and routes to /results.
  * RESUME: the store reloads the attempt from the server, so a refresh / break / other device lands on
  * the same question with earlier answers (and their feedback) back in place.
+ * The ROUTE decides which quiz opens; a quiz left in the store from earlier is never shown here.
+ * A failed answer keeps the question answerable (friendly toast); a support result (crisis net)
+ * shows the help block instead of feedback, ungraded and still answerable.
  * Mobile-first, touch-first, reduced-motion aware, WCAG 2.2 AA.
  */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
+import CrisisCard from '@/components/CrisisCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
@@ -24,10 +28,12 @@ import { speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
+import { answerErrorKey } from '@/lib/errors'
 import { useGenerationStore } from '@/stores/generation'
 import { usePrefsStore } from '@/stores/prefs'
 import { useTestStore } from '@/stores/test'
 import type { AnswerEvent } from '@/types/question'
+import type { AnswerSupport } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
 const { t } = useI18n()
@@ -38,8 +44,16 @@ const test = useTestStore()
 const { celebrateCorrect } = useCelebration()
 
 const failed = ref(false)
+let leaving = false
+onBeforeUnmount(() => {
+  leaving = true
+})
+// Only THIS route's quiz (the store — persisted per tab — may still hold a previous one).
+const quiz = computed(() => (test.quiz?.request_id === props.sessionId ? test.quiz : null))
+// Support blocks (crisis net) per item id: shown in place of feedback, the question stays open.
+const supportByItem = reactive<Record<number, AnswerSupport>>({})
 const questionEl = ref<HTMLElement | null>(null)
-const readLang = computed(() => speechLang(test.quiz?.language, prefs.educationLocale))
+const readLang = computed(() => speechLang(quiz.value?.language, prefs.educationLocale))
 const submitting = ref(false)
 const finishing = ref(false)
 
@@ -76,6 +90,11 @@ async function onAnswer(e: AnswerEvent) {
       toast.info(t('test.synced'))
       return
     }
+    if (res.support) {
+      // Not graded or counted: the help block replaces feedback; no verdict, no sound.
+      supportByItem[e.questionId] = res.support
+      return
+    }
 
     // Combo / XP feedback as a toast (in addition to the inline AnswerFeedback).
     if (res.is_correct) {
@@ -98,8 +117,9 @@ async function onAnswer(e: AnswerEvent) {
           : t('test.badges_unlocked', { titles: badges.join(', ') })
       toast.success(msg, { icon: 'trophy', timeout: 6000 })
     }
-  } catch {
-    toast.error(t('test.grade_error'))
+  } catch (err) {
+    // The question stays answerable with the learner's input in place.
+    if (!leaving) toast.error(t(answerErrorKey(err)))
   } finally {
     submitting.value = false
   }
@@ -133,31 +153,39 @@ function onSkip() {
   void advance()
 }
 
-onMounted(async () => {
+/** The quiz id for THIS route: the generation store's only when generated for this very request. */
+async function resolveQuizId(): Promise<number | null> {
+  if (gen.requestId === props.sessionId && gen.quizId) return gen.quizId
+  return (await api.getRequestStatus(props.sessionId)).quiz_id
+}
+
+async function openQuiz() {
+  failed.value = false
   try {
-    let id = gen.quizId
+    const id = await resolveQuizId()
+    if (leaving) return
     if (!id) {
-      const status = await api.getRequestStatus(props.sessionId)
-      id = status.quiz_id
+      failed.value = true
+      return
     }
-    if (id) {
-      await test.load(id)
-      if (test.resumed) {
-        toast.info(t('test.resumed', { current: test.currentIndex + 1, total: test.total }))
-      }
-    } else failed.value = true
+    await test.load(id)
+    if (!leaving && test.resumed) {
+      toast.info(t('test.resumed', { current: test.currentIndex + 1, total: test.total }))
+    }
   } catch {
-    failed.value = true
+    if (!leaving) failed.value = true
   }
-})
+}
+
+onMounted(openQuiz)
 </script>
 
 <template>
-  <section v-if="test.quiz" class="sa-test">
+  <section v-if="quiz" class="sa-test">
     <!-- Sticky-ish progress header -->
     <header class="sa-test__header">
       <div class="sa-test__meta">
-        <h1 class="sa-test__title">{{ test.quiz.title }}</h1>
+        <h1 class="sa-test__title">{{ quiz.title }}</h1>
         <span class="sa-test__count" aria-hidden="true">
           {{ indexHuman }} / {{ total }}
         </span>
@@ -193,6 +221,12 @@ onMounted(async () => {
         @answer="onAnswer"
       />
       </div>
+      <CrisisCard
+        v-if="supportByItem[current.item.id]"
+        :message="supportByItem[current.item.id].message"
+        :disclosure="supportByItem[current.item.id].disclosure"
+        :resources="supportByItem[current.item.id].resources"
+      />
       <CorrectAnswer :item="current.item" :feedback="currentFeedback" />
     </div>
 
@@ -236,7 +270,8 @@ onMounted(async () => {
     :description="t('test.load_error_body')"
     announce
   >
-    <SaButton variant="primary" to="/" icon="home">{{ t('common.back') }}</SaButton>
+    <SaButton variant="primary" icon="sparkle" @click="openQuiz">{{ t('common.retry') }}</SaButton>
+    <SaButton variant="ghost" to="/" icon="home">{{ t('common.back') }}</SaButton>
   </EmptyState>
 
   <div v-else class="sa-test__loading">

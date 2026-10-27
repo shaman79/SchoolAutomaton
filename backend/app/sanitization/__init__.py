@@ -22,7 +22,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import RequestContext
-from ..core.security import sha256_hex
+from ..core.security import salted_hash
 from ..schemas.enums import SafetyFlag
 from ..schemas.intent import CrisisDecision, Decision, RefuseDecision, StructuredIntent
 from . import audit, classifier, preprocess, ratelimit, safety, validate
@@ -119,7 +119,10 @@ async def _audit(db, request_id, ctx, raw_prompt, pre, intent, decision, started
         db,
         request_id=request_id,
         ip_hash=ctx.ip_hash,
-        hashed_profile_id=sha256_hex(str(ctx.profile_id)) if ctx.profile_id is not None else None,
+        # Keyed: an unsalted sha256 of a small integer id is reversed by simply counting.
+        hashed_profile_id=(
+            salted_hash(f"audit-profile:{ctx.profile_id}") if ctx.profile_id is not None else None
+        ),
         raw_length=len(raw_prompt or ""),
         removed_char_summary=pre.removed_char_summary,
         suspicion_score=pre.suspicion_score,

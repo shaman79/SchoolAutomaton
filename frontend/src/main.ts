@@ -16,7 +16,9 @@ import 'katex/dist/katex.min.css'
 import './style/main.css'
 
 import App from './App.vue'
+import { toast } from './components/common/useToasts'
 import { EDUCATION_LOCALES, educationLocaleFromBrowser, i18n, setLocale } from './i18n'
+import { installChunkReload } from './lib/chunkReload'
 import { installViewportResync } from './lib/viewportResync'
 import router from './router'
 import { usePrefsStore } from './stores/prefs'
@@ -63,5 +65,11 @@ setLocale(prefs.locale)
 
 // iOS: after the keyboard closes, taps can land away from where buttons are drawn (see the module).
 installViewportResync()
+
+// A deploy removed this tab's old chunks: reload once into the new build (see the module). If even
+// that didn't help, say so instead of leaving taps that silently do nothing.
+installChunkReload(router, () => {
+  toast.warning(i18n.global.t('errors.app_updated'), { timeout: 8000 })
+})
 
 app.mount('#app')

@@ -684,32 +684,79 @@ async def test_objectives_sharing_a_concept_do_not_violate_unique(db):
 # --------------------------------------------------------------------------- SQLite write lock
 
 
-def _record_open_writes(client, raw_conn) -> list[bool]:
+def _record_open_writes(client, raw_conn, session=None) -> list[bool]:
     """Wrap the mock's provider calls to note, at each call, whether the SQLite connection holds an
-    open write transaction (sqlite3 only opens one at the first INSERT/UPDATE/DELETE)."""
+    open write transaction (sqlite3 only opens one at the first INSERT/UPDATE/DELETE) — and, given
+    the session, whether it still holds a pooled connection at all."""
     seen: list[bool] = []
     for name in ("create", "parse"):
         inner = getattr(client.messages, name)
 
         async def wrapped(*args, _inner=inner, **kwargs):
             seen.append(raw_conn.in_transaction)
+            if session is not None:
+                seen.append(session.in_transaction())
             return await _inner(*args, **kwargs)
 
         setattr(client.messages, name, wrapped)
     return seen
 
 
+def _hotspot_item() -> GenItem:
+    return _canned_item().model_copy(update={
+        "item_type": ItemType.HOTSPOT,
+        "payload": {
+            "kind": "hotspot",
+            "image_request": "a leaf, its parts labelled",
+            "regions": [{"id": "r1", "shape": "rect", "coords": [0, 0, 10, 10], "is_correct": True}],
+        },
+        "distractors": [],
+    })
+
+
+def _with_hotspot_items(client) -> None:
+    """Every quiz/section the mock returns also carries a hotspot question (it has a picture)."""
+    inner = client.messages.create.side_effect
+
+    async def _create(**kwargs):
+        out = await inner(**kwargs)
+        obj = out.content[0].text
+        user = kwargs["messages"][0]["content"]
+        if '"title":"GenQuiz"' in user:
+            quiz = GenQuiz.model_validate_json(obj)
+            return _FakeText(quiz.model_copy(update={"questions": [*quiz.questions, _hotspot_item()]}))
+        if '"title":"GenSection"' in user:
+            sec = GenSection.model_validate_json(obj)
+            return _FakeText(sec.model_copy(update={"items": [*sec.items, _hotspot_item()]}))
+        return out
+
+    client.messages.create = AsyncMock(side_effect=_create)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mode", [Mode.STUDY, Mode.TEST])
-async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode):
+async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode, monkeypatch):
     """SQLite has ONE write lock. A generator that writes and then waits a minute for the model kept
     it all that time, so every other learner's answer and progress save timed out ("database is
-    locked") while any lesson or quiz was being generated. The model is called with nothing written."""
+    locked") while any lesson or quiz was being generated. The model is called with nothing written —
+    and with the pooled connection handed back (about fifteen generations waiting at once otherwise
+    used up the pool). A hotspot question's picture is a provider call too: nothing written then
+    either (a staged usage row used to be flushed by the picture-cache lookup just before it)."""
+    from app.visuals import router as visual_router
+
     client = _make_mock_client()
+    _with_hotspot_items(client)
     raw = (await db.connection()).sync_connection.connection.driver_connection
     lr = await _seed_request(db, mode)
     await db.commit()  # as in production: the orchestrator commits 'generating' before generating
-    seen = _record_open_writes(client, raw)
+    seen = _record_open_writes(client, raw, db)
+    pictures: list[bool] = []
+
+    async def fake_svg(spec, *, language, grade_band):
+        pictures.append(raw.in_transaction)
+        return {"svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', "alt": "x"}
+
+    monkeypatch.setattr(visual_router.claude_svg, "generate_svg", fake_svg)
 
     if mode == Mode.STUDY:
         lesson = await lesson_generator.generate_lesson(db, lr, _intent(mode), client=client)
@@ -722,4 +769,6 @@ async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode
         await db.commit()
 
     assert seen, "the mock model was never called"
-    assert not any(seen), f"a write was open during {sum(seen)} of {len(seen)} model calls"
+    assert not any(seen), f"a write or connection was held during {sum(seen)} model-call checks"
+    assert pictures, "no hotspot picture was generated"
+    assert not any(pictures), f"a write was open during {sum(pictures)} of {len(pictures)} pictures"

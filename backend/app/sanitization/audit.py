@@ -2,7 +2,9 @@
 
 Privacy rules (COPPA-aligned):
   * NO raw student text is stored by default.
-  * The topic is HASHED (sha256) inside ``classifier_verdict_json`` — never stored in clear.
+  * The topic is HASHED inside ``classifier_verdict_json`` — never stored in clear. The hash is KEYED
+    (HMAC-SHA256 with APP_SECRET, ``core.security.salted_hash``): a plain sha256 of a short topic
+    like "fractions" is reversed by hashing a word list. (The key name stays ``topic_sha256``.)
   * The Fernet-encrypted raw prompt is retained ONLY when ``settings.raw_capture_on_flag`` is true AND
     a safety flag fired (crisis or refuse-worthy). It is purged after ``audit_raw_retention_days`` by
     an admin job (out of scope here).
@@ -17,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
 from ..core.constants import PROMPT_VERSION
-from ..core.security import encrypt_secret, sha256_hex
+from ..core.security import encrypt_secret, salted_hash
 from ..models import SanitizationAudit
 from ..schemas.intent import (
     CrisisDecision,
@@ -32,7 +34,7 @@ def _hashed_verdict(intent: StructuredIntent) -> dict:
     data = intent.model_dump(mode="json")
     topic = data.get("topic") or ""
     data["topic"] = ""  # never store the clear topic
-    data["topic_sha256"] = sha256_hex(topic) if topic else ""
+    data["topic_sha256"] = salted_hash(f"audit-topic:{topic}") if topic else ""
     # Constraints are free text; keep only their count for audit, not the values.
     constraints = data.pop("constraints", []) or []
     data["constraints_count"] = len(constraints)

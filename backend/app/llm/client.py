@@ -12,8 +12,10 @@ Every Opus 4.8 call goes through :func:`generate_structured`. It:
 * checks ``stop_reason`` (refusal / max_tokens / pause) before trusting the parse;
 * retries up to twice on Pydantic ``ValidationError``, appending a corrective instruction that
   restates the numeric/length bounds (Opus 4.8 strips schema ``minimum/maximum`` — SPEC §5);
-* logs a :class:`GenerationUsage` row (input / cache_creation / cache_read / output tokens) and
-  asserts the cache hit/creation is observable.
+* logs a :class:`GenerationUsage` row (input / cache_creation / cache_read / output tokens, plus the
+  estimated USD cost from ``core.pricing``) and asserts the cache hit/creation is observable. A
+  caller that must not stage a write while the call is in flight passes ``usage_sink`` instead of
+  ``db`` and stages the rows itself once the call has returned (see ``grader.py``).
 
 The Anthropic client is created lazily and can be injected (``set_client`` / the ``client=`` arg)
 so generators are unit-testable with a mock — no network, no key.
@@ -32,6 +34,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.config import settings
+from ..core.pricing import estimate_cost_usd
 from ..models import GenerationUsage
 
 # Opus 4.8 minimum cacheable prefix; we never send temperature/top_p/top_k/prefill.
@@ -48,15 +51,21 @@ def set_client(client: anthropic.AsyncAnthropic | None) -> None:
     _client = client
 
 
+# The SDK retries 429/5xx/529 and timeouts with backoff. Each try may run the full request timeout,
+# so 5 retries meant a child could watch the loading screen for 6 x 2 minutes before hearing it
+# failed; 2 rides out a blip and keeps the worst case to minutes, not a quarter of an hour.
+SDK_MAX_RETRIES = 2
+
+
 def get_client() -> anthropic.AsyncAnthropic:
-    """Lazily construct the shared AsyncAnthropic client (max_retries=5 auto-retries 429/5xx/529).
+    """Lazily construct the shared AsyncAnthropic client (auto-retries 429/5xx/529 + timeouts).
 
     A request timeout is set so a single call can never hang the generation pipeline indefinitely."""
     global _client
     if _client is None:
         _client = anthropic.AsyncAnthropic(
             api_key=settings.anthropic_api_key or "missing-key",
-            max_retries=5,
+            max_retries=SDK_MAX_RETRIES,
             timeout=settings.llm_request_timeout_s,
         )
     return _client
@@ -83,6 +92,12 @@ class GenerationError(RuntimeError):
     """Raised when a call refuses, truncates, or never yields a valid structured payload."""
 
 
+class StopReasonError(GenerationError):
+    """The model stopped in a way the same request would only repeat (refusal, max_tokens,
+    pause_turn). Not retried with a correction: a retry re-bills up to max_tokens of output and makes
+    the child wait minutes longer for the same failure."""
+
+
 def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
     """Map an anthropic ``Usage`` object (or mapping) onto our normalized dataclass."""
 
@@ -103,7 +118,10 @@ def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
 
 
 def usage_row(usage: Usage, *, request_id: str | None, profile_id: int | None = None) -> GenerationUsage:
-    """Build (do not add) a GenerationUsage row from normalized usage. cache_read>0 verifies caching."""
+    """Build (do not add) a GenerationUsage row from normalized usage. cache_read>0 verifies caching.
+
+    ``est_cost_usd`` comes from the single price table in ``core.pricing`` (None for an unknown model);
+    the admin dashboard and the daily AI budget (``services.cost_guard``) sum it."""
     return GenerationUsage(
         profile_id=profile_id,
         request_id=request_id,
@@ -113,6 +131,13 @@ def usage_row(usage: Usage, *, request_id: str | None, profile_id: int | None = 
         cache_creation_tokens=usage.cache_creation_tokens,
         cache_read_tokens=usage.cache_read_tokens,
         output_tokens=usage.output_tokens,
+        est_cost_usd=estimate_cost_usd(
+            usage.model,
+            input_tokens=usage.input_tokens,
+            cache_creation_tokens=usage.cache_creation_tokens,
+            cache_read_tokens=usage.cache_read_tokens,
+            output_tokens=usage.output_tokens,
+        ),
         anthropic_request_id=usage.anthropic_request_id,
     )
 
@@ -152,11 +177,11 @@ def _system_blocks(system_blocks: list[str] | str) -> list[dict[str, Any]]:
 
 def _check_stop_reason(stop_reason: str | None) -> None:
     if stop_reason == "refusal":
-        raise GenerationError("Model refused to generate the requested content.")
+        raise StopReasonError("Model refused to generate the requested content.")
     if stop_reason == "max_tokens":
-        raise GenerationError("Generation hit max_tokens before completing the structured output.")
+        raise StopReasonError("Generation hit max_tokens before completing the structured output.")
     if stop_reason == "pause_turn":
-        raise GenerationError("Generation paused unexpectedly (pause_turn).")
+        raise StopReasonError("Generation paused unexpectedly (pause_turn).")
 
 
 def _extract_parsed[OutputT: BaseModel](message: Any, output_model: type[OutputT]) -> OutputT | None:
@@ -267,6 +292,7 @@ async def generate_structured[OutputT: BaseModel](
     use_tools_fallback: bool = False,
     use_thinking: bool = True,
     use_json_mode: bool = False,
+    usage_sink: list[Usage] | None = None,
 ) -> tuple[OutputT, Usage]:
     """Run one structured Opus 4.8 call and parse it into ``output_model``.
 
@@ -277,6 +303,11 @@ async def generate_structured[OutputT: BaseModel](
     ``use_json_mode`` skips grammar-constrained decoding entirely (the schema goes in the prompt and
     we validate the returned JSON in Python). Use it for big/nested content schemas whose compiled
     grammar would exceed Anthropic's cap; keep the default (parse) for small schemas.
+
+    ``usage_sink`` (optional) receives the :class:`Usage` of EVERY provider call made, including
+    attempts that failed validation and were retried — all of them were billed. Pass it (with
+    ``db=None``) to log usage yourself after the call returns instead of having a row staged on the
+    session between retries.
     """
     # Fail fast with a clear, actionable error only when there is genuinely no client available:
     # no explicit client arg, no injected singleton (tests use set_client), and no API key.
@@ -334,6 +365,8 @@ async def generate_structured[OutputT: BaseModel](
                 or getattr(message, "id", None)
             )
             usage = _coerce_usage(getattr(message, "usage", None), model, raw_request_id)
+            if usage_sink is not None:
+                usage_sink.append(usage)
             _log_usage(db, usage, request_id=request_id, profile_id=profile_id)
 
             _check_stop_reason(getattr(message, "stop_reason", None))
@@ -352,6 +385,8 @@ async def generate_structured[OutputT: BaseModel](
                 result = _extract_parsed(message, output_model)
                 if result is None:
                     raise GenerationError("No parsable structured output in response.")
+        except StopReasonError:
+            raise
         except (pydantic.ValidationError, GenerationError, json.JSONDecodeError) as exc:
             last_error = exc
             correction = (

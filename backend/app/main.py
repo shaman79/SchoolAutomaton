@@ -6,17 +6,19 @@ not-yet-built module stubs degrade cleanly during parallel implementation."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import update
+from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .api.v1.router import api_router
 from .core.config import settings
+from .core.tasks import task_registry
 from .db.bootstrap import bootstrap
 from .db.session import SessionLocal, init_db
 from .models import LearningRequest, SectionVisual
@@ -34,6 +36,7 @@ async def _reap_stuck_requests(db: AsyncSession) -> None:
         .where(LearningRequest.status.in_(("queued", "generating")))
         .values(
             status="error",
+            error_code="failed",
             error_message="Generation was interrupted by a server restart. Please try again.",
         )
     )
@@ -78,11 +81,16 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# The interactive docs + schema stay a development aid: in production they'd hand anyone a map of
+# every endpoint (the frontend's types are generated from a dev server).
+_docs = {} if not settings.is_production else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
 app = FastAPI(
     title="SchoolAutomaton API",
     version="0.1.0",
     description="Sanitize a student prompt, generate study materials or an interactive test, gamify.",
     lifespan=lifespan,
+    **_docs,
 )
 
 app.add_middleware(
@@ -117,6 +125,23 @@ async def _not_implemented(request: Request, exc: NotImplementedError):
 @app.get("/healthz", tags=["meta"])
 async def healthz():
     return {"status": "ok", "app": settings.app_name, "env": settings.env}
+
+
+@app.get("/api/v1/health", tags=["meta"])
+async def health():
+    """Liveness + readiness for the deploy script: the database answers, and how much work a restart
+    would cut off right now (lessons/quizzes being generated, lesson parts being written) — the
+    update script waits for that to reach 0 before restarting."""
+    try:
+        async with SessionLocal() as db:
+            await asyncio.wait_for(db.execute(text("SELECT 1")), timeout=5)
+    except Exception:  # noqa: BLE001 — any failure means "not ready"
+        logger.exception("Health check: database unreachable")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "error", "db": "error", "active_generations": task_registry.active_count()},
+        )
+    return {"status": "ok", "db": "ok", "active_generations": task_registry.active_count()}
 
 
 app.include_router(api_router)

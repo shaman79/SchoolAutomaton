@@ -53,4 +53,5 @@ class GenerationUsage(Base):
     megapixels: Mapped[float | None] = mapped_column(Float, nullable=True)
     est_cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
     anthropic_request_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Indexed: the daily AI budget (services.cost_guard) sums today's rows on every paid call.
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

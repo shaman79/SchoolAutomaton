@@ -1,9 +1,13 @@
 # SchoolAutomaton backend — FastAPI + uvicorn.
-FROM python:3.12-slim AS base
+# The tag pins the Python minor AND the Debian release; update.sh builds with --pull, so Python
+# patch releases and Debian security updates still arrive automatically.
+FROM python:3.12-slim-trixie AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    NLTK_DATA=/usr/local/share/nltk_data
 
 WORKDIR /app
 
@@ -12,13 +16,20 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc libxml2-dev libxslt1-dev curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Exact pins (see the header of requirements.txt for how to upgrade).
 COPY backend/requirements.txt ./requirements.txt
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install -r requirements.txt
+
+# textstat (readability check) needs NLTK's cmudict corpus. Bake it into the image instead of
+# letting the app download it from GitHub at runtime on every new container.
+RUN python -c "import os, nltk; nltk.download('cmudict', download_dir=os.environ['NLTK_DATA'], quiet=True, raise_on_error=True); nltk.data.find('corpora/cmudict')" \
+    && chmod -R a+rX "$NLTK_DATA"
 
 COPY backend/ ./
 
-# Non-root + writable data volume mountpoint.
-RUN useradd -m appuser && mkdir -p /app/data && chown -R appuser:appuser /app
+# Non-root + writable data volume mountpoint. The uid is pinned (1000 is what `useradd` picked in
+# earlier images) so files on the existing sa-data volume keep the right owner.
+RUN useradd -m -u 1000 appuser && mkdir -p /app/data && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000

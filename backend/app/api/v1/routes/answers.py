@@ -2,24 +2,30 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....models import Answer, Item, Profile, QuizAttempt, QuizQuestion
+from ....sanitization import ratelimit
 from ....schemas.gamification import GradeResult
 from ....schemas.questions import AnswerIn
 from ....services import gamification
-from ...deps import get_db, get_profile
+from ...deps import client_ip_hash, get_db, get_profile
 
 router = APIRouter(tags=["answers"])
 
 
 @router.post("/answers", response_model=GradeResult)
 async def submit_answer(
-    body: AnswerIn, profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+    body: AnswerIn,
+    request: Request,
+    profile: Profile = Depends(get_profile),
+    db: AsyncSession = Depends(get_db),
 ):
+    # Per-learner answer rate limit (429 + Retry-After); AI-graded free text has a tighter one below.
+    ratelimit.check_answer_rate(profile.id)
     item = await db.get(Item, body.item_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
@@ -63,6 +69,8 @@ async def submit_answer(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "This item must be answered within a quiz attempt"
             )
+    if gamification.uses_llm_grader(item, body.submitted_value):
+        ratelimit.check_llm_grading_rate(profile.id, client_ip_hash(request))
     try:
         return await gamification.grade_and_reward(db, profile, item, body, body.attempt_id)
     except IntegrityError:

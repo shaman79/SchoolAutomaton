@@ -1,7 +1,15 @@
 # SchoolAutomaton — full stack. `docker compose up --build` brings up backend + frontend(nginx).
 # SQLite DB and the content-hashed visual cache live on the named volume `sa-data` (survives redeploys).
 # Project name is pinned so the volume is always `schoolautomaton_sa-data` regardless of folder name.
+# Deploys/updates go through infra/scripts/{deploy,update}.sh (health-gated, roll back to :previous).
 name: schoolautomaton
+
+# Bounded container logs (json-file default is unbounded and can fill the disk).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
 
 services:
   backend:
@@ -22,6 +30,12 @@ services:
     expose:
       - "8000"
     restart: unless-stopped
+    # Runs as the non-root `appuser` (uid 1000, see Dockerfile.backend); never gains privileges.
+    security_opt:
+      - no-new-privileges:true
+    # Let in-flight requests finish on a redeploy before SIGKILL (default is 10 s).
+    stop_grace_period: 30s
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/healthz'); sys.exit(0)"]
       interval: 30s
@@ -43,6 +57,9 @@ services:
     ports:
       - "${SA_HTTP_BIND:-127.0.0.1}:${SA_HTTP_PORT:-8080}:80"
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
 
 volumes:
   sa-data:

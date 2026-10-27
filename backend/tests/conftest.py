@@ -14,13 +14,27 @@ os.environ.setdefault("SA_ENV", "test")
 os.environ["ANTHROPIC_API_KEY"] = ""
 os.environ["REPLICATE_API_TOKEN"] = ""
 
+import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
+from app.core import throttle  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.bootstrap import bootstrap  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.sanitization import ratelimit  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _fresh_throttles():
+    """Rate limits and guessing throttles are per-process singletons, and every in-process test
+    request comes from the same client IP — start each test with empty buckets."""
+    ratelimit.reset_all()
+    throttle.reset_all()
+    yield
+    ratelimit.reset_all()
+    throttle.reset_all()
 
 
 @pytest_asyncio.fixture

@@ -5,12 +5,15 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+from pydantic import Field
+
 from .common import AppModel, StrictModel
 
 
 class AdminLoginIn(StrictModel):
-    username: str
-    password: str
+    # Bounded so a huge body can't be fed to Argon2 (CPU) or the throttle's key table.
+    username: str = Field(max_length=64)
+    password: str = Field(max_length=1024)
 
 
 class TokenOut(AppModel):

@@ -56,7 +56,17 @@
       "Honeybees show each other the way to flowers by dancing.",
       "Water expands when it freezes, which is why ice floats.",
       "Mount Everest grows a few millimetres taller every year."
-    ]
+    ],
+    "err_busy": "Our lesson maker is very busy right now. Please try again in a moment.",
+    "err_unavailable": "Making new lessons isn't working right now. Please try again later — or review the lessons you already have.",
+    "err_budget": "Today's limit for making new lessons is used up. Come back tomorrow — or practise the lessons you already have!",
+    "err_failed": "We hit a snag while building this. Let's try again.",
+    "err_slow_down": "Whoa, that was quick! Wait a moment, then try again.",
+    "err_network": "We lost the connection to the server. Check your internet and try again.",
+    "err_offline": "You're offline. Check your internet connection, then try again.",
+    "err_timeout": "This is taking much longer than usual. Let's try again.",
+    "err_not_found": "We couldn't find this lesson. Let's go back and start a new one.",
+    "my_lessons": "My lessons"
   },
   "common": {
     "next": "Next",
@@ -121,7 +131,14 @@
     "qr_show": "Show QR code",
     "qr_hide": "Hide QR code",
     "qr_alt": "QR code with the link to continue learning",
-    "qr_hint": "Scan it with another phone's or tablet's camera to carry on there. Only show it to people you trust — whoever scans it can see your progress."
+    "qr_hint": "Scan it with another phone's or tablet's camera to carry on there. Only show it to people you trust — whoever scans it can see your progress.",
+    "device_code": "Code on this device",
+    "switch_title": "Switch to a different code?",
+    "switch_body": "This device is already learning with the code below. Write it down first, so you can come back to this progress later.",
+    "switch_new": "New code: {code}",
+    "switch_confirm": "Switch to the new code",
+    "switch_keep": "Keep my current code",
+    "already_using": "You're already learning with this code on this device."
   },
   "gamification": {
     "level": "Level",
@@ -343,7 +360,10 @@
     "skip": "Skip for now",
     "skip_finish": "Finish without answering",
     "resumed": "Welcome back! You're on question {current} of {total}.",
-    "synced": "This quiz was updated from another tab or device — you're now up to date."
+    "synced": "This quiz was updated from another tab or device — you're now up to date.",
+    "answer_slow_down": "Whoa, that was quick! Wait a moment, then check your answer again.",
+    "answer_offline": "Your answer couldn't be sent — you're offline. It's still here, so try again once you're connected.",
+    "answer_network": "We couldn't reach the server to check your answer. It's still here — please try again."
   },
   "q": {
     "mcq": {
@@ -480,5 +500,19 @@
     "part": "Part {current} of {total}",
     "question": "Question {current} of {total}",
     "completed": "Completed"
+  },
+  "errors": {
+    "offline": "You're offline. Check your internet connection, then try again.",
+    "network": "We can't reach the server right now. Please try again in a moment.",
+    "server_busy": "The server is having a little trouble. Please try again in a moment.",
+    "slow_down": "Whoa, that was quick! Take a short breather and try again in a moment.",
+    "daily_limit": "That's the limit for today. Come back tomorrow for more!",
+    "too_long": "That's a bit too long. Try making it shorter.",
+    "answer_too_long": "That answer is too long. Try making it shorter.",
+    "not_found": "We couldn't find that. Let's go back and try again.",
+    "generic": "Something went wrong. Please try again.",
+    "connection_title": "We can't reach the server",
+    "connection_body": "Don't worry — your progress is saved. Check your internet, then try again.",
+    "app_updated": "The app was just updated. Reload the page to keep going."
   }
 }

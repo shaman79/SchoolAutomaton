@@ -76,7 +76,9 @@ export const useTestStore = defineStore('test', () => {
   }
 
   /** Grade an answer. Resolves to null when the server had already settled this question (answered
-   *  or finished in another tab/device): the store re-syncs to the server's state instead. */
+   *  or finished in another tab/device): the store re-syncs to the server's state instead.
+   *  A result carrying `support` (crisis net) was NOT graded: it is returned for the view to show,
+   *  but not recorded, so the question stays unanswered and answerable. */
   async function submit(event: AnswerEvent): Promise<GradeResult | null> {
     let res: GradeResult
     try {
@@ -88,8 +90,10 @@ export const useTestStore = defineStore('test', () => {
       }
       throw e
     }
+    if (res.support) return res
     results.value[event.questionId] = res
-    if (res.xp_awarded) await useSessionStore().refreshGamification()
+    // The answer is graded and saved; a failed header refresh must not turn that into an error.
+    if (res.xp_awarded) await useSessionStore().refreshGamification().catch(() => {})
     return res
   }
 

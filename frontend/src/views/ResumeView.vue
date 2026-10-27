@@ -1,8 +1,12 @@
 <script setup lang="ts">
 /**
- * ResumeView — frictionless anonymous continue. Enter the 8-char resume code (auto-formatted
- * with the dash group) to re-adopt a server profile. If the device already has a freshly created
- * code, we surface it so the learner can save it. Mobile-first, WCAG 2.2 AA.
+ * ResumeView — frictionless anonymous continue. Enter the 8-char resume code (or open a shared
+ * `/resume?code=…` link) to re-adopt a server profile.
+ *
+ * A device's code IS its learner's progress, so it is never replaced silently: when this device
+ * already learns with a DIFFERENT code, we first show that current code (to write down / copy) and
+ * ask before switching. A device with no code yet resumes straight away (one tap for a parent's
+ * phone). The device's own code is shown here so it can be saved. Mobile-first, WCAG 2.2 AA.
  */
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -10,7 +14,8 @@ import { useRoute, useRouter } from 'vue-router'
 
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
-import { useSessionStore } from '@/stores/session'
+import { friendlyErrorKey } from '@/lib/errors'
+import { formatResumeCode, normalizeResumeCode, useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -20,44 +25,79 @@ const session = useSessionStore()
 const code = ref('')
 const error = ref<string | null>(null)
 const busy = ref(false)
+/** A different code waiting for "yes, switch" (this device already has its own code). */
+const pendingSwitch = ref<string | null>(null)
 
-// A shared link carries the code in `?code=` — prefill it and resume straight away (one tap for the
-// parent/other device). If it fails, the code stays in the box so they can fix and retry.
-onMounted(() => {
-  const q = route.query.code
-  const incoming = Array.isArray(q) ? q[0] : q
-  if (incoming) {
-    code.value = String(incoming).trim()
-    void go()
-  }
-})
-
-// Surface a just-created code (shown once) so the learner can copy/save it.
-const savedCode = computed(() => session.lastResumeCodeForDisplay)
+// The code this device learns with now — shown so it can be saved (and before any switch).
+const deviceCode = computed(() => session.resumeCode)
 
 const canSubmit = computed(() => code.value.trim().length > 0 && !busy.value)
 
+function isSameAsDevice(c: string): boolean {
+  return !!deviceCode.value && normalizeResumeCode(c) === normalizeResumeCode(deviceCode.value)
+}
+
+// A shared link carries the code in `?code=`. It is taken out of the address bar right away (it is
+// the learner's key), then: no code on this device → resume at once; a different one → ask first.
+onMounted(() => {
+  const q = route.query.code
+  const incoming = (Array.isArray(q) ? q[0] : q)?.trim()
+  if (!incoming) return
+  void router.replace({ query: {} })
+  code.value = formatResumeCode(incoming)
+  void go()
+})
+
+/** Submit (form or link): same code → nothing to do; different code on a device that has one →
+ *  confirm first; otherwise resume. */
 async function go() {
   if (!canSubmit.value) return
+  error.value = null
+  const c = code.value.trim()
+  if (isSameAsDevice(c)) {
+    toast.info(t('resume.already_using'))
+    void router.push({ name: 'home' })
+    return
+  }
+  if (deviceCode.value) {
+    pendingSwitch.value = formatResumeCode(c)
+    return
+  }
+  await resume(c)
+}
+
+async function resume(c: string) {
   busy.value = true
   error.value = null
   try {
-    await session.resumeWithCode(code.value.trim())
-    router.push({ name: 'home' })
-  } catch {
-    error.value = t('resume.not_found')
+    await session.resumeWithCode(c)
+    pendingSwitch.value = null
+    void router.push({ name: 'home' })
+  } catch (e) {
+    pendingSwitch.value = null
+    // An unknown code is "check it"; anything else (offline, server busy) says so in kind words.
+    error.value = t(friendlyErrorKey(e, { not_found: 'resume.not_found', generic: 'resume.not_found' }))
   } finally {
     busy.value = false
   }
 }
 
-async function copySaved() {
-  if (!savedCode.value) return
+function confirmSwitch() {
+  if (pendingSwitch.value && !busy.value) void resume(pendingSwitch.value)
+}
+
+function keepCurrent() {
+  pendingSwitch.value = null
+  void router.push({ name: 'home' })
+}
+
+async function copyDeviceCode() {
+  if (!deviceCode.value) return
   try {
-    await navigator.clipboard.writeText(savedCode.value)
+    await navigator.clipboard.writeText(deviceCode.value)
     toast.success(t('resume.copied'))
   } catch {
-    /* clipboard unavailable — code is visible to copy manually */
+    toast.info(t('resume.copy_failed')) // the code is on screen to copy by hand
   }
 }
 </script>
@@ -66,17 +106,43 @@ async function copySaved() {
   <section class="sa-resume">
     <h1 class="sa-resume__title">{{ t('resume.title') }}</h1>
 
-    <!-- Just-created code reminder -->
-    <div v-if="savedCode" class="sa-card sa-resume__saved" role="status">
+    <!-- Switching learners on a device that already has one: show their code first, then ask. -->
+    <div
+      v-if="pendingSwitch && deviceCode"
+      class="sa-card sa-resume__switch"
+      role="alertdialog"
+      aria-labelledby="resume-switch-title"
+      aria-describedby="resume-switch-body"
+    >
+      <h2 id="resume-switch-title" class="sa-resume__switch-title">{{ t('resume.switch_title') }}</h2>
+      <p id="resume-switch-body" class="sa-resume__switch-body">{{ t('resume.switch_body') }}</p>
+      <p class="sa-resume__saved-label">{{ t('resume.device_code') }}</p>
+      <p class="sa-resume__code">{{ deviceCode }}</p>
+      <SaButton variant="ghost" size="sm" icon="check" @click="copyDeviceCode">
+        {{ t('resume.copy') }}
+      </SaButton>
+      <p class="sa-resume__switch-new">{{ t('resume.switch_new', { code: pendingSwitch }) }}</p>
+      <div class="sa-resume__switch-actions">
+        <SaButton variant="primary" block :loading="busy" @click="confirmSwitch">
+          {{ t('resume.switch_confirm') }}
+        </SaButton>
+        <SaButton variant="ghost" block :disabled="busy" @click="keepCurrent">
+          {{ t('resume.switch_keep') }}
+        </SaButton>
+      </div>
+    </div>
+
+    <!-- This device's own code, to copy / write down. -->
+    <div v-else-if="deviceCode" class="sa-card sa-resume__saved" role="status">
       <p class="sa-resume__saved-label">{{ t('resume.your_code') }}</p>
-      <p class="sa-resume__code">{{ savedCode }}</p>
-      <SaButton variant="ghost" size="sm" icon="check" @click="copySaved">
+      <p class="sa-resume__code">{{ deviceCode }}</p>
+      <SaButton variant="ghost" size="sm" icon="check" @click="copyDeviceCode">
         {{ t('resume.copy') }}
       </SaButton>
       <p class="sa-resume__saved-hint">{{ t('resume.save_hint') }}</p>
     </div>
 
-    <form class="sa-card sa-resume__form" @submit.prevent="go">
+    <form v-if="!pendingSwitch" class="sa-card sa-resume__form" @submit.prevent="go">
       <label for="code" class="sa-resume__form-label">{{ t('resume.label') }}</label>
       <input
         id="code"
@@ -94,7 +160,7 @@ async function copySaved() {
       </SaButton>
       <p v-if="error" id="resume-error" class="sa-resume__error" role="alert">{{ error }}</p>
       <!-- The saved-code card above already shows this hint; only show it here in the plain entry case. -->
-      <p v-if="!savedCode" id="resume-hint" class="sa-resume__hint">{{ t('resume.save_hint') }}</p>
+      <p v-if="!deviceCode" id="resume-hint" class="sa-resume__hint">{{ t('resume.save_hint') }}</p>
     </form>
 
     <RouterLink to="/" class="sa-resume__back">{{ t('common.back') }}</RouterLink>
@@ -122,6 +188,36 @@ async function copySaved() {
   text-align: center;
   border: 2px solid var(--color-mint);
   background: color-mix(in srgb, var(--color-mint) 8%, var(--color-surface));
+}
+.sa-resume__switch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1.1rem;
+  text-align: center;
+  border: 2px solid var(--color-sun);
+  background: color-mix(in srgb, var(--color-sun) 8%, var(--color-surface));
+}
+.sa-resume__switch-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+.sa-resume__switch-body {
+  margin: 0;
+  max-width: 36ch;
+}
+.sa-resume__switch-new {
+  margin: 0.25rem 0 0;
+  font-weight: 700;
+}
+.sa-resume__switch-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  margin-top: 0.25rem;
 }
 .sa-resume__saved-label {
   margin: 0;

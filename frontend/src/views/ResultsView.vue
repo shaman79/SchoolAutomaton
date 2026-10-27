@@ -28,7 +28,10 @@ const test = useTestStore()
 const session = useSessionStore()
 const { celebrateLevelUp } = useCelebration()
 
-const summary = computed<ResultsSummary | null>(() => (test.summary as ResultsSummary | null) ?? null)
+// Only the summary of THIS route's quiz — never a previously finished one still in the store.
+const summary = computed<ResultsSummary | null>(() =>
+  test.quiz?.request_id === props.sessionId ? ((test.summary as ResultsSummary | null) ?? null) : null,
+)
 
 const accuracyPct = computed(() =>
   summary.value ? Math.round(summary.value.accuracy * 100) : null,

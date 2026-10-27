@@ -34,7 +34,8 @@ def test_xp_to_next():
 
 def test_progress_pct_bounds():
     assert 0.0 <= leveling.level_progress_pct(150) <= 100.0
-    assert leveling.level_progress_pct(100) == 0.0
+    assert leveling.level_progress_pct(0) == 0.0
+    assert leveling.level_progress_pct(leveling.xp_total_for_level(2)) == 0.0  # fresh level 2
 
 
 def test_item_xp_diminishing_returns():
@@ -51,3 +52,12 @@ def test_combo_multiplier():
     assert leveling.combo_multiplier(8) == 2.0
     assert leveling.combo_multiplier(100) == 2.0  # capped
     assert 1.0 < leveling.combo_multiplier(4) < 2.0
+
+
+def test_progress_bar_moves_during_the_first_level():
+    """It sat at 0% for the whole first 100 XP — a new learner's first answers showed no progress."""
+    assert leveling.level_progress_pct(0) == 0.0
+    assert 0 < leveling.level_progress_pct(30) < leveling.level_progress_pct(90)
+    assert leveling.level_progress_pct(30) == round(30 / leveling.xp_total_for_level(2) * 100, 1)
+    # The bar and "XP to next level" agree on where level 2 starts.
+    assert leveling.xp_to_next(30) == leveling.xp_total_for_level(2) - 30
