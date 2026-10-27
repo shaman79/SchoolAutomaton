@@ -405,6 +405,25 @@ class TestAudit:
         # raw_capture_on_flag defaults False -> still no raw stored.
         assert row.raw_prompt_encrypted is None
 
+    async def test_audit_hashes_are_keyed_not_plain_sha256(self, db, monkeypatch):
+        """A plain sha256 of a short topic ('photosynthesis') or of a small profile id is reversed
+        by hashing a word list / counting; the audit uses the APP_SECRET-keyed hash instead."""
+        from sqlalchemy import select
+
+        from app.core.security import salted_hash, sha256_hex
+        from app.models import SanitizationAudit
+
+        install_llm(monkeypatch, intent(subject=Subject.SCIENCE, topic="photosynthesis"))
+        ctx7 = RequestContext(ip_hash="ip-hash-unit", user_agent="pytest", profile_id=7)
+        await sanitize_request(db, "Teach me photosynthesis", ctx7, "aud-3")
+        await db.commit()
+        row = await db.scalar(select(SanitizationAudit).where(SanitizationAudit.request_id == "aud-3"))
+        topic_hash = row.classifier_verdict_json["topic_sha256"]
+        assert topic_hash != sha256_hex("photosynthesis")
+        assert topic_hash == salted_hash("audit-topic:photosynthesis")
+        assert row.hashed_profile_id not in (None, sha256_hex("7"))
+        assert row.hashed_profile_id == salted_hash("audit-profile:7")
+
 
 # --------------------------------------------------------------------------- end-to-end orchestration
 class TestSanitizeRequest:
