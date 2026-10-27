@@ -58,7 +58,7 @@
       "Mount Everest grows a few millimetres taller every year."
     ],
     "err_busy": "Our lesson maker is very busy right now. Please try again in a moment.",
-    "err_unavailable": "Making new lessons isn't working right now. A grown-up has been told. Please try again later.",
+    "err_unavailable": "Making new lessons isn't working right now. Please try again later — or review the lessons you already have.",
     "err_budget": "Today's limit for making new lessons is used up. Come back tomorrow — or practise the lessons you already have!",
     "err_failed": "We hit a snag while building this. Let's try again.",
     "err_slow_down": "Whoa, that was quick! Wait a moment, then try again.",

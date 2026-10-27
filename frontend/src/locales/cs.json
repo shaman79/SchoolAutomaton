@@ -61,7 +61,7 @@
       "Voda při zamrznutí zvětší svůj objem, proto led plave."
     ],
     "err_busy": "Náš tvůrce lekcí má teď moc práce. Zkus to prosím za chvilku znovu.",
-    "err_unavailable": "Vytváření nových lekcí teď nefunguje. Už o tom ví někdo dospělý. Zkus to prosím později.",
+    "err_unavailable": "Vytváření nových lekcí teď nefunguje. Zkus to prosím později — nebo si zatím zopakuj lekce, které už máš.",
     "err_budget": "Na dnešek už se nové lekce vytvářet nedají. Přijď zase zítra — nebo si zatím zopakuj lekce, které už máš!",
     "err_failed": "Při sestavování jsme narazili na zádrhel. Zkusme to znovu.",
     "err_slow_down": "Páni, to bylo rychlé! Chvilku počkej a pak to zkus znovu.",

@@ -192,6 +192,11 @@ async def start_generation(
     if claimed.rowcount != 1:
         await db.refresh(lr)
         return {"request_id": request_id, "status": lr.status}
+    # Commit the claim NOW. The request's session is only closed after the response — and FastAPI
+    # runs background tasks before that — so left to get_db, this UPDATE held SQLite's write lock for
+    # the whole generation: the generation's own first write, and every other learner's save, then
+    # failed with "database is locked".
+    await db.commit()
     await task_registry.restart(request_id)
     background.add_task(_safe_generate, request_id)
     return {"request_id": request_id, "status": "queued"}

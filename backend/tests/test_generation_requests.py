@@ -12,7 +12,7 @@ import httpx
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 from fastapi.dependencies.models import Dependant
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.api.v1.routes import requests as req_routes
 from app.core.tasks import task_registry
@@ -202,3 +202,55 @@ async def test_health_reports_work_a_restart_would_cut_off(client):
     with task_registry.working("generate:x"), task_registry.working("section:1:2"):
         assert (await client.get("/api/v1/health")).json()["active_generations"] == 2
     assert (await client.get("/api/v1/health")).json()["active_generations"] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_claim_is_committed_before_the_generation_runs(client, monkeypatch, tmp_path):
+    """On a real (file) database: FastAPI runs background tasks BEFORE the request's session is
+    closed, so an uncommitted claim held SQLite's write lock through the whole generation — whose own
+    first write then failed with "database is locked" (as did every other learner's save). The
+    in-memory test database shares one connection and can't show this, hence the file database."""
+    from sqlalchemy import event
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.db import session as session_mod
+    from app.db.base import Base
+    from app.llm import orchestrator
+
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'real.db'}")
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _pragmas(dbapi_conn, _rec):  # noqa: ANN001
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA journal_mode=WAL")
+        cur.execute("PRAGMA busy_timeout=1000")  # fail fast instead of after 30 s
+        cur.close()
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    real = async_sessionmaker(engine, expire_on_commit=False)
+    for mod in (session_mod, req_routes, orchestrator):
+        monkeypatch.setattr(mod, "SessionLocal", real)
+    async with real() as db:
+        db.add(LearningRequest(request_id="lock", decision_type="proceed", mode="study",
+                               structured_intent_json=_INTENT, status="queued",
+                               prompt_version="t", model_id="m"))
+        await db.commit()
+
+    wrote: list[str] = []
+
+    async def fake_run(request_id: str) -> None:  # the orchestrator's first move: a quick write
+        async with real() as db:
+            await db.execute(
+                update(LearningRequest).where(LearningRequest.request_id == request_id)
+                .values(status="generating")
+            )
+            await db.commit()
+        wrote.append(request_id)
+
+    monkeypatch.setattr(req_routes, "run_generation", fake_run)
+    try:
+        assert (await client.post("/api/v1/requests/lock/generate")).status_code == 202
+        assert wrote == ["lock"], "the generation's first write was blocked by the route's claim"
+    finally:
+        await engine.dispose()
