@@ -41,8 +41,11 @@ assets_cache/
 *.key
 secrets/
 
-# ---- Auto-update runtime (scheduler lock; log is covered by *.log) ----
-.sa-update.lock
+# ---- Ops runtime (infra/scripts): DB backups (learners' data!), logs, deploy state, locks ----
+/backups/
+/logs/
+/.sa-deploy/
+.sa-*.lock
 
 # ---- Editor / OS ----
 .vscode/*
