@@ -59,7 +59,17 @@
       "Srdce dospělého člověka udeří zhruba 100 000krát za den.",
       "Včely si ukazují cestu ke květům tancem.",
       "Voda při zamrznutí zvětší svůj objem, proto led plave."
-    ]
+    ],
+    "err_busy": "Náš tvůrce lekcí má teď moc práce. Zkus to prosím za chvilku znovu.",
+    "err_unavailable": "Vytváření nových lekcí teď nefunguje. Už o tom ví někdo dospělý. Zkus to prosím později.",
+    "err_budget": "Na dnešek už se nové lekce vytvářet nedají. Přijď zase zítra — nebo si zatím zopakuj lekce, které už máš!",
+    "err_failed": "Při sestavování jsme narazili na zádrhel. Zkusme to znovu.",
+    "err_slow_down": "Páni, to bylo rychlé! Chvilku počkej a pak to zkus znovu.",
+    "err_network": "Ztratili jsme spojení se serverem. Zkontroluj internet a zkus to znovu.",
+    "err_offline": "Jsi offline. Zkontroluj připojení k internetu a pak to zkus znovu.",
+    "err_timeout": "Trvá to mnohem déle než obvykle. Zkusme to znovu.",
+    "err_not_found": "Tuhle lekci jsme nenašli. Vraťme se zpět a začněme novou.",
+    "my_lessons": "Moje lekce"
   },
   "common": {
     "next": "Další",
@@ -124,7 +134,14 @@
     "qr_show": "Ukázat QR kód",
     "qr_hide": "Skrýt QR kód",
     "qr_alt": "QR kód s odkazem pro pokračování v učení",
-    "qr_hint": "Naskenuj ho fotoaparátem jiného telefonu nebo tabletu a pokračuj tam. Ukazuj ho jen svým lidem – kdo ho naskenuje, uvidí tvůj pokrok."
+    "qr_hint": "Naskenuj ho fotoaparátem jiného telefonu nebo tabletu a pokračuj tam. Ukazuj ho jen svým lidem – kdo ho naskenuje, uvidí tvůj pokrok.",
+    "device_code": "Kód na tomto zařízení",
+    "switch_title": "Přepnout na jiný kód?",
+    "switch_body": "Na tomhle zařízení se už učíš s kódem níže. Nejdřív si ho opiš, ať se k tomuhle pokroku můžeš později vrátit.",
+    "switch_new": "Nový kód: {code}",
+    "switch_confirm": "Přepnout na nový kód",
+    "switch_keep": "Nechat si svůj kód",
+    "already_using": "S tímhle kódem se na tomto zařízení už učíš."
   },
   "gamification": {
     "level": "Úroveň",
@@ -346,7 +363,10 @@
     "skip": "Přeskočit",
     "skip_finish": "Dokončit bez odpovědi",
     "resumed": "Vítej zpět! Jsi u otázky {current} z {total}.",
-    "synced": "Tento kvíz se změnil v jiné záložce nebo na jiném zařízení — teď už vidíš aktuální stav."
+    "synced": "Tento kvíz se změnil v jiné záložce nebo na jiném zařízení — teď už vidíš aktuální stav.",
+    "answer_slow_down": "Páni, to bylo rychlé! Chvilku počkej a pak svou odpověď zkontroluj znovu.",
+    "answer_offline": "Odpověď se nepodařilo odeslat — jsi offline. Pořád ji tu máš, tak to zkus znovu, až ti zase půjde internet.",
+    "answer_network": "Nepodařilo se spojit se serverem a odpověď zkontrolovat. Pořád ji tu máš — zkus to prosím znovu."
   },
   "q": {
     "mcq": {
@@ -483,5 +503,19 @@
     "part": "Část {current} z {total}",
     "question": "Otázka {current} z {total}",
     "completed": "Dokončeno"
+  },
+  "errors": {
+    "offline": "Jsi offline. Zkontroluj připojení k internetu a pak to zkus znovu.",
+    "network": "Teď se nemůžeme spojit se serverem. Zkus to prosím za chvilku znovu.",
+    "server_busy": "Server má teď menší potíže. Zkus to prosím za chvilku znovu.",
+    "slow_down": "Páni, to bylo rychlé! Chvilku si oddychni a pak to zkus znovu.",
+    "daily_limit": "Pro dnešek už je limit vyčerpaný. Zítra můžeš pokračovat!",
+    "too_long": "Tohle je trochu moc dlouhé. Zkus to zkrátit.",
+    "answer_too_long": "Tahle odpověď je moc dlouhá. Zkus ji zkrátit.",
+    "not_found": "Tohle jsme nenašli. Vraťme se zpět a zkusme to znovu.",
+    "generic": "Něco se pokazilo. Zkus to prosím znovu.",
+    "connection_title": "Nemůžeme se spojit se serverem",
+    "connection_body": "Neboj, tvůj pokrok je uložený. Zkontroluj internet a pak to zkus znovu.",
+    "app_updated": "Aplikace se právě aktualizovala. Načti stránku znovu a pokračuj."
   }
 }

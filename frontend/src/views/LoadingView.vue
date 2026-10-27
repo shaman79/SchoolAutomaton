@@ -3,10 +3,12 @@
  * LoadingView — the playful "we're building it" screen. Drives generation via useGeneration
  * (which wraps the frozen generation store + SSE). Shows an animated mascot/spinner, a live
  * checklist of plan sections that tick off as `section` SSE events arrive, an accessible
- * progress bar, and rotating encouraging copy. Navigates to /lesson or /test on ready and
- * offers a friendly retry on error. All motion is reduced-motion aware.
+ * progress bar, and rotating encouraging copy. Navigates to /lesson or /test on ready. Every way
+ * this can fail (couldn't start, the server reported a failure, the connection dropped and polling
+ * couldn't recover, far too slow) ends in a friendly, localized reason with Retry — never an endless
+ * spinner. All motion is reduced-motion aware.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -67,26 +69,48 @@ watch(
   },
 )
 
-onMounted(() => {
-  g.begin().catch(() => {
-    /* errors surface via the store status -> g.isError */
-  })
-  if (!reduced.value) {
-    cheerTimer = setInterval(() => {
-      cheerIdx.value = (cheerIdx.value + 1) % encouragements.length
-    }, 3200)
+// The reason, in words a child understands (the server's own message is never shown).
+const errorText = computed(() => t(`loading.err_${g.errorCode.value ?? 'failed'}`))
+// Retrying can't help with today's budget or a lesson that doesn't exist — offer a way on instead.
+const canRetry = computed(() => g.errorCode.value !== 'budget' && g.errorCode.value !== 'not_found')
+const retrying = ref(false)
+
+function startCheers() {
+  if (reduced.value || cheerTimer) return
+  cheerTimer = setInterval(() => {
+    cheerIdx.value = (cheerIdx.value + 1) % encouragements.length
+  }, 3200)
+}
+function stopCheers() {
+  if (cheerTimer) clearInterval(cheerTimer)
+  cheerTimer = null
+}
+
+async function retry() {
+  if (retrying.value) return
+  retrying.value = true
+  startCheers()
+  try {
+    await g.retry()
+  } finally {
+    retrying.value = false
   }
+}
+
+onMounted(() => {
+  void g.begin() // never rejects: failures surface as g.isError + g.errorCode
+  startCheers()
 })
 
 watch(
   () => g.isError.value,
   (err) => {
-    if (err && cheerTimer) {
-      clearInterval(cheerTimer)
-      cheerTimer = null
-    }
+    if (err) stopCheers()
   },
 )
+
+// Leaving the screen: no timer may keep ticking (the generation stream is closed by useGeneration).
+onBeforeUnmount(stopCheers)
 </script>
 
 <template>
@@ -94,13 +118,20 @@ watch(
     <!-- ERROR STATE -->
     <template v-if="g.isError.value">
       <div class="sa-loading__mascot sa-loading__mascot--sad" aria-hidden="true">😟</div>
-      <h2 class="sa-loading__title" role="alert">{{ headline }}</h2>
-      <p class="sa-loading__sub">{{ g.errorMessage.value || t('loading.error_body') }}</p>
+      <div role="alert" class="sa-loading__alert">
+        <h2 class="sa-loading__title">{{ headline }}</h2>
+        <p class="sa-loading__sub">{{ errorText }}</p>
+      </div>
       <div class="sa-loading__actions">
-        <SaButton variant="primary" icon="back" @click="g.retry()">
+        <SaButton v-if="canRetry" variant="primary" icon="sparkle" :loading="retrying" @click="retry">
           {{ t('common.retry') }}
         </SaButton>
-        <SaButton variant="ghost" to="/">{{ t('common.back') }}</SaButton>
+        <SaButton v-else-if="g.errorCode.value === 'budget'" variant="primary" icon="books" :to="{ name: 'history' }">
+          {{ t('loading.my_lessons') }}
+        </SaButton>
+        <SaButton :variant="canRetry || g.errorCode.value === 'budget' ? 'ghost' : 'primary'" icon="home" to="/">
+          {{ t('common.back') }}
+        </SaButton>
       </div>
     </template>
 
@@ -200,6 +231,12 @@ watch(
 .sa-loading__title {
   font-size: 1.4rem;
   font-weight: 800;
+}
+.sa-loading__alert {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
 }
 .sa-loading__sub {
   margin: 0;

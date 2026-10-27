@@ -19,8 +19,9 @@ const session = useSessionStore()
 const code = computed(() => session.resumeCode ?? '')
 
 // A shareable continue link with the code baked in — paste to a parent/another device and one tap
-// resumes (ResumeView reads ?code= and auto-resumes). The code travels in the URL on purpose; it is
-// the anonymous credential, the same thing the learner would otherwise type by hand.
+// resumes (ResumeView reads ?code=; a device that already has a different code asks first). The code
+// travels in the URL on purpose; it is the anonymous credential, the same thing the learner would
+// otherwise type by hand.
 const shareUrl = computed(() =>
   code.value
     ? `${window.location.origin}/resume?code=${encodeURIComponent(code.value)}`

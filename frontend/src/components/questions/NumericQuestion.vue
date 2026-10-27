@@ -12,6 +12,7 @@ import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { useAnswerTiming } from '@/components/questions/useAnswerTiming'
 import { formatNumber, parseNumericAnswer } from '@/lib/format'
+import { MAX_FREE_TEXT_CHARS } from '@/lib/limits'
 import type { AnswerEvent, ItemPublic, NumericPayload } from '@/types/question'
 import type { GradeResult } from '@/types/session'
 
@@ -81,6 +82,7 @@ function submit() {
         type="text"
         inputmode="decimal"
         autocomplete="off"
+        :maxlength="MAX_FREE_TEXT_CHARS"
         class="sa-num__input"
         :disabled="locked"
         :aria-label="t('q.numeric.label')"

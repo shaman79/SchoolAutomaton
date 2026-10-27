@@ -9,6 +9,7 @@ import { useI18n } from 'vue-i18n'
 import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { useAnswerTiming } from '@/components/questions/useAnswerTiming'
+import { MAX_FREE_TEXT_CHARS } from '@/lib/limits'
 import type { AnswerEvent, ItemPublic, ShortAnswerPayload } from '@/types/question'
 import type { GradeResult } from '@/types/session'
 
@@ -71,6 +72,7 @@ function submit() {
       v-model="text"
       class="sa-sa__input sa-sa__textarea"
       rows="3"
+      :maxlength="MAX_FREE_TEXT_CHARS"
       :placeholder="payload.placeholder ?? t('q.short.placeholder')"
       :disabled="locked"
       :aria-label="t('q.short.label')"
@@ -80,6 +82,7 @@ function submit() {
       v-model="text"
       type="text"
       class="sa-sa__input"
+      :maxlength="MAX_FREE_TEXT_CHARS"
       :placeholder="payload.placeholder ?? t('q.short.placeholder')"
       :disabled="locked"
       :aria-label="t('q.short.label')"

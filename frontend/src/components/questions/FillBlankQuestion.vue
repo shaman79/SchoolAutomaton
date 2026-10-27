@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { useAnswerTiming } from '@/components/questions/useAnswerTiming'
+import { MAX_FREE_TEXT_CHARS } from '@/lib/limits'
 import type { AnswerEvent, ClozePayload, ItemPublic } from '@/types/question'
 import type { GradeResult } from '@/types/session'
 
@@ -148,6 +149,7 @@ function submit() {
             v-model="answers[seg.id]"
             type="text"
             class="sa-cloze__input"
+            :maxlength="MAX_FREE_TEXT_CHARS"
             autocapitalize="off"
             autocomplete="off"
             spellcheck="false"

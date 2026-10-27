@@ -8,10 +8,14 @@
  * (SESSION_SIZE) so it fits a young learner's daily routine. It reuses the knowledge-garden metaphor:
  * a due concept is a plant that needs watering, never a failure.
  * Mirrors the quiz runner's single morphing Check → Next CTA. Mobile-first, reduced-motion aware.
+ * A card the server won't take (404/409: no longer due or not eligible) is skipped silently; a failed
+ * answer keeps the question answerable with a friendly toast; a support result (crisis net) shows the
+ * help block instead of feedback, ungraded and still answerable.
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import CrisisCard from '@/components/CrisisCard.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
@@ -23,10 +27,11 @@ import { speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { ApiError, api } from '@/lib/api'
+import { answerErrorKey } from '@/lib/errors'
 import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore } from '@/stores/session'
 import type { AnswerEvent, ItemPublic } from '@/types/question'
-import type { GradeResult } from '@/types/session'
+import type { AnswerSupport, GradeResult } from '@/types/session'
 
 /** A short daily round — a few minutes, not an exam. */
 const SESSION_SIZE = 10
@@ -39,6 +44,8 @@ const { celebrateCorrect, celebrateLevelUp } = useCelebration()
 const items = ref<ItemPublic[]>([])
 const index = ref(0)
 const results = ref<Record<number, GradeResult>>({})
+// Support blocks (crisis net) per item id: shown in place of feedback, the question stays open.
+const supportByItem = reactive<Record<number, AnswerSupport>>({})
 const loading = ref(true)
 const failed = ref(false)
 const submitting = ref(false)
@@ -94,6 +101,11 @@ async function onAnswer(e: AnswerEvent) {
       used_hint: e.usedHint,
       latency_ms: e.latencyMs,
     })
+    if (res.support) {
+      // Not graded or counted: the help block replaces feedback; no verdict, no sound.
+      supportByItem[e.questionId] = res.support
+      return
+    }
     results.value = { ...results.value, [e.questionId]: res }
     if (res.is_correct) {
       void celebrateCorrect(null)
@@ -111,10 +123,27 @@ async function onAnswer(e: AnswerEvent) {
           : t('test.badges_unlocked', { titles: badges.join(', ') })
       toast.success(msg, { icon: 'trophy', timeout: 6000 })
     }
-  } catch {
-    toast.error(t('test.grade_error'))
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+      // This card isn't due / eligible any more (answered elsewhere, schedule moved): just move on.
+      dropCurrent()
+      return
+    }
+    // The question stays answerable with the learner's input in place.
+    toast.error(t(answerErrorKey(err)))
   } finally {
     submitting.value = false
+  }
+}
+
+/** Take the current card out of this round (the server won't review it) without counting it as
+ *  skipped; the next card slides into its place, or the round ends. */
+function dropCurrent() {
+  const id = current.value?.id
+  items.value = items.value.filter((it) => it.id !== id)
+  if (items.value.length && index.value >= items.value.length) {
+    index.value = items.value.length - 1
+    finish()
   }
 }
 
@@ -257,6 +286,12 @@ onMounted(() => {
           @answer="onAnswer"
         />
         </div>
+        <CrisisCard
+          v-if="supportByItem[current.id]"
+          :message="supportByItem[current.id].message"
+          :disclosure="supportByItem[current.id].disclosure"
+          :resources="supportByItem[current.id].resources"
+        />
         <CorrectAnswer :item="current" :feedback="feedback" />
       </div>
 

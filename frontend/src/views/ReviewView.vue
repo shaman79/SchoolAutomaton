@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * ReviewView — read-only walkthrough of a completed quiz. Resolves the quiz id (generation store,
- * else request status), fetches the learner's most recent attempt with answers revealed
+ * ReviewView — read-only walkthrough of a completed quiz. Resolves the quiz id (generation store
+ * when it is for this route's request, else request status), fetches the learner's most recent attempt with answers revealed
  * (GET /quizzes/{id}/review), and lists every question with: the stem, the learner's answer, the
  * correct answer (when they differed), correct/incorrect status, and the explanation. Reusable
  * anytime from the results screen or "My lessons". Mobile-first, WCAG 2.2 AA.
@@ -35,11 +35,11 @@ const accuracyPct = computed(() =>
 
 onMounted(async () => {
   try {
-    let id = gen.quizId
-    if (!id) {
-      const status = await api.getRequestStatus(props.sessionId)
-      id = status.quiz_id
-    }
+    // The route decides which quiz: the generation store's id only when it is for this request.
+    const id =
+      gen.requestId === props.sessionId && gen.quizId
+        ? gen.quizId
+        : (await api.getRequestStatus(props.sessionId)).quiz_id
     if (!id) {
       failed.value = true
       return
