@@ -1,15 +1,15 @@
 """Thin AsyncAnthropic wrapper: structured output + prompt caching + usage telemetry.
 
-Every Opus 4.8 call goes through :func:`generate_structured`. It:
+Every Opus call goes through :func:`generate_structured`. It:
 
 * orders ``tools -> system -> messages`` (system carries the big byte-identical cached
   pedagogy prefix marked ``cache_control:{type:'ephemeral'}``);
 * sets ``thinking={'type':'adaptive'}`` and an ``output_config.effort`` (no temperature / top_p /
-  top_k / prefill — all 400 on Opus 4.8);
-* parses the response into the supplied Pydantic ``output_model`` via
-  ``client.messages.parse(output_format=...)`` (the installed anthropic 0.105.x API), with a
-  tool-use JSON fallback for models/transports without native structured output;
-* checks ``stop_reason`` (refusal / max_tokens / pause) before trusting the parse;
+  top_k / prefill — all 400 on Opus 4.8+);
+* gets the supplied Pydantic ``output_model`` as JSON — native structured output (the format
+  ``messages.parse`` builds, sent with ``messages.create``), JSON in the prompt for big schemas, or
+  tool use — and validates it itself, after logging the call's usage;
+* checks ``stop_reason`` (refusal / max_tokens / pause) before trusting the output;
 * retries up to twice on Pydantic ``ValidationError``, appending a corrective instruction that
   restates the numeric/length bounds (Opus 4.8 strips schema ``minimum/maximum`` — SPEC §5);
 * logs a :class:`GenerationUsage` row (input / cache_creation / cache_read / output tokens, plus the
@@ -23,6 +23,7 @@ so generators are unit-testable with a mock — no network, no key.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from dataclasses import dataclass
@@ -302,7 +303,22 @@ _thinking_unsupported: set[str] = set()
 
 
 def _is_thinking_unsupported(exc: Exception) -> bool:
-    return "thinking" in str(exc).lower()
+    """The API answered 400 because this model doesn't take ``thinking`` — not just any error whose
+    text contains the word: a validation error quoting the model's own answer ("Nice careful
+    thinking!") used to switch thinking off for that model until the next restart."""
+    return (
+        isinstance(exc, anthropic.APIStatusError)
+        and exc.status_code == 400
+        and "thinking" in str(exc).lower()
+    )
+
+
+@functools.cache
+def _output_format(output_model: type[BaseModel]) -> dict[str, Any]:
+    """The native structured-output format for ``output_model``, built exactly as the SDK's
+    ``messages.parse(output_format=...)`` builds it (so the request is byte-for-byte the same)."""
+    schema = pydantic.TypeAdapter(output_model).json_schema()
+    return {"schema": anthropic.transform_schema(schema), "type": "json_schema"}
 
 
 async def _provider_call(
@@ -314,7 +330,11 @@ async def _provider_call(
       compiled, so this is the only viable mode for big/nested content schemas (lesson/quiz) whose
       constrained-decoding grammar would exceed Anthropic's size/time cap.
     * ``"tools"`` — tool-use structured output (widely supported; used for the Haiku classifier).
-    * ``"parse"`` — native structured-output parse (grammar-constrained); fine for small schemas.
+    * ``"parse"`` — native structured output (grammar-constrained); fine for small schemas. Sent
+      with ``messages.create`` and the format ``messages.parse`` would build: ``parse`` validates
+      inside the call, so a cut-off or invalid answer raised before its usage was logged or its
+      stop_reason checked (and a max_tokens cut-off was retried as if merely invalid).
+      generate_structured validates the text itself, after both.
 
     ``thinking`` is only sent when ``send_thinking``."""
     common: dict[str, Any] = {
@@ -344,9 +364,8 @@ async def _provider_call(
         if output_config and choice["type"] == "auto":
             common["output_config"] = output_config
         return await cli.messages.create(tools=[tool], tool_choice=choice, **common)
-    if output_config:
-        common["output_config"] = output_config
-    return await cli.messages.parse(output_format=output_model, **common)
+    common["output_config"] = {**output_config, "format": _output_format(output_model)}
+    return await cli.messages.create(**common)
 
 
 def _extract_json_text(message: Any) -> str:
@@ -432,9 +451,8 @@ async def generate_structured[OutputT: BaseModel](
         messages = [{"role": "user", "content": user_text}]
 
         try:
-            # The provider call AND its parse/validate live inside the try so a pydantic
-            # ValidationError raised by messages.parse (the SDK validates synchronously during the
-            # await) triggers the corrective-instruction retry instead of escaping (SPEC §5).
+            # The provider call AND the validation of its output live inside the try so a pydantic
+            # ValidationError triggers the corrective-instruction retry instead of escaping (SPEC §5).
             send_thinking = use_thinking and model not in _thinking_unsupported
             call_kwargs = {
                 "model": model, "max_tokens": max_tokens, "system": system, "messages": messages,

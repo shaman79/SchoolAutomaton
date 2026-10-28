@@ -210,3 +210,98 @@ async def test_a_declined_attempt_counts_toward_the_budget_when_it_is_billed(
         for r in rows
     )
     assert await spent_today_usd(db) == pytest.approx(expected)
+
+
+
+# --------------------------------------------------------------------------- native structured output
+class _Graded(BaseModel):
+    correct: bool
+    feedback: str = ""
+
+
+class _Server:
+    """Answers each request with the next body (the last one repeats) and records the requests."""
+
+    def __init__(self, *bodies: dict):
+        self.bodies, self.requests = list(bodies), []
+
+    def __call__(self, request):
+        import json
+
+        import httpx2
+
+        self.requests.append(json.loads(request.content))
+        body = self.bodies[min(len(self.requests), len(self.bodies)) - 1]
+        return httpx2.Response(200, json=body)
+
+
+def _sdk_for(server: _Server):
+    import anthropic
+    import httpx2
+
+    return anthropic.AsyncAnthropic(
+        api_key="test-key", max_retries=0,
+        http_client=anthropic.DefaultAsyncHttpxClient(transport=httpx2.MockTransport(server)),
+    )
+
+
+def _reply(text: str, *, stop_reason: str = "end_turn", output_tokens: int = 50) -> dict:
+    return {
+        "id": "msg_structured", "type": "message", "role": "assistant", "model": "claude-opus-5-5",
+        "content": [{"type": "text", "text": text}],
+        "stop_reason": stop_reason, "stop_sequence": None, "stop_details": None,
+        "usage": {"input_tokens": 900, "output_tokens": output_tokens,
+                  "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+    }
+
+
+@pytest.mark.asyncio
+async def test_structured_calls_send_exactly_what_messages_parse_would():
+    """Same request (so the prompt cache and the grammar are unchanged), sent with create()."""
+    ours, theirs = _Server(_reply('{"correct": true}')), _Server(_reply('{"correct": true}'))
+    out, _ = await cl.generate_structured(
+        system_blocks="s", user="u", output_model=_Graded, model="claude-opus-5-5", effort="low",
+        client=_sdk_for(ours),
+    )
+    assert out.correct is True
+    sent = ours.requests[0]
+    expected = dict(sent)
+    expected.pop("output_config")
+    await _sdk_for(theirs).messages.parse(
+        output_format=_Graded, output_config={"effort": "low"},
+        extra_headers={"anthropic-beta": "server-side-fallback-2026-07-01"},
+        **{k: v for k, v in expected.items() if k not in ("fallbacks",)},
+        extra_body={"fallbacks": "default"},
+    )
+    assert sent == theirs.requests[0]
+
+
+@pytest.mark.asyncio
+async def test_a_cut_off_structured_answer_is_logged_once_and_not_retried():
+    """messages.parse validated inside the call: a max_tokens cut-off raised before its usage was
+    logged, then was retried twice as if merely invalid — three billed calls, none counted."""
+    server = _Server(_reply('{"correct": true, "feedback": "Nice careful thinki', stop_reason="max_tokens",
+                            output_tokens=2000))
+    sink: list = []
+    with pytest.raises(cl.StopReasonError):
+        await cl.generate_structured(
+            system_blocks="s", user="u", output_model=_Graded, model="claude-opus-5-5",
+            max_tokens=2000, effort="low", client=_sdk_for(server), usage_sink=sink,
+        )
+    assert len(server.requests) == 1
+    assert [u.output_tokens for u in sink] == [2000]
+
+
+@pytest.mark.asyncio
+async def test_an_answer_mentioning_thinking_never_switches_thinking_off():
+    """Any error whose text contained "thinking" used to switch thinking off for the model until
+    the next restart — including a validation error quoting the model's own answer."""
+    cl._thinking_unsupported.discard("claude-opus-5-5")
+    server = _Server(_reply('{"feedback": "Nice careful thinking!"}'), _reply('{"correct": true}'))
+    out, _ = await cl.generate_structured(
+        system_blocks="s", user="u", output_model=_Graded, model="claude-opus-5-5", effort="low",
+        client=_sdk_for(server),
+    )
+    assert out.correct is True
+    assert [("thinking" in r) for r in server.requests] == [True, True]
+    assert "claude-opus-5-5" not in cl._thinking_unsupported

@@ -420,18 +420,28 @@ async def _recompute_mastery(
             correct_days.add(now.astimezone(UTC).date().isoformat())
 
     views: list[mastery.CardView] = []
-    mastered_due: list[datetime] = []
     for c in cards:
         state = srs_service.card_state(c.fsrs_card_json)
         r = srs_service.get_retrievability(c.fsrs_card_json, now, desired_retention=retention)
         views.append(mastery.CardView(
             state=state, retrievability=r, last_correct=latest_correct.get(c.item_id, False)
         ))
-        if state == 2 and c.due is not None:  # Review-state cards drive decay timing
-            mastered_due.append(c.due if c.due.tzinfo else c.due.replace(tzinfo=UTC))
 
     after = mastery.concept_mastery(views, correct_days=len(correct_days))
-    decay_due_at = min(mastered_due) if (mastered_due and mastery.is_mastered(after)) else None
+    decay_due_at = None
+    if mastery.is_mastered(after):
+        # When the topic needs watering: the first card due. A Review card's FSRS due marks it; a card
+        # that counts in full while still (re)learning (answered right, SPEC §4 #5) has only a
+        # learning step minutes away as its due, so use when its retrievability falls to the target.
+        mastered_due: list[datetime] = []
+        for c, view in zip(cards, views, strict=True):
+            if view.state == 2 and c.due is not None:
+                mastered_due.append(c.due if c.due.tzinfo else c.due.replace(tzinfo=UTC))
+            elif view.state in (1, 3) and view.last_correct:
+                due = srs_service.decay_due(c.fsrs_card_json, desired_retention=retention)
+                if due is not None:
+                    mastered_due.append(due)
+        decay_due_at = min(mastered_due) if mastered_due else None
 
     prereqs_met = await _prereqs_met(db, profile, concept_id)
     state = mastery.node_state(after, prereqs_met=prereqs_met, decay_due_at=decay_due_at, now=now)
@@ -1248,6 +1258,25 @@ def next_streak_step(streak: StreakState, *, now: datetime, rest_cap: int) -> St
     )
 
 
+def apply_streak_step(streak: StreakState, *, now: datetime, rest_cap: int) -> StreakStep:
+    """Count an activity at ``now`` on a loaded streak row, in memory: the step
+    :func:`next_streak_step` decides, plus the 48 h repair window from the latest activity (never
+    moved backwards). No I/O — :func:`settle_streak` and the startup catch-up both use it."""
+    now = _aware(now)
+    nxt = next_streak_step(streak, now=now, rest_cap=rest_cap)
+    streak.current_streak_len = nxt.current
+    streak.longest_streak = nxt.longest
+    streak.last_active_date = nxt.last_active_date
+    streak.freeze_inventory = nxt.freeze_inventory
+    streak.freezes_used_in_current_streak = nxt.freezes_used
+    streak.rest_days_used_this_week = nxt.rest_days_used
+    streak.is_perfect = nxt.is_perfect
+    expires = now + timedelta(hours=STREAK_REPAIR_WINDOW_HOURS)
+    if streak.repair_window_expires_at is None or expires > _aware(streak.repair_window_expires_at):
+        streak.repair_window_expires_at = expires
+    return nxt
+
+
 def effective_streak_len(streak: StreakState, *, now: datetime, rest_cap: int) -> int:
     """The streak as it stands at ``now``, before the learner does anything more today — read-only.
 
@@ -1293,19 +1322,7 @@ async def settle_streak(
     settings = await db.scalar(
         select(ProfileSettings).where(ProfileSettings.profile_id == profile.id)
     )
-    nxt = next_streak_step(streak, now=now, rest_cap=rest_day_cap(profile, settings))
-
-    streak.current_streak_len = nxt.current
-    streak.longest_streak = nxt.longest
-    streak.last_active_date = nxt.last_active_date
-    streak.freeze_inventory = nxt.freeze_inventory
-    streak.freezes_used_in_current_streak = nxt.freezes_used
-    streak.rest_days_used_this_week = nxt.rest_days_used
-    streak.is_perfect = nxt.is_perfect
-    # The repair window runs 48 h from the latest activity (never moved backwards).
-    expires = now + timedelta(hours=STREAK_REPAIR_WINDOW_HOURS)
-    if streak.repair_window_expires_at is None or expires > _aware(streak.repair_window_expires_at):
-        streak.repair_window_expires_at = expires
+    nxt = apply_streak_step(streak, now=now, rest_cap=rest_day_cap(profile, settings))
     profile.last_active_at = now
     await db.flush()
 

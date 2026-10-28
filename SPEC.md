@@ -71,7 +71,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 - **Config constants** centralized in `app/core/config.py` (env-driven `Settings`) and `app/core/constants.py`
   (pedagogy/gamification/visual constants). `MODEL_ID`, `SANITIZER_MODEL_ID`, `PROMPT_VERSION` are stamped on
   every generated row.
-- **Structured LLM output** via `client.messages.parse(output_format=PydanticModel)`. **Never** assistant
+- **Structured LLM output**: the native structured-output format `messages.parse(output_format=PydanticModel)` builds, sent with `messages.create` so usage is logged and `stop_reason` checked before the output is validated (JSON-in-prompt for big schemas, tool use for the classifier). **Never** assistant
   prefill, **never** send `temperature`/`top_p`/`top_k`/`budget_tokens` (400 on Opus 4.8+). `thinking={"type":
   "adaptive"}` always on. Always check `stop_reason` before trusting parsed output. JSON-schema `minimum/maximum/
   minLength/maxLength` are stripped → enforce bounds in prompt text **and** Pydantic validators;

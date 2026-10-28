@@ -222,7 +222,7 @@ describe('after a lesson part', () => {
     )
   })
 
-  it('ignores a reply that lands after the learner left the lesson', async () => {
+  async function openLessonWithPendingReply() {
     mocked.getLesson.mockResolvedValue(lesson())
     mocked.syncLessonProgress.mockResolvedValueOnce({
       lesson_id: 9,
@@ -232,16 +232,38 @@ describe('after a lesson part', () => {
     })
     const store = useLessonStore()
     await store.load(9)
-
     let reply: (v: unknown) => void = () => {}
     mocked.syncLessonProgress.mockReturnValueOnce(new Promise((r) => (reply = r)) as never)
     await store.revealNext()
-    store.reset() // e.g. another learner took over this device
-    reply({ lesson_id: 9, revealed_up_to: 1, completed: false, answers: [], streak: streak(8) })
+    return { store, reply: (v: unknown) => reply(v) }
+  }
+  const lateReply = {
+    lesson_id: 9, revealed_up_to: 1, completed: false, answers: [], streak: streak(8),
+    new_badges: [{ code: 'resilient', title: 'Resilient', tier: 1 }],
+  }
+
+  it('ignores a reply that lands after another learner took over the device', async () => {
+    for (const t of [...toasts.items]) toast.dismiss(t.id)
+    useSessionStore().resumeCode = 'AAAA-1111'
+    const { store, reply } = await openLessonWithPendingReply()
+    store.reset()
+    useSessionStore().resumeCode = 'BBBB-2222' // another learner resumed with their code
+    reply(lateReply)
     await Promise.resolve()
     await Promise.resolve()
 
     expect(useSessionStore().gamification?.streak.current).toBe(0)
+    expect(toasts.items.map((t) => t.message)).not.toContain('Badge unlocked: Resilient!')
+  })
+
+  it('still shows the streak and badge when the same learner moved on to another lesson', async () => {
+    for (const t of [...toasts.items]) toast.dismiss(t.id)
+    useSessionStore().resumeCode = 'AAAA-1111'
+    const { store, reply } = await openLessonWithPendingReply()
+    store.reset() // opened another lesson before the reply came back
+    reply(lateReply)
+    await vi.waitFor(() => expect(useSessionStore().gamification?.streak.current).toBe(8))
+    expect(toasts.items.map((t) => t.message)).toContain('Badge unlocked: Resilient!')
   })
 })
 

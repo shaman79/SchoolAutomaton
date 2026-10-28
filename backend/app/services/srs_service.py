@@ -111,6 +111,34 @@ def get_retrievability(
     return max(0.0, min(1.0, float(r)))
 
 
+def decay_due(
+    card_json: str, *, desired_retention: float = DESIRED_RETENTION_DEFAULT
+) -> datetime | None:
+    """When the card's retrievability R(t,S) falls below ``desired_retention`` — the moment a Review
+    card's due date marks. For a card still in (re)learning, whose FSRS due is only the next learning
+    step minutes away. Found by bisection over FSRS's own retrievability (no FSRS math here); None
+    for a never-reviewed card."""
+    card = Card.from_json(card_json)
+    if card.stability is None or card.last_review is None:
+        return None
+    scheduler = _scheduler(desired_retention)
+    start = _aware(card.last_review)
+
+    def kept(days: float) -> bool:
+        return scheduler.get_card_retrievability(card, start + timedelta(days=days)) >= desired_retention
+
+    lo, hi = 0.0, float(FSRS_MAXIMUM_INTERVAL_DAYS)
+    if kept(hi):
+        return start + timedelta(days=hi)
+    for _ in range(32):  # R only falls with time; ~1 minute resolution over the maximum interval
+        mid = (lo + hi) / 2
+        if kept(mid):
+            lo = mid
+        else:
+            hi = mid
+    return start + timedelta(days=hi)
+
+
 def card_state(card_json: str) -> int:
     """Integer FSRS state of the card (1 Learning, 2 Review, 3 Relearning per py-fsrs ``State``).
 

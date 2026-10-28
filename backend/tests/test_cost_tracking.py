@@ -68,14 +68,17 @@ def _usage():
 
 
 def _parsed(obj):
-    return SimpleNamespace(parsed_output=obj, stop_reason="end_turn", id="msg_1", usage=_usage(), content=[])
+    """A structured-output reply: the object as a JSON text block (none: no usable output)."""
+    content = [SimpleNamespace(type="text", text=obj.model_dump_json())] if obj is not None else []
+    return SimpleNamespace(stop_reason="end_turn", id="msg_1", usage=_usage(), content=content)
 
 
 def _grader_client(*, observe=None, fail_first=False):
-    """A mock AsyncAnthropic whose parse() returns a GraderOutput (optionally a bad first reply)."""
+    """A mock AsyncAnthropic whose structured-output call returns a GraderOutput (optionally a bad
+    first reply)."""
     calls = {"n": 0}
 
-    async def _parse(**kwargs):
+    async def _create(**kwargs):
         calls["n"] += 1
         if observe is not None:
             observe(kwargs)
@@ -83,7 +86,7 @@ def _grader_client(*, observe=None, fail_first=False):
             return _parsed(None)  # no structured output → validation retry (still billed)
         return _parsed(GraderOutput(correct=True, partial_credit=1.0, explanation="Yes."))
 
-    return SimpleNamespace(messages=SimpleNamespace(parse=AsyncMock(side_effect=_parse), create=AsyncMock()))
+    return SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=_create)))
 
 
 async def _seed(db: AsyncSession, item_type="short_answer", **kw) -> tuple[Profile, Item]:

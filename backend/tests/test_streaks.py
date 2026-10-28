@@ -580,3 +580,102 @@ async def test_a_failing_catch_up_never_stops_the_app_from_starting(monkeypatch)
 
     monkeypatch.setattr(streak_catchup, "catch_up_streaks", boom)
     await main._catch_up_streaks()  # logged, not raised
+
+
+async def test_the_catch_up_keeps_the_repair_window_a_later_lesson_set(client):
+    """No freezes left. Wed 21: lessons at 08:00 and 20:00; Thu 22: nothing; Fri 23 16:00 and daily
+    after. Counted live, the 20:00 answer moved the 48 h window past Fri 16:00 and Thursday was
+    forgiven. Replaying only each day's first answer broke the streak at Friday."""
+    headers, pid = await _new_profile(client)
+    _, item_id = await _seed_lesson("catch-up-window", pid)
+    async with SessionLocal() as db:
+        await _set_streak(db, pid, current_streak_len=4, longest_streak=4,
+                          last_active_date=LAST_QUIZ.date(), freeze_inventory=0,
+                          repair_window_expires_at=LAST_QUIZ + timedelta(hours=48))
+        await db.commit()
+    moments = [_at(10, 21, 8), _at(10, 21, 20), _at(10, 23, 16)] + [_at(10, d, 16) for d in range(24, 28)]
+    await _lesson_answers(pid, item_id, moments)
+    async with SessionLocal() as db:
+        assert await catch_up_streaks(db) == 1
+        await db.commit()
+    assert await _streak_row(pid) == (10, date(2026, 10, 27))
+
+
+async def test_a_lesson_after_the_last_quiz_that_day_still_moves_the_window(client):
+    """Quiz Tue 27 at 08:00 (the stored day), lessons that evening at 20:00, away Wed 28, back Thu 29
+    at 15:00: counted live, the 20:00 answer keeps Thursday inside the repair window."""
+    headers, pid = await _new_profile(client)
+    _, item_id = await _seed_lesson("catch-up-same-day", pid)
+    quiz = _at(10, 27, 8)
+    async with SessionLocal() as db:
+        await _set_streak(db, pid, current_streak_len=4, longest_streak=4, last_active_date=quiz.date(),
+                          freeze_inventory=0, repair_window_expires_at=quiz + timedelta(hours=48))
+        await db.commit()
+    await _lesson_answers(pid, item_id, [_at(10, 27, 20)])
+    async with SessionLocal() as db:
+        assert await catch_up_streaks(db) == 1
+        await db.commit()
+        profile = await db.get(Profile, pid)
+        assert (await gamification.settle_streak(db, profile, _at(10, 29, 15))).current == 5
+        assert await catch_up_streaks(db) == 0
+
+
+async def test_the_catch_up_matches_counting_every_activity_live(client):
+    """Random histories (several sessions on some days, gaps, rest days): replaying each day's
+    first and last moment ends exactly where settling every activity as it happened does."""
+    import random
+
+    rng = random.Random(20261028)
+    for case in range(40):
+        headers, pid = await _new_profile(client)
+        _, item_id = await _seed_lesson(f"catch-up-live-{case}", pid)
+        rest_cap = rng.choice([0, 1, 2])
+        async with SessionLocal() as db:
+            (await db.get(ProfileSettings, pid)).rest_days_per_week = rest_cap
+            await db.commit()
+        moments, day = [], _at(9, 1, 0)
+        for _ in range(rng.randint(5, 30)):
+            day += timedelta(days=rng.choice([1, 1, 1, 2, 2, 3, 5]))
+            for _ in range(rng.choice([1, 1, 2, 3])):
+                moments.append(day + timedelta(hours=rng.randint(0, 23), minutes=rng.randint(0, 59)))
+        moments.sort()
+        await _lesson_answers(pid, item_id, moments)
+
+        live = _state(profile_id=pid, freeze_inventory=2)
+        for moment in moments:
+            gamification.apply_streak_step(live, now=moment, rest_cap=rest_cap)
+        async with SessionLocal() as db:
+            assert await catch_up_streaks(db) >= 1
+            await db.commit()
+            row = await db.get(StreakState, pid)
+            fields = ("current_streak_len", "longest_streak", "last_active_date", "freeze_inventory",
+                      "freezes_used_in_current_streak", "rest_days_used_this_week", "is_perfect")
+            assert [getattr(row, f) for f in fields] == [getattr(live, f) for f in fields], case
+            assert row.repair_window_expires_at.replace(tzinfo=UTC) == live.repair_window_expires_at
+
+
+async def test_the_catch_up_costs_a_few_queries_whatever_the_history(client):
+    """It runs before the app answers health checks: one query per replayed day for every learner
+    could hold a big first deploy past the health gate."""
+    from sqlalchemy import event
+
+    from app.db.session import engine
+
+    for n in range(3):
+        headers, pid = await _new_profile(client)
+        _, item_id = await _seed_lesson(f"catch-up-cost-{n}", pid)
+        await _lesson_answers(pid, item_id, [_at(9, 1, 9) + timedelta(days=d, hours=h)
+                                              for d in range(60) for h in (0, 5)])
+    statements: list[str] = []
+
+    def count(*_args, **_kwargs):
+        statements.append("x")
+
+    event.listen(engine.sync_engine, "before_cursor_execute", count)
+    try:
+        async with SessionLocal() as db:
+            assert await catch_up_streaks(db) == 3
+            await db.commit()
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", count)
+    assert len(statements) <= 12, len(statements)

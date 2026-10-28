@@ -20,6 +20,15 @@ class _Out(BaseModel):
     x: int = 0
 
 
+def _bad_request(message: str) -> Exception:
+    """What the SDK raises for an HTTP 400."""
+    import anthropic
+    import httpx2
+
+    request = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.BadRequestError(message, response=httpx2.Response(400, request=request), body=None)
+
+
 class _ToolBlock:
     type = "tool_use"
 
@@ -45,9 +54,7 @@ async def test_thinking_self_heals_on_unsupported_model(monkeypatch):
         async def create(self, **kw):
             calls.append(kw)
             if "thinking" in kw:
-                raise RuntimeError(
-                    "Error code: 400 - adaptive thinking is not supported on this model"
-                )
+                raise _bad_request("adaptive thinking is not supported on this model")
             return _Msg({"x": 5})
 
     class FakeClient:

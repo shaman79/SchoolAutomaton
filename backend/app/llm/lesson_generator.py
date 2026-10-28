@@ -113,6 +113,17 @@ def _is_english(language: str) -> bool:
 # --------------------------------------------------------------------------- concept / misconception upserts
 
 
+async def _keep_usage_of_failed_call(db: AsyncSession) -> None:
+    """A failed generation call was billed all the same (output that never validated, a max_tokens
+    cut-off, a refusal after the fallback): write its staged usage rows now — the callers roll back,
+    or never commit, on this path, and the daily AI cap would never see that spend. Only usage is
+    staged here (the session was committed before the call). Best-effort: never hides the error."""
+    try:
+        await db.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("Could not record the usage of a failed generation call", exc_info=True)
+
+
 async def _upsert_concept(db: AsyncSession, slug: str, *, name: str, subject: str, grade: str) -> Concept:
     """INSERT OR IGNORE a Concept by slug, then return the row (single-writer SQLite safe)."""
     slug = _slugify(slug)
@@ -307,20 +318,21 @@ async def _generate_section(
     request_id: str,
     sem: asyncio.Semaphore,
     client: Any,
+    usages: list[Any] | None = None,
 ) -> tuple[GenSection, list[Any]]:
     """Fill one section body via a structured call, bounded by the semaphore. Regenerate explanation
     sections (max 2) when English FKGL exceeds target + tolerance.
 
     Does NOT touch the DB (it runs inside ``asyncio.gather`` over a shared session, which is not
     concurrency-safe); returns the collected per-call Usage objects so the caller can log them
-    serially.
+    serially. ``usages``: the caller's list, which keeps the billed calls even if this raises.
     """
     target = READABILITY_TARGETS.get(intent.grade_band.value, READABILITY_TARGETS["unknown"])["fkgl"]
     user = prompts.build_section_user(
         intent, kind=stub.kind.value, title=stub.title, objective=stub.objective
     )
 
-    usages: list[Any] = []
+    usages = [] if usages is None else usages
     async with sem:
         attempts = 3 if stub.kind == SectionKind.EXPLANATION and _is_english(intent.language) else 1
         section: GenSection | None = None
@@ -450,11 +462,17 @@ async def realize_section_visuals(section_id: int) -> None:
             if not claimed.rowcount:
                 continue
             spec = GenVisualSpec.model_validate(spec_json)
+            # Every model call that returned, staged by us (rebuilt from the list each time) so a
+            # rollback below — a timeout cancelling a diagram's retry — can't drop a billed call.
+            billed: list[Any] = []
             try:
                 asset = await asyncio.wait_for(
-                    ensure_visual(db, spec, language=language, grade_band=grade_band),
+                    ensure_visual(
+                        db, spec, language=language, grade_band=grade_band, usage_sink=billed
+                    ),
                     timeout=settings.per_visual_timeout_s,
                 )
+                db.add_all([usage_row(u, request_id=None) for u in billed])
                 # Persist the asset (from ensure_visual) AND the status flip atomically.
                 await db.execute(
                     update(SectionVisual)
@@ -468,6 +486,7 @@ async def realize_section_visuals(section_id: int) -> None:
                     section_id, ordinal, exc_info=True,
                 )
                 await db.rollback()
+                db.add_all([usage_row(u, request_id=None) for u in billed])
                 await db.execute(
                     update(SectionVisual)
                     .where(SectionVisual.id == sv_id)
@@ -515,18 +534,22 @@ async def generate_lesson(
     request_id: str = request.request_id
 
     # ---- Step 1: plan ----
-    plan, _ = await generate_structured(
-        system_blocks=prompts.system_pedagogy(intent.language),
-        user=prompts.build_lesson_plan_user(intent),
-        output_model=LessonPlan,
-        model=settings.model_id,
-        max_tokens=_PLAN_MAX_TOKENS,
-        effort="medium",
-        use_json_mode=True,  # nested objectives/sections exceed the constrained-decoding grammar cap
-        db=db,
-        request_id=request_id,
-        client=client,
-    )
+    try:
+        plan, _ = await generate_structured(
+            system_blocks=prompts.system_pedagogy(intent.language),
+            user=prompts.build_lesson_plan_user(intent),
+            output_model=LessonPlan,
+            model=settings.model_id,
+            max_tokens=_PLAN_MAX_TOKENS,
+            effort="medium",
+            use_json_mode=True,  # nested objectives/sections exceed the constrained-decoding cap
+            db=db,
+            request_id=request_id,
+            client=client,
+        )
+    except Exception:
+        await _keep_usage_of_failed_call(db)
+        raise
     await task_registry.publish(
         request_id,
         "plan",
@@ -677,7 +700,16 @@ async def _make_section(
     # learner's requests).
     await db.commit()
     sem = asyncio.Semaphore(1)
-    gen, usages = await _generate_section(intent, stub, request_id=request_id, sem=sem, client=client)
+    usages: list[Any] = []
+    try:
+        gen, usages = await _generate_section(
+            intent, stub, request_id=request_id, sem=sem, client=client, usages=usages
+        )
+    except Exception:
+        for usage in usages:
+            db.add(usage_row(usage, request_id=request_id))
+        await _keep_usage_of_failed_call(db)
+        raise
     hotspots = await _prepare_hotspot_images(
         db, list(gen.items), language=intent.language, grade_band=intent.grade_band.value,
         layout_slot=LayoutSlot.INLINE_FIGURE,

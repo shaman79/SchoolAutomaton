@@ -122,16 +122,17 @@ async def test_crisis_answer_inside_a_quiz_attempt_leaves_the_question_open(clie
 
 # --------------------------------------------------------------------------- injection delimiting
 def _capturing_client(captured: list[dict]):
-    async def _parse(**kwargs):
+    async def _create(**kwargs):
         captured.append(kwargs)
+        graded = GraderOutput(correct=False, partial_credit=0.0, explanation="no")
         return SimpleNamespace(
-            parsed_output=GraderOutput(correct=False, partial_credit=0.0, explanation="no"),
-            stop_reason="end_turn", id="m", content=[],
+            stop_reason="end_turn", id="m",
+            content=[SimpleNamespace(type="text", text=graded.model_dump_json())],
             usage=SimpleNamespace(input_tokens=1, cache_creation_input_tokens=0,
                                   cache_read_input_tokens=0, output_tokens=1),
         )
 
-    return SimpleNamespace(messages=SimpleNamespace(parse=AsyncMock(side_effect=_parse), create=AsyncMock()))
+    return SimpleNamespace(messages=SimpleNamespace(create=AsyncMock(side_effect=_create)))
 
 
 async def test_injection_style_answer_is_fenced_as_untrusted_data():

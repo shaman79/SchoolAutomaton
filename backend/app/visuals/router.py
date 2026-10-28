@@ -155,7 +155,14 @@ async def _placeholder_asset(
     )
 
 
-async def _ensure_svg(db: AsyncSession, spec: GenVisualSpec, *, language: str, grade_band: str) -> VisualAsset:
+async def _ensure_svg(
+    db: AsyncSession,
+    spec: GenVisualSpec,
+    *,
+    language: str,
+    grade_band: str,
+    usage_sink: list | None = None,
+) -> VisualAsset:
     params = {"kind": _kind_value(spec), "prompt_version": PROMPT_VERSION}
     asset_hash = _svg_hash(
         spec, model=settings.model_id, language=language, grade_band=grade_band, params=params
@@ -168,7 +175,7 @@ async def _ensure_svg(db: AsyncSession, spec: GenVisualSpec, *, language: str, g
 
     from ..llm.client import usage_row  # noqa: PLC0415 — lazy, like claude_svg's client import
 
-    calls: list = []
+    calls: list = usage_sink if usage_sink is not None else []
     try:
         result = await claude_svg.generate_svg(
             spec, language=language, grade_band=grade_band, usage_sink=calls
@@ -178,9 +185,10 @@ async def _ensure_svg(db: AsyncSession, spec: GenVisualSpec, *, language: str, g
         result = None
     finally:
         # Every billed attempt counts toward the daily AI budget. Staged only now that no call is in
-        # flight; the callers' commits write the rows.
-        for usage in calls:
-            db.add(usage_row(usage, request_id=None))
+        # flight; the callers' commits write the rows — unless the caller collects them itself.
+        if usage_sink is None:
+            for usage in calls:
+                db.add(usage_row(usage, request_id=None))
     if result is None:
         return await _placeholder_asset(db, spec, language=language)
 
@@ -251,17 +259,25 @@ async def _ensure_raster(db: AsyncSession, spec: GenVisualSpec, *, language: str
 
 
 async def ensure_visual(
-    db: AsyncSession, spec: GenVisualSpec, *, language: str, grade_band: str
+    db: AsyncSession,
+    spec: GenVisualSpec,
+    *,
+    language: str,
+    grade_band: str,
+    usage_sink: list | None = None,
 ) -> VisualAsset:
     """Return a cached :class:`VisualAsset` for ``spec`` or generate, sanitize, persist and cache one.
 
-    Routes by ``spec.visual_kind``. Never raises on a provider failure — degrades to a placeholder SVG."""
+    Routes by ``spec.visual_kind``. Never raises on a provider failure — degrades to a placeholder SVG.
+    ``usage_sink``: see :func:`app.visuals.ensure_visual`."""
     kind = _kind_value(spec)
     try:
         if kind in _ICON_KINDS:
             return await _ensure_icon(db, spec, language=language)
         if kind in SVG_VISUAL_KINDS:
-            return await _ensure_svg(db, spec, language=language, grade_band=grade_band)
+            return await _ensure_svg(
+                db, spec, language=language, grade_band=grade_band, usage_sink=usage_sink
+            )
         if kind in RASTER_VISUAL_KINDS:
             return await _ensure_raster(db, spec, language=language, grade_band=grade_band)
         # Unknown / video kind, or video disabled: degrade to a safe placeholder.

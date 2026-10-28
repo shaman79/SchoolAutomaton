@@ -199,12 +199,16 @@ export const useLessonStore = defineStore('lesson', () => {
   function _saveBoundary(): void {
     const lessonId = lesson.value?.id
     if (lessonId == null) return
-    const epoch = loadEpoch
+    // The streak and badges are the learner's, not the lesson's: still show them if the learner has
+    // moved on to another lesson meanwhile (a badge is reported only once) — but never to another
+    // learner who took over this device.
+    const session = useSessionStore()
+    const learner = session.resumeCode
     void api
       .syncLessonProgress(lessonId, revealedUpTo.value)
       .then((progress) => {
-        if (epoch !== loadEpoch) return // not after a switch
-        useSessionStore().applyStreak(progress?.streak)
+        if (session.resumeCode !== learner) return
+        session.applyStreak(progress?.streak)
         announceBadges(progress?.new_badges) // e.g. back after a break: awarded, and told, once
       })
       .catch(() => {})
