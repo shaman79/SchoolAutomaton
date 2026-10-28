@@ -1,6 +1,6 @@
 """Claude-SVG generator.
 
-For SVG visual kinds (diagrams, charts, cycles, timelines, geometry, ...) we ask Claude Opus 4.8 for a
+For SVG visual kinds (diagrams, charts, cycles, timelines, geometry, ...) we ask Claude Opus for a
 self-contained ``<svg>`` document via structured output, then run it through the server-side
 :mod:`~app.visuals.svg_sanitize` before it is ever stored or served.
 
@@ -18,15 +18,22 @@ from pydantic import Field
 from ..core.constants import PROMPT_VERSION
 from ..schemas.common import StrictModel
 from ..schemas.generation import GenVisualSpec
-from .svg_sanitize import sanitize_svg
+from .svg_sanitize import SvgSanitizeError, sanitize_svg
 
 _SYSTEM_PROMPT = (
     "You are an expert educational illustrator that outputs a single, self-contained, accessible SVG "
     "diagram for children's learning materials. Rules: output ONE root <svg> element with a viewBox; "
     "use only inline shapes, paths, and text; never include <script>, <foreignObject>, event handlers "
     "(on*), external images, or links to external resources. Keep it clean, colourful, uncluttered and "
-    "age-appropriate. Always provide concise alt text and an optional caption."
+    "age-appropriate. Always provide concise alt text and an optional caption. Write every attribute "
+    "value in single quotes (x='10' fill='#3b82f6'), never double quotes, so the markup needs no "
+    "escaping inside the JSON string."
 )
+
+# Opus 5.5 sometimes left a double quote unescaped inside the JSON string; structured output then
+# ended the svg field right there: 3 of 6 water-cycle diagrams arrived cut off mid-tag
+# (eval 2026-10-28). Single-quoted attributes fixed it; one retry covers anything left.
+_ATTEMPTS = 2
 
 
 class SvgGenerationOutput(StrictModel):
@@ -71,6 +78,7 @@ async def _call_structured(system: str, user: str) -> SvgGenerationOutput:
             system_blocks=system,
             user=user,
             output_model=SvgGenerationOutput,
+            effort="medium",
         )
         return _coerce_output(result)
 
@@ -118,9 +126,14 @@ async def generate_svg(spec: GenVisualSpec, *, language: str, grade_band: str) -
     Returns ``{"svg": <sanitized markup>, "alt": str, "caption": str | None}``. Raises if the model
     output cannot be made safe (the router degrades that to a placeholder)."""
     user = _build_user_prompt(spec, language=language, grade_band=grade_band)
-    out = await _call_structured(_SYSTEM_PROMPT, user)
-
-    sanitized = sanitize_svg(out.svg)
+    for attempt in range(_ATTEMPTS):
+        out = await _call_structured(_SYSTEM_PROMPT, user)
+        try:
+            sanitized = sanitize_svg(out.svg)
+            break
+        except SvgSanitizeError:
+            if attempt == _ATTEMPTS - 1:
+                raise
     alt = out.alt.strip() or spec.alt_text
     caption = (out.caption.strip() if out.caption else None) or spec.caption
     return {"svg": sanitized, "alt": alt, "caption": caption}

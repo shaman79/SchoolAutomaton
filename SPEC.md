@@ -20,8 +20,8 @@ No student registration: **anonymous server profiles** with a short **resume cod
 ## 2. Stack (frozen)
 
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy 2.0 async + aiosqlite (SQLite, WAL), Pydantic v2, Alembic,
-  `anthropic` (AsyncAnthropic, Claude **Opus 4.8** = `claude-opus-4-8`; sanitizer screen on **Haiku 4.5** =
-  `claude-haiku-4-5`), `replicate`, `fsrs>=6.3.1`, `textstat`, `argon2-cffi`, `python-jose` (JWT),
+  `anthropic` (AsyncAnthropic, Claude **Opus 5.5** = `claude-opus-5-5`; sanitizer screen on **Haiku 5.5** =
+  `claude-haiku-5-5`; switched from Opus 4.8 / Haiku 4.5 after the model-migration eval, 2026-10-28), `replicate`, `fsrs>=6.3.1`, `textstat`, `argon2-cffi`, `python-jose` (JWT),
   `cryptography` (Fernet), `lxml` (SVG sanitize), `slowapi`/custom rate limiter, `PyYAML`.
 - **Frontend:** Vue 3.5, Vite 7, TypeScript 5.6, Tailwind 4 (CSS-first `@theme`, no config file), Pinia 3
   (+persistedstate), vue-router 4, `@vueuse/core` + `@vueuse/motion`, `gsap`, `@lottiefiles/dotlottie-vue`,
@@ -36,7 +36,7 @@ No student registration: **anonymous server profiles** with a short **resume cod
 raw prompt (untrusted)
   → Layer 0 rate-limit  → Layer 1 deterministic preprocess  → Layer 2 Haiku classifier (structured)
   → Layer 3 deterministic validate  → Decision { proceed | clarify | refuse | crisis }
-  → [proceed] Generation orchestrator (Opus 4.8) — builds prompts ONLY from validated StructuredIntent,
+  → [proceed] Generation orchestrator (Opus 5.5) — builds prompts ONLY from validated StructuredIntent,
               NEVER from raw text → Lesson (12-section skeleton) OR Quiz (typed questions)
   → persist to SQLite + content-hashed visual assets on disk → SSE progress
   → Frontend LessonReader / TestRunner → answers POSTed → deterministic/LLM grading
@@ -72,10 +72,11 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
   (pedagogy/gamification/visual constants). `MODEL_ID`, `SANITIZER_MODEL_ID`, `PROMPT_VERSION` are stamped on
   every generated row.
 - **Structured LLM output** via `client.messages.parse(output_format=PydanticModel)`. **Never** assistant
-  prefill, **never** send `temperature`/`top_p`/`top_k`/`budget_tokens` (400 on Opus 4.8). `thinking={"type":
+  prefill, **never** send `temperature`/`top_p`/`top_k`/`budget_tokens` (400 on Opus 4.8+). `thinking={"type":
   "adaptive"}` always on. Always check `stop_reason` before trusting parsed output. JSON-schema `minimum/maximum/
-  minLength/maxLength` are stripped by 4.8 → enforce bounds in prompt text **and** Pydantic validators;
-  regenerate (max 2 retries) on validation failure. `additionalProperties:false` on every object.
+  minLength/maxLength` are stripped → enforce bounds in prompt text **and** Pydantic validators;
+  regenerate (max 2 retries) on validation failure. Opus 5.5 rejects a forced `tool_choice` (use `auto`) and
+  may answer `stop_reason:"refusal"`; set `effort` explicitly per call (5.5 defaults to medium). `additionalProperties:false` on every object.
 - **Prompt caching:** each content family has a byte-identical `cache_control:{type:'ephemeral'}` system prefix
   (no `datetime.now`, no uuid, no unsorted json). Volatile data (date, profile id, language, mastery, topic)
   goes only in the trailing user message. Verify `usage.cache_read_input_tokens>0`; log to `generation_usage`.

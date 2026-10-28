@@ -143,7 +143,7 @@ async def generate_quiz(
         output_model=GenQuiz,
         model=settings.model_id,
         max_tokens=_QUIZ_MAX_TOKENS,
-        effort="high",
+        effort="medium",
         use_json_mode=True,  # nested question lists exceed the constrained-decoding grammar cap
         db=db,
         request_id=request_id,

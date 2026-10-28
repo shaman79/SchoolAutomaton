@@ -32,8 +32,8 @@ data/        (gitignored) SQLite db + content-hashed visual cache  (Docker named
    algorithm). Never hand-code FSRS math. Mastery formula + rating derivation are frozen (SPEC §4 #5/#6).
 4. **Prompt caching must stay byte-identical** (no datetime/uuid/unsorted-json in cached prefixes); tests
    assert `cache_read_input_tokens>0`.
-5. Claude Opus 4.8: no prefill, no temperature/top_p/top_k, `thinking=adaptive` on, enforce numeric bounds in
-   prompt + Pydantic (schema bounds are stripped). Stamp `MODEL_ID`/`PROMPT_VERSION` on generated rows.
+5. Claude Opus 5.5 / Haiku 5.5: no prefill, no temperature/top_p/top_k, `thinking=adaptive` on, enforce numeric bounds in
+   prompt + Pydantic (schema bounds are stripped). Set `effort` per call. Stamp `MODEL_ID`/`PROMPT_VERSION` on generated rows.
 6. **Mobile-first** Tailwind (base styles for phones, layer `sm:`/`md:`/`lg:` up). WCAG 2.2 AA, ≥44px targets,
    never color-only meaning, reduced-motion honored.
 

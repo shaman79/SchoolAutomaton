@@ -23,6 +23,7 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
+from app.core.config import settings  # noqa: E402
 from app.core.tasks import task_registry  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
@@ -285,7 +286,7 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
     await db.commit()
 
     assert isinstance(lesson, Lesson)
-    assert lesson.model_id == "claude-opus-4-8"
+    assert lesson.model_id == settings.model_id
     assert lesson.prompt_version  # stamped
     assert lesson.plan_json  # frozen plan stored so sections can be generated lazily
 
@@ -326,7 +327,7 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
     }
     assert rows[pretest_ord].gen_status == "ready"
     items = list(await db.scalars(select(Item).where(Item.lesson_section_id == rows[pretest_ord].id)))
-    assert items and all(i.model_id == "claude-opus-4-8" for i in items)
+    assert items and all(i.model_id == settings.model_id for i in items)
     concept = await db.scalar(select(Concept).where(Concept.slug == "photosynthesis"))
     assert concept is not None
     assert (await db.scalar(select(func.count()).select_from(Misconception))) >= 1
@@ -487,7 +488,7 @@ async def test_generate_quiz_persists(db):
     await db.commit()
 
     assert isinstance(quiz, Quiz)
-    assert quiz.model_id == "claude-opus-4-8"
+    assert quiz.model_id == settings.model_id
     qqs = list(await db.scalars(select(QuizQuestion).where(QuizQuestion.quiz_id == quiz.id).order_by(QuizQuestion.ordinal)))
     assert len(qqs) == 2
     items = list(await db.scalars(select(Item)))

@@ -76,7 +76,7 @@ async def grade_free_text(
             output_model=GraderOutput,
             model=settings.model_id,
             max_tokens=2000,
-            effort="medium",
+            effort="low",  # a short yes/no + one line of feedback; 21/21 at low in the eval
             db=None,  # never stage a row while the call is in flight — see below
             request_id=request_id,
             client=client,

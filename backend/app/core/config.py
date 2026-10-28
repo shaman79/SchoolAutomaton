@@ -36,8 +36,11 @@ class Settings(BaseSettings):
     replicate_api_token: str = Field(default="", alias="REPLICATE_API_TOKEN")
 
     # ---- Models ----
-    model_id: str = Field(default="claude-opus-4-8", alias="SA_MODEL_ID")
-    sanitizer_model_id: str = Field(default="claude-haiku-4-5", alias="SA_SANITIZER_MODEL_ID")
+    # Chosen by the model-migration eval (backend/evals/model_migration, 2026-10-28): Opus 5.5 at
+    # medium effort beat Opus 4.8 at high on every lesson/quiz case; Haiku 5.5 classifies as well as
+    # 4.5 at a fraction of the cost. Each call's effort level is set where the call is made.
+    model_id: str = Field(default="claude-opus-5-5", alias="SA_MODEL_ID")
+    sanitizer_model_id: str = Field(default="claude-haiku-5-5", alias="SA_SANITIZER_MODEL_ID")
     # Per-request timeout (seconds) for any single LLM call, so one call can't hang generation.
     llm_request_timeout_s: float = Field(default=120.0, alias="SA_LLM_TIMEOUT_S")
     # Wall-clock budget (seconds) for the whole image phase; past it the lesson is served without

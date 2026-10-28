@@ -240,9 +240,26 @@ async def test_generate_svg_sanitizes_output():
 
 async def test_generate_svg_raises_on_unsafe():
     bad = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5 5"><script/></svg>'
-    claude_svg.set_svg_client(FakeSvgClient(svg=bad))
+    client = FakeSvgClient(svg=bad)
+    claude_svg.set_svg_client(client)
     with pytest.raises(SvgSanitizeError):
         await claude_svg.generate_svg(svg_spec(), language="en", grade_band="G3-5")
+    assert client.calls == 2  # one retry, then the router's placeholder takes over
+
+
+async def test_a_cut_off_svg_is_asked_for_once_more():
+    """What Opus 5.5 did: an unescaped quote ended the JSON string, leaving the SVG cut off mid-tag."""
+
+    class CutOffThenFine(FakeSvgClient):
+        async def parse(self, *, system, user, output_format):  # noqa: ANN001
+            self.svg = VALID_SVG[:60] if self.calls == 0 else VALID_SVG
+            return await super().parse(system=system, user=user, output_format=output_format)
+
+    client = CutOffThenFine()
+    claude_svg.set_svg_client(client)
+    out = await claude_svg.generate_svg(svg_spec(), language="en", grade_band="G3-5")
+    assert "<circle" in out["svg"]
+    assert client.calls == 2
 
 
 # --------------------------------------------------------------------------- router: svg cache miss/hit
