@@ -213,7 +213,9 @@ async def run_generation(case: dict, variant: str) -> tuple[dict, list[dict]]:
             text = " ".join(i.stem_markdown for i in rows)
     czech_ratio = len(_CS.findall(text)) / max(1, len(text))
     lang_ok = czech_ratio > 0.01 if intent.language == "cs" else czech_ratio < 0.002
-    grade = {"pass": int(bool(items) and lang_ok), "items": len(items), "language_ok": lang_ok}
+    # A quiz must have questions; a lesson's first part (often the hook) needn't have any.
+    has_content = bool(items) if intent.mode.value == "test" else bool(text.strip())
+    grade = {"pass": int(has_content and lang_ok), "items": len(items), "language_ok": lang_ok}
     turns = [{"role": "user", "content": json.dumps(case["intent"], ensure_ascii=False)},
              {"role": "assistant", "content": json.dumps(content, ensure_ascii=False, indent=2)}]
     return {"grade": grade, "output": content}, turns
@@ -246,8 +248,8 @@ def _failure_class(exc: BaseException) -> str:
         return "refusal"
     if isinstance(exc, TimeoutError | asyncio.TimeoutError):
         return "timeout"
-    if isinstance(exc, llm_client.GenerationError):
-        return "genuine_failure"
+    if isinstance(exc, llm_client.GenerationError) or type(exc).__name__ == "SvgSanitizeError":
+        return "genuine_failure"  # the model's output was unusable (the app degrades it)
     return "harness_or_serving_error"
 
 
