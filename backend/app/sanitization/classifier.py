@@ -65,6 +65,16 @@ class ClassifierUnavailable(RuntimeError):
     'assistant unavailable' message and logs the underlying reason."""
 
 
+class ClassifierDeclined(RuntimeError):
+    """The classifier model's own safety layer declined to read the prompt (``stop_reason:
+    "refusal"``; Haiku 5.5 has no server-side fallback). That is a verdict about the prompt, not an
+    outage: the pipeline refuses it with friendly redirects instead of "assistant unavailable"."""
+
+    def __init__(self, category: str | None = None) -> None:
+        super().__init__(f"classifier declined the prompt (category={category})")
+        self.category = category
+
+
 def detect_language(text: str) -> str:
     """Best-effort language pick for MESSAGES only (Czech vs default English)."""
     return "cs" if _CS_HINT_RE.search(text or "") else "en"
@@ -99,6 +109,10 @@ async def classify(clean_text: str, pre: PreprocessResult) -> StructuredIntent:
             output_model=StructuredIntent,
         )
     except Exception as exc:  # noqa: BLE001 — any provider/transport failure → fail closed
+        from ..llm.client import RefusalError  # noqa: PLC0415 (lazy, as above)
+
+        if isinstance(exc, RefusalError):
+            raise ClassifierDeclined(exc.category) from exc
         raise ClassifierUnavailable(str(exc)) from exc
 
     intent = result[0] if isinstance(result, tuple) else result

@@ -98,6 +98,40 @@ class StopReasonError(GenerationError):
     the child wait minutes longer for the same failure."""
 
 
+class RefusalError(StopReasonError):
+    """A safety-classifier decline (``stop_reason: "refusal"``; for Opus 5.5 after its server-side
+    fallback also declined). ``category`` is informational (``bio``, ``cyber``, ``general_harms``...)."""
+
+    def __init__(self, message: str, category: str | None = None) -> None:
+        super().__init__(message)
+        self.category = category
+
+
+# --------------------------------------------------------------------------- model capabilities
+# What each configured model accepts. Opus 5.5 / Haiku 5.5 changed the request surface (see the
+# claude-api migration guide): effort everywhere, refusals, and Opus 5.5 rejects forced tool use.
+def _supports_effort(model: str) -> bool:
+    """``output_config.effort`` errors on Haiku 4.5; every other model we run accepts it."""
+    return not model.startswith("claude-haiku-4")
+
+
+def _rejects_forced_tool_choice(model: str) -> bool:
+    """Opus 5.5 / Sonnet 5.5 / Fable 5.1 400 on tool_choice any|tool (Haiku 5.5 accepts it)."""
+    return model.startswith(("claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"))
+
+
+def _server_fallback_kwargs(model: str) -> dict[str, Any]:
+    """Opt Opus 5/5.5 into server-side refusal fallbacks: a safety-classifier false positive on a
+    school topic is then re-run on Anthropic's recommended fallback model inside the same call,
+    instead of failing the child's lesson. (Haiku 5.5 has no server-side fallback — don't send it.)"""
+    if model.startswith("claude-opus-5"):
+        return {
+            "extra_headers": {"anthropic-beta": "server-side-fallback-2026-07-01"},
+            "extra_body": {"fallbacks": "default"},
+        }
+    return {}
+
+
 def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
     """Map an anthropic ``Usage`` object (or mapping) onto our normalized dataclass."""
 
@@ -175,9 +209,12 @@ def _system_blocks(system_blocks: list[str] | str) -> list[dict[str, Any]]:
     return out
 
 
-def _check_stop_reason(stop_reason: str | None) -> None:
+def _check_stop_reason(stop_reason: str | None, stop_details: Any = None) -> None:
     if stop_reason == "refusal":
-        raise StopReasonError("Model refused to generate the requested content.")
+        category = getattr(stop_details, "category", None)
+        if category is None and isinstance(stop_details, dict):
+            category = stop_details.get("category")
+        raise RefusalError("Model refused to generate the requested content.", category)
     if stop_reason == "max_tokens":
         raise StopReasonError("Generation hit max_tokens before completing the structured output.")
     if stop_reason == "pause_turn":
@@ -244,19 +281,31 @@ async def _provider_call(
         "max_tokens": max_tokens,
         "system": system,
         "messages": messages,
+        **_server_fallback_kwargs(model),
     }
     if send_thinking:
         common["thinking"] = ADAPTIVE_THINKING
+    # Effort on EVERY call that accepts it — JSON mode used to omit it, so lesson/quiz calls ran at
+    # the model's default (Opus 4.8: high; Opus 5.5: medium) whatever the caller asked for.
+    output_config: dict[str, Any] = {"effort": effort} if _supports_effort(model) else {}
     if mode == "json":
+        if output_config:
+            common["output_config"] = output_config
         return await cli.messages.create(**common)
     if mode == "tools":
         tool = _tool_for(output_model)
-        return await cli.messages.create(
-            tools=[tool], tool_choice={"type": "tool", "name": tool["name"]}, **common
-        )
-    return await cli.messages.parse(
-        output_config={"effort": effort}, output_format=output_model, **common
-    )
+        if _rejects_forced_tool_choice(model):
+            # Forced tool use 400s here: let the model choose, with a strict schema, and say so.
+            tool = {**tool, "strict": True}
+            choice: dict[str, Any] = {"type": "auto"}
+        else:
+            choice = {"type": "tool", "name": tool["name"]}  # Haiku: forced call, no thinking
+        if output_config and choice["type"] == "auto":
+            common["output_config"] = output_config
+        return await cli.messages.create(tools=[tool], tool_choice=choice, **common)
+    if output_config:
+        common["output_config"] = output_config
+    return await cli.messages.parse(output_format=output_model, **common)
 
 
 def _extract_json_text(message: Any) -> str:
@@ -364,12 +413,17 @@ async def generate_structured[OutputT: BaseModel](
                 getattr(message, "_request_id", None)
                 or getattr(message, "id", None)
             )
-            usage = _coerce_usage(getattr(message, "usage", None), model, raw_request_id)
+            # Price by the model that actually answered (a server-side fallback may have served it).
+            served_by = getattr(message, "model", None)
+            served_by = served_by if isinstance(served_by, str) and served_by else model
+            usage = _coerce_usage(getattr(message, "usage", None), served_by, raw_request_id)
             if usage_sink is not None:
                 usage_sink.append(usage)
             _log_usage(db, usage, request_id=request_id, profile_id=profile_id)
 
-            _check_stop_reason(getattr(message, "stop_reason", None))
+            _check_stop_reason(
+                getattr(message, "stop_reason", None), getattr(message, "stop_details", None)
+            )
 
             if mode == "json":
                 text = _extract_json_text(message)

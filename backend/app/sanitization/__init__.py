@@ -81,6 +81,22 @@ async def sanitize_request(
     # L2 — the LLM classifies intent. Fail CLOSED if it can't run (no key / transient failure).
     try:
         raw_intent = await classifier.classify(pre.clean_text, pre)
+    except classifier.ClassifierDeclined as exc:
+        # The classifier model's safety layer wouldn't even read it: refuse, with redirects.
+        logger.info("Classifier declined %s (category=%s)", request_id, exc.category)
+        declined = StructuredIntent(
+            safety_flags=[SafetyFlag.ILLEGAL_DANGEROUS],
+            language=classifier.detect_language(pre.clean_text),
+            is_educational=False,
+        )
+        decision = validate.build_decision(
+            declined,
+            request_id,
+            client_locale=client_locale,
+            client_school_year=client_school_year,
+        )
+        await _audit(db, request_id, ctx, raw_prompt, pre, declined, decision, started, flagged=True)
+        return decision
     except classifier.ClassifierUnavailable as exc:
         logger.warning("Classifier unavailable for %s: %s", request_id, exc)
         from ..llm.prompts.curriculum import base_language, normalize_education_locale

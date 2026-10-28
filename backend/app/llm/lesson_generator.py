@@ -331,7 +331,9 @@ async def _generate_section(
                 output_model=GenSection,
                 model=settings.model_id,
                 max_tokens=_SECTION_MAX_TOKENS,
-                effort="medium",
+                # JSON mode used to send no effort, so sections really ran at Opus 4.8's default
+                # (high); keep that until the model-migration eval picks the level per model.
+                effort="high",
                 use_json_mode=True,  # nested item lists exceed the constrained-decoding grammar cap
                 db=None,  # logged serially by the caller (gather is not session-safe)
                 request_id=request_id,
