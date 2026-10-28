@@ -179,6 +179,7 @@ async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
     lessonStore.recordAnswer(e.questionId, res)
     if (res.is_correct) void celebrateCorrect(target ?? null)
     if (res.xp_awarded) await session.refreshGamification().catch(() => {})
+    session.applyStreak(res.streak) // every graded answer counts toward today, right or wrong
   } catch (err) {
     // The question stays answerable with the learner's input in place; say what happened.
     if (!leaving) toast.error(t(answerErrorKey(err)))

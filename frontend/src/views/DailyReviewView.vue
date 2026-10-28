@@ -107,6 +107,7 @@ async function onAnswer(e: AnswerEvent) {
       return
     }
     results.value = { ...results.value, [e.questionId]: res }
+    session.applyStreak(res.streak) // the header flame, without waiting for the end of the round
     if (res.is_correct) {
       void celebrateCorrect(null)
       if (res.xp_awarded) toast.success(`+${res.xp_awarded} ${t('gamification.xp')}`, { icon: 'star' })
