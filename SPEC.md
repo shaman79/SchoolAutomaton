@@ -54,7 +54,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 | 2 | Real-time transport | **SSE** (`GET /requests/{id}/stream`) for generation progress. Poll fallback endpoint provided (`GET /requests/{id}`). A failure is the `failed` event with `{message, code}`, code ∈ busy/unavailable/budget/failed (`error_code` on the poll endpoint); the client words it per code, never shows `message` or exception text. `POST /requests/{id}/generate` starts at most one generation (conditional-UPDATE claim). No WebSockets in v1. |
 | 3 | Background tasks | **In-process** `asyncio` task registry + FastAPI `BackgroundTasks` (SQLite single-writer + Compose favors in-process). A small `app/core/tasks.py` registry tracks status for SSE. No external broker in v1. |
 | 4 | Replicate | **100% hosted** (pay-per-use, license-safe for flux-2-dev non-commercial weights). No self-hosting in v1. |
-| 5 | Mastery formula | `mastery = clamp01( Σ wₛ·R(t,S) / Σ wₛ )` over a concept's items, weights `w`: Review=1.0, Relearning=0.7, Learning=0.5, New=0.0. New-only concept ⇒ mastery 0. `mastered` ≥ 0.85; `needs_review` when `now > decay_due_at`. Frozen in `app/services/mastery.py` + fixture `tests/test_mastery.py`. |
+| 5 | Mastery formula | `mastery = clamp01( Σ wₛ·R(t,S) / N )` over a concept's N non-New items, weights `w`: Review=1.0, Relearning=0.7, Learning=0.5 (New excluded) — a card still being learned can't count as known. Held at 0.84 until the concept was answered correctly on **2 different UTC days** (owner decision 2026-10-28: the old weighted mean `÷ Σwₛ` made one answer, even a wrong one, "mastered" for a day). New-only concept ⇒ mastery 0. `mastered` ≥ 0.85; `needs_review` when `now > decay_due_at`. Frozen in `app/services/mastery.py` + fixture `tests/test_mastery.py`. |
 | 6 | FSRS rating derivation | Deterministic, server-side, single mapping used by `/answers` and `/review`: `Again(1)`=incorrect; `Hard(2)`=correct AND (used_hint OR latency>slow_threshold); `Good(3)`=correct, no hint, normal; `Easy(4)`=correct, no hint, latency<quick_threshold. Thresholds: per-item-type static config in `app/core/constants.py` (`LATENCY_THRESHOLDS`). |
 | 7 | Concept graph | Grown **lazily** by the generator (`INSERT OR IGNORE` on slug); LLM proposes prerequisite/related edges; admin can view/curate. No hand-seeded ontology in v1 beyond a tiny bootstrap. |
 | 8 | Crisis resources | `app/data/crisis_resources.yaml` with per-country + global fallback (US 988, UK Samaritans 116 123, EU 112, Befrienders Worldwide link). Non-dismissable crisis card + AI-disclosure copy. **Carries a "legal review pending" note** in admin docs. |
@@ -115,7 +115,7 @@ def review(card_json: str, rating: int, now: datetime) -> tuple[dict, datetime] 
 def derive_rating(is_correct: bool, used_hint: bool, latency_ms: int|None, item_type: str) -> int
 
 # app/services/mastery.py
-def concept_mastery(cards: list[FsrsCardRow], now: datetime) -> float             # see decision #5
+def concept_mastery(cards: list[CardView], *, correct_days: int) -> float          # see decision #5
 def node_state(mastery: float, prereqs_met: bool, decay_due_at: datetime|None, now: datetime) -> str
 
 # app/services/leveling.py  (pure)

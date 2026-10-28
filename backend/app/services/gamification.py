@@ -366,12 +366,42 @@ async def _get_or_create_card(
     return card
 
 
+async def _correct_days(
+    db: AsyncSession, profile: Profile, concept_id: int, now: datetime, *, answered_correct: bool
+) -> int:
+    """Distinct UTC days with a correct answer on this concept — including the answer being graded
+    right now (its Answer row is written after mastery is recomputed)."""
+    days = set(
+        (
+            await db.scalars(
+                select(func.date(Answer.created_at))
+                .join(Item, Item.id == Answer.item_id)
+                .where(
+                    Answer.profile_id == profile.id,
+                    Item.concept_id == concept_id,
+                    Answer.is_correct.is_(True),
+                )
+                .distinct()
+            )
+        ).all()
+    )
+    if answered_correct:
+        days.add(now.astimezone(UTC).date().isoformat())
+    return len(days)
+
+
 async def _recompute_mastery(
-    db: AsyncSession, profile: Profile, concept_id: int, now: datetime
+    db: AsyncSession,
+    profile: Profile,
+    concept_id: int,
+    now: datetime,
+    *,
+    answered_correct: bool = False,
 ) -> tuple[SkillMastery, float, float, NodeState]:
     """Recompute SkillMastery for one concept from its cards' FSRS retrievability (SPEC §4 #5).
 
-    Returns (row, before, after, node_state)."""
+    ``answered_correct``: the answer being graded now was correct (it counts toward the
+    correct-on-two-days rule before its row exists). Returns (row, before, after, node_state)."""
     retention = profile.desired_retention
     cards = (
         await db.execute(
@@ -390,7 +420,10 @@ async def _recompute_mastery(
         if state == 2 and c.due is not None:  # Review-state cards drive decay timing
             mastered_due.append(c.due if c.due.tzinfo else c.due.replace(tzinfo=UTC))
 
-    after = mastery.concept_mastery(views)
+    correct_days = await _correct_days(
+        db, profile, concept_id, now, answered_correct=answered_correct
+    )
+    after = mastery.concept_mastery(views, correct_days=correct_days)
     decay_due_at = min(mastered_due) if (mastered_due and mastery.is_mastered(after)) else None
 
     prereqs_met = await _prereqs_met(db, profile, concept_id)
@@ -649,7 +682,7 @@ async def grade_and_reward(
     # 3) Mastery before failure-state was recorded → recompute concept mastery + node_state.
     failed_before = await _concept_was_failed(db, profile, item.concept_id) if is_correct else False
     sm_row, mastery_before, mastery_after, node_state = await _recompute_mastery(
-        db, profile, item.concept_id, now
+        db, profile, item.concept_id, now, answered_correct=is_correct
     )
     mastery_delta = round(mastery_after - mastery_before, 4)
 
@@ -705,6 +738,7 @@ async def grade_and_reward(
             detected_misconception_id=misconception_id,
             xp_awarded=xp_awarded,
             mastery_delta=mastery_delta,
+            created_at=now,  # the grading time: mastery's correct-on-two-days rule counts these days
         )
     )
     await db.flush()
@@ -795,7 +829,7 @@ async def review_with_rating(
 
     failed_before = await _concept_was_failed(db, profile, item.concept_id) if is_correct else False
     _sm_row, mastery_before, mastery_after, node_state = await _recompute_mastery(
-        db, profile, item.concept_id, now
+        db, profile, item.concept_id, now, answered_correct=is_correct
     )
     mastery_delta = round(mastery_after - mastery_before, 4)
 
@@ -838,6 +872,7 @@ async def review_with_rating(
             detected_misconception_id=None,
             xp_awarded=xp_awarded,
             mastery_delta=mastery_delta,
+            created_at=now,  # the grading time: mastery's correct-on-two-days rule counts these days
         )
     )
     await db.flush()
