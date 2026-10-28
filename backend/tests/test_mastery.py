@@ -8,7 +8,6 @@ from app.core.constants import MASTERY_MASTERED_THRESHOLD, MASTERY_UNPROVEN_CAP
 from app.schemas.enums import NodeState
 from app.services.mastery import CardView, concept_mastery, node_state
 
-
 PROVEN = 2  # correct on two different days
 
 
