@@ -19,9 +19,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { announceBadges } from '@/components/gamification/announceBadges'
 import { api } from '@/lib/api'
 import type { SubmittedValue } from '@/types/question'
 import type { GradeResult, Lesson, LessonProgress, LessonSection } from '@/types/session'
+
+import { useSessionStore } from './session'
 
 const POLL_INTERVAL_MS = 2500
 const POLL_DEADLINE_MS = 90_000
@@ -191,11 +194,24 @@ export const useLessonStore = defineStore('lesson', () => {
   }
 
   /** Tell the server how far the learner has revealed, so they can resume here. Best-effort: the
-   *  server never resumes behind a part the learner answered a question in anyway. */
+   *  server never resumes behind a part the learner answered a question in anyway. A finished part
+   *  counts toward today's streak; the reply carries it for the header. */
   function _saveBoundary(): void {
     const lessonId = lesson.value?.id
     if (lessonId == null) return
-    void api.syncLessonProgress(lessonId, revealedUpTo.value).catch(() => {})
+    // The streak and badges are the learner's, not the lesson's: still show them if the learner has
+    // moved on to another lesson meanwhile (a badge is reported only once) — but never to another
+    // learner who took over this device.
+    const session = useSessionStore()
+    const learner = session.resumeCode
+    void api
+      .syncLessonProgress(lessonId, revealedUpTo.value)
+      .then((progress) => {
+        if (session.resumeCode !== learner) return
+        session.applyStreak(progress?.streak)
+        announceBadges(progress?.new_badges) // e.g. back after a break: awarded, and told, once
+      })
+      .catch(() => {})
   }
 
   async function load(id: number): Promise<void> {

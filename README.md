@@ -32,7 +32,7 @@ on demand — visually, playfully, and effectively.
 | Layer | Tech |
 |-------|------|
 | Backend | Python 3.12 · FastAPI · SQLAlchemy 2 (async) · SQLite · Pydantic v2 |
-| AI | Claude **Opus 4.8** (generation) · Claude Haiku 4.5 (prompt screening) · Replicate (illustrations) |
+| AI | Claude **Opus 5.5** (generation) · Claude Haiku 5.5 (prompt screening) · Replicate (illustrations) |
 | Pedagogy | FSRS-6 spaced repetition · textstat readability calibration |
 | Frontend | Vue 3.5 · Vite · TypeScript · Tailwind 4 · Pinia · vue-i18n |
 | Deploy | Docker Compose (backend + nginx-served SPA) |

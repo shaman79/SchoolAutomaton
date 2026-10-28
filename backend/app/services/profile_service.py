@@ -20,14 +20,14 @@ from ..models import (
     XpEvent,
 )
 from ..schemas.enums import AgeBand, DailyGoal, age_band_for_school_year
-from ..schemas.gamification import BadgeInfo, GamificationSnapshot, StreakInfo
+from ..schemas.gamification import BadgeInfo, GamificationSnapshot
 from ..schemas.profile import (
     ProfileEnvelope,
     ProfilePublic,
     ProfileSettingsPublic,
     ProfileSettingsUpdate,
 )
-from . import leveling
+from . import gamification, leveling
 
 # Settings a PATCH may explicitly reset to null.
 _CLEARABLE_SETTINGS = frozenset({"school_year"})
@@ -148,7 +148,9 @@ async def build_badges(db: AsyncSession, profile: Profile, locale: str) -> list[
     return out
 
 
-async def build_snapshot(db: AsyncSession, profile: Profile) -> GamificationSnapshot:
+async def build_snapshot(
+    db: AsyncSession, profile: Profile, *, now: datetime | None = None
+) -> GamificationSnapshot:
     settings = await _get_settings(db, profile)
     streak = await _get_streak(db, profile)
     level = leveling.level_from_xp(profile.total_xp)
@@ -158,12 +160,8 @@ async def build_snapshot(db: AsyncSession, profile: Profile) -> GamificationSnap
         total_xp=profile.total_xp,
         xp_to_next=leveling.xp_to_next(profile.total_xp),
         level_progress_pct=leveling.level_progress_pct(profile.total_xp),
-        streak=StreakInfo(
-            current=streak.current_streak_len,
-            longest=streak.longest_streak,
-            freeze_inventory=streak.freeze_inventory,
-            is_perfect=streak.is_perfect,
-        ),
+        # The streak as it stands NOW (0 once the gap can't be bridged), same rules as settle_streak.
+        streak=await gamification.streak_info_as_of(db, profile, streak, now),
         daily_goal=daily_goal.value,
         daily_progress_xp=await _daily_xp(db, profile),
         badges=await build_badges(db, profile, settings.locale),

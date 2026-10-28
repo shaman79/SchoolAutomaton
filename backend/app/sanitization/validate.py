@@ -261,8 +261,11 @@ def build_decision(
             redirect_suggestions=safety.refusal_redirect_suggestions(in_ui_language),
         )
 
-    # 3) Not educational or off-task -> refuse + redirect.
-    if (not clean.is_educational) or clean.off_task:
+    # 3) Not educational or off-task -> refuse + redirect. When the classifier itself isn't sure (a
+    #    bare "ahoj", "school stuff"), step 4 asks what they want to learn instead: a refusal that
+    #    talks about keeping things safe is the wrong answer to a child saying hello.
+    unsure = clean.classifier_confidence < CONFIDENCE_CLARIFY_THRESHOLD
+    if ((not clean.is_educational) or clean.off_task) and not unsure:
         return RefuseDecision(
             request_id=request_id,
             reason=_loc(_REFUSAL_REASON, lang),
@@ -270,7 +273,7 @@ def build_decision(
         )
 
     # 4) Low confidence -> clarify.
-    if clean.classifier_confidence < CONFIDENCE_CLARIFY_THRESHOLD:
+    if unsure:
         class_known = normalize_school_year(client_school_year) is not None
         return ClarifyDecision(
             request_id=request_id,

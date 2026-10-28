@@ -172,6 +172,9 @@ export interface GradeResult {
    *  false, no XP, no correct answer). Show the support block instead of feedback and keep the
    *  question answerable. */
   support?: AnswerSupport | null
+  /** The streak after this answer counted toward today (UTC day); absent when nothing was recorded
+   *  (`support`) and on replayed answers. */
+  streak?: StreakInfo | null
 }
 
 /** Same content as the crisis Decision: a supportive message, help resources, AI disclosure. */
@@ -194,6 +197,10 @@ export interface LessonProgress {
   revealed_up_to: number
   completed: boolean
   answers: RestoredAnswer[]
+  /** Set when this call moved the boundary forward — a finished part counts toward the streak. */
+  streak?: StreakInfo | null
+  /** Badges that finished part unlocked (shown once, like an answer's). */
+  new_badges?: { code: string; title: string; tier: number }[]
 }
 export interface AttemptStart {
   attempt_id: number

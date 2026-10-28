@@ -1,6 +1,6 @@
 """Claude-SVG generator.
 
-For SVG visual kinds (diagrams, charts, cycles, timelines, geometry, ...) we ask Claude Opus 4.8 for a
+For SVG visual kinds (diagrams, charts, cycles, timelines, geometry, ...) we ask Claude Opus for a
 self-contained ``<svg>`` document via structured output, then run it through the server-side
 :mod:`~app.visuals.svg_sanitize` before it is ever stored or served.
 
@@ -11,22 +11,32 @@ fake client via :func:`set_svg_client` so no network call is made.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Protocol
 
 from pydantic import Field
 
+from ..core.config import settings
 from ..core.constants import PROMPT_VERSION
 from ..schemas.common import StrictModel
 from ..schemas.generation import GenVisualSpec
-from .svg_sanitize import sanitize_svg
+from .svg_sanitize import SvgSanitizeError, sanitize_svg
 
 _SYSTEM_PROMPT = (
     "You are an expert educational illustrator that outputs a single, self-contained, accessible SVG "
     "diagram for children's learning materials. Rules: output ONE root <svg> element with a viewBox; "
     "use only inline shapes, paths, and text; never include <script>, <foreignObject>, event handlers "
     "(on*), external images, or links to external resources. Keep it clean, colourful, uncluttered and "
-    "age-appropriate. Always provide concise alt text and an optional caption."
+    "age-appropriate. Always provide concise alt text and an optional caption. Write every attribute "
+    "value in single quotes (x='10' fill='#3b82f6'), never double quotes, so the markup needs no "
+    "escaping inside the JSON string."
 )
+
+# Opus 5.5 sometimes left a double quote unescaped inside the JSON string; structured output then
+# ended the svg field right there: 3 of 6 water-cycle diagrams arrived cut off mid-tag
+# (eval 2026-10-28). Single-quoted attributes fixed it; one retry covers anything left — when there
+# is time for it (see generate_svg).
+_ATTEMPTS = 2
 
 
 class SvgGenerationOutput(StrictModel):
@@ -55,8 +65,12 @@ def set_svg_client(client: Any | None) -> None:
     _OVERRIDE_CLIENT = client
 
 
-async def _call_structured(system: str, user: str) -> SvgGenerationOutput:
-    """Invoke the structured-output client, tolerating the small API variations B2 may land with."""
+async def _call_structured(
+    system: str, user: str, usage_sink: list[Any] | None = None
+) -> SvgGenerationOutput:
+    """Invoke the structured-output client, tolerating the small API variations B2 may land with.
+
+    ``usage_sink`` collects the usage of every billed provider call (failed ones too)."""
     client = _OVERRIDE_CLIENT
     if client is None:
         # Lazy import: B2 owns app.llm.client and may still be in flight at import time elsewhere.
@@ -71,6 +85,8 @@ async def _call_structured(system: str, user: str) -> SvgGenerationOutput:
             system_blocks=system,
             user=user,
             output_model=SvgGenerationOutput,
+            effort="medium",
+            usage_sink=usage_sink,
         )
         return _coerce_output(result)
 
@@ -112,15 +128,31 @@ def _build_user_prompt(spec: GenVisualSpec, *, language: str, grade_band: str) -
     return "\n".join(lines)
 
 
-async def generate_svg(spec: GenVisualSpec, *, language: str, grade_band: str) -> dict:
+async def generate_svg(
+    spec: GenVisualSpec, *, language: str, grade_band: str, usage_sink: list[Any] | None = None
+) -> dict:
     """Generate and sanitize an SVG for ``spec``.
 
     Returns ``{"svg": <sanitized markup>, "alt": str, "caption": str | None}``. Raises if the model
-    output cannot be made safe (the router degrades that to a placeholder)."""
-    user = _build_user_prompt(spec, language=language, grade_band=grade_band)
-    out = await _call_structured(_SYSTEM_PROMPT, user)
+    output cannot be made safe (the router degrades that to a placeholder). ``usage_sink`` collects
+    the usage of every billed call, so the caller can count it toward the daily AI budget.
 
-    sanitized = sanitize_svg(out.svg)
+    A broken diagram is asked for once more only if a second call as long as the first still fits
+    in the per-visual timeout the callers put around ensure_visual: a retry cancelled by it leaves no
+    picture at all, where giving up now shows the placeholder."""
+    user = _build_user_prompt(spec, language=language, grade_band=grade_band)
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + settings.per_visual_timeout_s
+    for attempt in range(_ATTEMPTS):
+        started = loop.time()
+        out = await _call_structured(_SYSTEM_PROMPT, user, usage_sink)
+        try:
+            sanitized = sanitize_svg(out.svg)
+            break
+        except SvgSanitizeError:
+            now = loop.time()
+            if attempt == _ATTEMPTS - 1 or now + (now - started) > deadline:
+                raise
     alt = out.alt.strip() or spec.alt_text
     caption = (out.caption.strip() if out.caption else None) or spec.caption
     return {"svg": sanitized, "alt": alt, "caption": caption}

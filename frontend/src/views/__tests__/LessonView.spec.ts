@@ -146,6 +146,16 @@ describe('answering', () => {
     await flushPromises()
     expect(useLessonStore().feedbackByItem[11]?.is_correct).toBe(true)
   })
+
+  it('announces a badge the answer unlocked, as the quiz does', async () => {
+    mocked.submitAnswer.mockResolvedValue(
+      grade(false, { new_badges: [{ code: 'resilient', title: 'Resilient', tier: 1 }] }),
+    )
+    const { q } = await openWithQuestion()
+    q.vm.$emit('answer', answer)
+    await flushPromises()
+    expect(toastTexts()).toContain(i18n.global.t('test.badge_unlocked', { title: 'Resilient' }))
+  })
 })
 
 it('leaving while the lesson is still loading leaves no scroll listener behind', async () => {

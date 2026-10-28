@@ -20,8 +20,8 @@ No student registration: **anonymous server profiles** with a short **resume cod
 ## 2. Stack (frozen)
 
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy 2.0 async + aiosqlite (SQLite, WAL), Pydantic v2, Alembic,
-  `anthropic` (AsyncAnthropic, Claude **Opus 4.8** = `claude-opus-4-8`; sanitizer screen on **Haiku 4.5** =
-  `claude-haiku-4-5`), `replicate`, `fsrs>=6.3.1`, `textstat`, `argon2-cffi`, `python-jose` (JWT),
+  `anthropic` (AsyncAnthropic, Claude **Opus 5.5** = `claude-opus-5-5`; sanitizer screen on **Haiku 5.5** =
+  `claude-haiku-5-5`; switched from Opus 4.8 / Haiku 4.5 after the model-migration eval, 2026-10-28), `replicate`, `fsrs>=6.3.1`, `textstat`, `argon2-cffi`, `python-jose` (JWT),
   `cryptography` (Fernet), `lxml` (SVG sanitize), `slowapi`/custom rate limiter, `PyYAML`.
 - **Frontend:** Vue 3.5, Vite 7, TypeScript 5.6, Tailwind 4 (CSS-first `@theme`, no config file), Pinia 3
   (+persistedstate), vue-router 4, `@vueuse/core` + `@vueuse/motion`, `gsap`, `@lottiefiles/dotlottie-vue`,
@@ -36,7 +36,7 @@ No student registration: **anonymous server profiles** with a short **resume cod
 raw prompt (untrusted)
   → Layer 0 rate-limit  → Layer 1 deterministic preprocess  → Layer 2 Haiku classifier (structured)
   → Layer 3 deterministic validate  → Decision { proceed | clarify | refuse | crisis }
-  → [proceed] Generation orchestrator (Opus 4.8) — builds prompts ONLY from validated StructuredIntent,
+  → [proceed] Generation orchestrator (Opus 5.5) — builds prompts ONLY from validated StructuredIntent,
               NEVER from raw text → Lesson (12-section skeleton) OR Quiz (typed questions)
   → persist to SQLite + content-hashed visual assets on disk → SSE progress
   → Frontend LessonReader / TestRunner → answers POSTed → deterministic/LLM grading
@@ -54,7 +54,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 | 2 | Real-time transport | **SSE** (`GET /requests/{id}/stream`) for generation progress. Poll fallback endpoint provided (`GET /requests/{id}`). A failure is the `failed` event with `{message, code}`, code ∈ busy/unavailable/budget/failed (`error_code` on the poll endpoint); the client words it per code, never shows `message` or exception text. `POST /requests/{id}/generate` starts at most one generation (conditional-UPDATE claim). No WebSockets in v1. |
 | 3 | Background tasks | **In-process** `asyncio` task registry + FastAPI `BackgroundTasks` (SQLite single-writer + Compose favors in-process). A small `app/core/tasks.py` registry tracks status for SSE. No external broker in v1. |
 | 4 | Replicate | **100% hosted** (pay-per-use, license-safe for flux-2-dev non-commercial weights). No self-hosting in v1. |
-| 5 | Mastery formula | `mastery = clamp01( Σ wₛ·R(t,S) / Σ wₛ )` over a concept's items, weights `w`: Review=1.0, Relearning=0.7, Learning=0.5, New=0.0. New-only concept ⇒ mastery 0. `mastered` ≥ 0.85; `needs_review` when `now > decay_due_at`. Frozen in `app/services/mastery.py` + fixture `tests/test_mastery.py`. |
+| 5 | Mastery formula | `mastery = clamp01( Σ wₛ·R(t,S) / N )` over a concept's N non-New items, weights `w`: Review=1.0, Relearning=0.7, Learning=0.5 (New excluded) — a card still being learned can't count as known. Held at 0.84 until the concept was answered correctly on **2 different UTC days** (owner decision 2026-10-28: the old weighted mean `÷ Σwₛ` made one answer, even a wrong one, "mastered" for a day). Once proven, a card whose latest answer was correct counts with `w=1.0` whatever its state (a correct but slow/hinted answer is FSRS Hard, which never advances a learning step — on state weights alone a slow reader could never master a topic); a wrong latest answer keeps the state weight. New-only concept ⇒ mastery 0. `mastered` ≥ 0.85; `needs_review` when `now > decay_due_at`. Frozen in `app/services/mastery.py` + fixture `tests/test_mastery.py`. |
 | 6 | FSRS rating derivation | Deterministic, server-side, single mapping used by `/answers` and `/review`: `Again(1)`=incorrect; `Hard(2)`=correct AND (used_hint OR latency>slow_threshold); `Good(3)`=correct, no hint, normal; `Easy(4)`=correct, no hint, latency<quick_threshold. Thresholds: per-item-type static config in `app/core/constants.py` (`LATENCY_THRESHOLDS`). |
 | 7 | Concept graph | Grown **lazily** by the generator (`INSERT OR IGNORE` on slug); LLM proposes prerequisite/related edges; admin can view/curate. No hand-seeded ontology in v1 beyond a tiny bootstrap. |
 | 8 | Crisis resources | `app/data/crisis_resources.yaml` with per-country + global fallback (US 988, UK Samaritans 116 123, EU 112, Befrienders Worldwide link). Non-dismissable crisis card + AI-disclosure copy. **Carries a "legal review pending" note** in admin docs. |
@@ -63,6 +63,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 | 11 | Leaderboards | **OFF** by default. `competitive_opt_in` flag + personal-best framing exist; ability-banded leagues NOT shipped in v1. |
 | 12 | Batches pre-gen | Mechanism provided as an **admin-triggered** action + script; no automatic nightly cron in v1. |
 | 13 | Resume where you left off | **The server owns the position.** `lesson_progress.revealed_up_to` per (profile, lesson) and `quiz_attempts.current_index` per open attempt — both forward-only, and never behind a question the learner already answered. On open the client restores from `PUT /lessons/{id}/progress` / `POST /quizzes/{id}/attempts`, which replay the learner's already-graded answers: read-only (no FSRS review, no XP) and never for an unanswered item. `GET /profiles/me/continue` feeds the home "Continue" card. The exact scroll offset is device-local (localStorage) only. A quiz is reviewable (`GET /quizzes/{id}/review`) only once an attempt is **completed**. |
+| 14 | Daily streak | **Anything finished counts; days are UTC dates** (not tied to one country's time zone). One `settle_streak` per request, idempotent within a UTC day, from: a **graded answer** — lesson practice, quiz question or review card (`grade_and_reward` / `review_with_rating`); a crisis-support result (`support`), a refused request (404/409/422/429) or finishing an already finished quiz again (same summary, read-only) records nothing — a **finished lesson part** (`PUT /lessons/{id}/progress` moving the boundary forward; opening a lesson doesn't count) and a **finished quiz** (`finalize_attempt`). Missed days are forgiven silently, in order: rest days (`rest_days_per_week`, at least 1 for early_primary; a fresh allowance in every ISO week, and each missed day is charged to its own week — a missed Sunday and Monday take one rest day from each), freezes, then the 48 h repair window for a single missed day; nothing is spent on a gap that can't be bridged. The snapshot shows the streak **as it stands now** without writing: the stored length while the gap could still be bridged, else 0 (copy stays an invitation, never a loss). `settle_streak` and the snapshot share one pure helper (`next_streak_step`), so they can't disagree. Answer and lesson-progress responses carry the settled `streak` (and any `new_badges`) so the header updates without a refetch; the client re-reads the snapshot when a tab comes back after a few minutes. At startup, graded answers and finished quizzes after a learner's stored last active day are replayed once through the same rules (`services/streak_catchup.py` — credits lesson days from before this rule; idempotent). |
 
 ## 5. Conventions (all code)
 
@@ -70,11 +71,12 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 - **Config constants** centralized in `app/core/config.py` (env-driven `Settings`) and `app/core/constants.py`
   (pedagogy/gamification/visual constants). `MODEL_ID`, `SANITIZER_MODEL_ID`, `PROMPT_VERSION` are stamped on
   every generated row.
-- **Structured LLM output** via `client.messages.parse(output_format=PydanticModel)`. **Never** assistant
-  prefill, **never** send `temperature`/`top_p`/`top_k`/`budget_tokens` (400 on Opus 4.8). `thinking={"type":
+- **Structured LLM output**: the native structured-output format `messages.parse(output_format=PydanticModel)` builds, sent with `messages.create` so usage is logged and `stop_reason` checked before the output is validated (JSON-in-prompt for big schemas, tool use for the classifier). **Never** assistant
+  prefill, **never** send `temperature`/`top_p`/`top_k`/`budget_tokens` (400 on Opus 4.8+). `thinking={"type":
   "adaptive"}` always on. Always check `stop_reason` before trusting parsed output. JSON-schema `minimum/maximum/
-  minLength/maxLength` are stripped by 4.8 → enforce bounds in prompt text **and** Pydantic validators;
-  regenerate (max 2 retries) on validation failure. `additionalProperties:false` on every object.
+  minLength/maxLength` are stripped → enforce bounds in prompt text **and** Pydantic validators;
+  regenerate (max 2 retries) on validation failure. Opus 5.5 rejects a forced `tool_choice` (use `auto`) and
+  may answer `stop_reason:"refusal"`; set `effort` explicitly per call (5.5 defaults to medium). `additionalProperties:false` on every object.
 - **Prompt caching:** each content family has a byte-identical `cache_control:{type:'ephemeral'}` system prefix
   (no `datetime.now`, no uuid, no unsorted json). Volatile data (date, profile id, language, mastery, topic)
   goes only in the trailing user message. Verify `usage.cache_read_input_tokens>0`; log to `generation_usage`.
@@ -115,7 +117,7 @@ def review(card_json: str, rating: int, now: datetime) -> tuple[dict, datetime] 
 def derive_rating(is_correct: bool, used_hint: bool, latency_ms: int|None, item_type: str) -> int
 
 # app/services/mastery.py
-def concept_mastery(cards: list[FsrsCardRow], now: datetime) -> float             # see decision #5
+def concept_mastery(cards: list[CardView], *, correct_days: int) -> float          # see decision #5
 def node_state(mastery: float, prereqs_met: bool, decay_due_at: datetime|None, now: datetime) -> str
 
 # app/services/leveling.py  (pure)
@@ -127,9 +129,9 @@ def item_xp(item_difficulty: int, mastery_before: float, *, base: int = BASE_ITE
 def combo_multiplier(consecutive_first_try: int) -> float   # pure/sync; 1.0 → 2.0 cap at 8
 
 # app/services/gamification.py  (async, DB-touching)
-async def grade_and_reward(db, profile, item, answer, attempt_id) -> GradeResult   # orchestrates srs+mastery+xp+badges+streak
-async def finalize_attempt(db, profile, attempt_id) -> ResultsSummary              # end-of-quiz score/accuracy/mastery-delta
-async def settle_streak(db, profile, now) -> StreakInfo                            # silent freeze/rest-day/repair forgiveness
+async def grade_and_reward(db, profile, item, answer, attempt_id) -> GradeResult   # orchestrates srs+mastery+xp+streak+badges
+async def finalize_attempt(db, profile, attempt_id) -> ResultsSummary              # end-of-quiz score/accuracy/mastery-delta + streak
+async def settle_streak(db, profile, now) -> StreakInfo                            # once per request that finished something (§4 #14); silent rest-day/freeze/repair forgiveness
 
 # app/services/badges.py
 async def evaluate_badges(db, profile, event) -> list[BadgeAward]

@@ -22,6 +22,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import ProgressBar from '@/components/common/ProgressBar.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
+import { announceBadges } from '@/components/gamification/announceBadges'
 import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
 import { speechLang } from '@/lib/speechLang'
@@ -108,15 +109,7 @@ async function onAnswer(e: AnswerEvent) {
     if (res.level_up) {
       toast.success(t('test.level_up', { level: res.level_up.to_level }), { icon: 'trophy' })
     }
-    // One toast however many badges this answer unlocked — a stack of them hid the Next button.
-    const badges = res.new_badges.map((b) => b.title)
-    if (badges.length) {
-      const msg =
-        badges.length === 1
-          ? t('test.badge_unlocked', { title: badges[0] })
-          : t('test.badges_unlocked', { titles: badges.join(', ') })
-      toast.success(msg, { icon: 'trophy', timeout: 6000 })
-    }
+    announceBadges(res.new_badges)
   } catch (err) {
     // The question stays answerable with the learner's input in place.
     if (!leaving) toast.error(t(answerErrorKey(err)))

@@ -26,6 +26,7 @@ from .client import generate_structured
 from .lesson_generator import (
     HotspotImages,
     _ensure_misconception,
+    _keep_usage_of_failed_call,
     _link_hotspot_image,
     _prepare_hotspot_images,
     _slugify,
@@ -131,24 +132,28 @@ async def generate_quiz(
     # And hand the pooled connection back for the duration of the model call (nothing is staged).
     await db.commit()
 
-    gen_quiz, _ = await generate_structured(
-        system_blocks=prompts.system_pedagogy(intent.language),
-        user=prompts.build_quiz_user(
-            intent,
-            mastery=mastery,
-            recent_accuracy=recent_accuracy,
-            known_misconceptions=known,
-            target_success=TARGET_SUCCESS_RATE,
-        ),
-        output_model=GenQuiz,
-        model=settings.model_id,
-        max_tokens=_QUIZ_MAX_TOKENS,
-        effort="high",
-        use_json_mode=True,  # nested question lists exceed the constrained-decoding grammar cap
-        db=db,
-        request_id=request_id,
-        client=client,
-    )
+    try:
+        gen_quiz, _ = await generate_structured(
+            system_blocks=prompts.system_pedagogy(intent.language),
+            user=prompts.build_quiz_user(
+                intent,
+                mastery=mastery,
+                recent_accuracy=recent_accuracy,
+                known_misconceptions=known,
+                target_success=TARGET_SUCCESS_RATE,
+            ),
+            output_model=GenQuiz,
+            model=settings.model_id,
+            max_tokens=_QUIZ_MAX_TOKENS,
+            effort="medium",
+            use_json_mode=True,  # nested question lists exceed the constrained-decoding grammar cap
+            db=db,
+            request_id=request_id,
+            client=client,
+        )
+    except Exception:
+        await _keep_usage_of_failed_call(db)  # billed all the same: count it toward the daily cap
+        raise
 
     # Hotspot pictures are provider calls too: also before any write (see _prepare_hotspot_images).
     hotspots = await _prepare_hotspot_images(

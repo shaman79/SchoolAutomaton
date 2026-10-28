@@ -23,6 +23,7 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from sqlalchemy import func, select  # noqa: E402
 
+from app.core.config import settings  # noqa: E402
 from app.core.tasks import task_registry  # noqa: E402
 from app.db.base import Base  # noqa: E402
 from app.db.session import SessionLocal, engine  # noqa: E402
@@ -169,15 +170,6 @@ def _fake_usage() -> SimpleNamespace:
     )
 
 
-class _FakeParsed:
-    def __init__(self, parsed):
-        self.parsed_output = parsed
-        self.stop_reason = "end_turn"
-        self.id = "msg_test_123"
-        self.usage = _fake_usage()
-        self.content = []
-
-
 class _FakeText:
     """A JSON-mode response: the canned object serialized into a single text block."""
 
@@ -197,17 +189,17 @@ def _section_kind_from(user: str) -> SectionKind:
 
 
 def _make_mock_client():
-    """Mock AsyncAnthropic: JSON-mode calls (lesson plan/section, quiz) return the canned object as a
-    text block via messages.create; parse (grader + small schemas) returns the canned parsed output."""
-
-    async def _parse(**kwargs):
-        fmt = kwargs.get("output_format")
-        if fmt is GraderOutput:
-            return _FakeParsed(_canned_grader())
-        # Visual-spec batch container (only used if sections request no inline visuals).
-        return _FakeParsed(fmt(visuals=[]))
+    """Mock AsyncAnthropic. Every call is messages.create: JSON-mode calls (lesson plan/section,
+    quiz) carry the schema in the prompt, native structured-output calls (the grader) carry it in
+    output_config.format; either way the canned object comes back as a JSON text block."""
 
     async def _create(**kwargs):
+        fmt = (kwargs.get("output_config") or {}).get("format")
+        if fmt is not None:
+            title = fmt["schema"].get("title")
+            if title == "GraderOutput":
+                return _FakeText(_canned_grader())
+            raise AssertionError(f"unexpected structured-output call in mock: {title}")
         user = kwargs["messages"][0]["content"]
         if '"title":"GenQuiz"' in user:
             return _FakeText(_canned_quiz())
@@ -218,9 +210,7 @@ def _make_mock_client():
         raise AssertionError("unexpected messages.create() call in mock")
 
     client = SimpleNamespace()
-    client.messages = SimpleNamespace(
-        parse=AsyncMock(side_effect=_parse), create=AsyncMock(side_effect=_create)
-    )
+    client.messages = SimpleNamespace(create=AsyncMock(side_effect=_create))
     return client
 
 
@@ -285,7 +275,7 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
     await db.commit()
 
     assert isinstance(lesson, Lesson)
-    assert lesson.model_id == "claude-opus-4-8"
+    assert lesson.model_id == settings.model_id
     assert lesson.prompt_version  # stamped
     assert lesson.plan_json  # frozen plan stored so sections can be generated lazily
 
@@ -326,7 +316,7 @@ async def test_generate_lesson_persists_rows_and_sse(db, monkeypatch):
     }
     assert rows[pretest_ord].gen_status == "ready"
     items = list(await db.scalars(select(Item).where(Item.lesson_section_id == rows[pretest_ord].id)))
-    assert items and all(i.model_id == "claude-opus-4-8" for i in items)
+    assert items and all(i.model_id == settings.model_id for i in items)
     concept = await db.scalar(select(Concept).where(Concept.slug == "photosynthesis"))
     assert concept is not None
     assert (await db.scalar(select(func.count()).select_from(Misconception))) >= 1
@@ -354,7 +344,7 @@ async def test_section_visuals_pending_then_ready(db):
 
     client = _make_mock_client()
 
-    async def _fake_ensure_visual(session, spec, *, language, grade_band):
+    async def _fake_ensure_visual(session, spec, *, language, grade_band, usage_sink=None):
         asset = VisualAsset(
             hash="deadbeef", asset_type="svg", model="claude", params_json={},
             prompt="kid-safe diagram", mime="image/svg+xml", svg_inline="<svg/>",
@@ -416,7 +406,7 @@ async def test_realize_section_visuals_idempotent_claim(db):
 
     calls = {"n": 0}
 
-    async def _fake_ensure_visual(session, spec, *, language, grade_band):
+    async def _fake_ensure_visual(session, spec, *, language, grade_band, usage_sink=None):
         calls["n"] += 1
         asset = VisualAsset(
             hash="cafe", asset_type="svg", model="claude", params_json={},
@@ -487,7 +477,7 @@ async def test_generate_quiz_persists(db):
     await db.commit()
 
     assert isinstance(quiz, Quiz)
-    assert quiz.model_id == "claude-opus-4-8"
+    assert quiz.model_id == settings.model_id
     qqs = list(await db.scalars(select(QuizQuestion).where(QuizQuestion.quiz_id == quiz.id).order_by(QuizQuestion.ordinal)))
     assert len(qqs) == 2
     items = list(await db.scalars(select(Item)))
@@ -587,7 +577,8 @@ async def test_no_raw_prompt_in_generated_rows(db):
     assert "ignore previous instructions" not in blob.lower()
 
     # The mock recorded the user messages sent to the model; assert no raw prompt was ever sent.
-    for call in client.messages.parse.call_args_list:
+    assert client.messages.create.call_args_list
+    for call in client.messages.create.call_args_list:
         user_msg = call.kwargs["messages"][0]["content"]
         assert RAW_PROMPT not in user_msg
         assert "hack" not in user_msg.lower()
@@ -622,29 +613,31 @@ async def test_edges_persisted_when_planned(db):
 
 
 @pytest.mark.asyncio
-async def test_parse_validation_error_triggers_corrective_retry(db):
-    """A pydantic ValidationError raised by messages.parse must trigger the corrective-instruction
-    retry (SPEC §5: regenerate max 2 on validation failure), not escape the loop."""
+async def test_structured_validation_error_triggers_corrective_retry(db):
+    """A structured answer that fails validation must trigger the corrective-instruction retry
+    (SPEC §5: regenerate max 2 on validation failure), not escape the loop — and both attempts were
+    billed, so both are counted."""
     from app.llm.client import generate_structured
 
     calls = {"n": 0}
 
-    async def _parse(**kwargs):
+    async def _create(**kwargs):
         calls["n"] += 1
+        assert kwargs["output_config"]["format"]["schema"]["title"] == "GenQuiz"
         if calls["n"] == 1:
-            # Simulate the SDK validating structured output synchronously and failing.
-            GenQuiz.model_validate({"title": "x"})  # missing required fields -> ValidationError
+            return _FakeText(SimpleNamespace(model_dump_json=lambda: '{"title": "x"}'))  # incomplete
         # A correction must have been appended to the user message on the retry.
         assert "failed validation" in kwargs["messages"][0]["content"]
-        return _FakeParsed(_canned_quiz())
+        return _FakeText(_canned_quiz())
 
     client = SimpleNamespace()
-    client.messages = SimpleNamespace(parse=AsyncMock(side_effect=_parse))
-
+    client.messages = SimpleNamespace(create=AsyncMock(side_effect=_create))
+    sink: list = []
     result, _usage = await generate_structured(
-        system_blocks="sys", user="make a quiz", output_model=GenQuiz, client=client
+        system_blocks="sys", user="make a quiz", output_model=GenQuiz, client=client, usage_sink=sink
     )
     assert calls["n"] == 2  # one failed attempt, then a successful retry
+    assert len(sink) == 2
     assert isinstance(result, GenQuiz)
     assert result.title == "Photosynthesis Quiz"
 
@@ -690,7 +683,9 @@ def _record_open_writes(client, raw_conn, session=None) -> list[bool]:
     the session, whether it still holds a pooled connection at all."""
     seen: list[bool] = []
     for name in ("create", "parse"):
-        inner = getattr(client.messages, name)
+        inner = getattr(client.messages, name, None)
+        if inner is None:
+            continue
 
         async def wrapped(*args, _inner=inner, **kwargs):
             seen.append(raw_conn.in_transaction)
@@ -752,7 +747,7 @@ async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode
     seen = _record_open_writes(client, raw, db)
     pictures: list[bool] = []
 
-    async def fake_svg(spec, *, language, grade_band):
+    async def fake_svg(spec, *, language, grade_band, usage_sink=None):
         pictures.append(raw.in_transaction)
         return {"svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', "alt": "x"}
 
@@ -772,3 +767,94 @@ async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode
     assert not any(seen), f"a write or connection was held during {sum(seen)} model-call checks"
     assert pictures, "no hotspot picture was generated"
     assert not any(pictures), f"a write was open during {sum(pictures)} of {len(pictures)} pictures"
+
+
+
+# --------------------------------------------------------------------------- failed calls are counted
+def _never_valid_for(title: str):
+    """The mock, except every `title` reply is an object that never validates (each one billed)."""
+    client = _make_mock_client()
+    inner = client.messages.create.side_effect
+
+    async def _create(**kwargs):
+        if f'"title":"{title}"' in kwargs["messages"][0]["content"]:
+            return _FakeText(SimpleNamespace(model_dump_json=lambda: '{"oops": 1}'))
+        return await inner(**kwargs)
+
+    client.messages.create = AsyncMock(side_effect=_create)
+    return client
+
+
+async def _usage_rows() -> int:
+    async with SessionLocal() as session:
+        return await session.scalar(select(func.count()).select_from(GenerationUsage))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("title", ["LessonPlan", "GenSection", "GenQuiz"])
+async def test_a_failed_generation_call_still_counts_toward_the_daily_cap(db, title):
+    """Output that never validates is billed on every try. The callers roll back on failure, so
+    those calls used to vanish from generation_usage — and from the daily AI cap."""
+    from app.llm.client import GenerationError
+
+    client = _never_valid_for(title)
+    mode = Mode.TEST if title == "GenQuiz" else Mode.STUDY
+    lr = await _seed_request(db, mode)
+    await db.commit()
+    before = await _usage_rows()
+    with pytest.raises(GenerationError):
+        if mode == Mode.TEST:
+            await quiz_generator.generate_quiz(db, lr, _intent(mode), client=client)
+        else:
+            await lesson_generator.generate_lesson(db, lr, _intent(mode), client=client)
+    await db.rollback()  # what the callers do
+    billed = [c for c in client.messages.create.call_args_list
+              if f'"title":"{title}"' in c.kwargs["messages"][0]["content"]]
+    assert len(billed) == 3  # the first try and two corrective retries
+    plan_row = 1 if title == "GenSection" else 0  # the plan before the failed part succeeded
+    assert await _usage_rows() - before == len(billed) + plan_row
+
+
+@pytest.mark.asyncio
+async def test_a_diagram_call_cut_short_by_the_timeout_is_still_counted(db, monkeypatch, tmp_path):
+    """The first diagram answer came back cut off; its retry was cancelled by the per-visual timeout.
+    The section visual's rollback used to throw away the first (billed) call's usage row too."""
+    import asyncio as _asyncio
+
+    from app.llm import client as client_mod
+    from app.models import SectionVisual
+    from app.visuals.claude_svg import SvgGenerationOutput
+
+    monkeypatch.setattr(type(settings), "visual_cache_dir", property(lambda self: tmp_path / "visuals"))
+    client = _make_mock_client()
+    expl_ord = LESSON_SKELETON.index(SectionKind.EXPLANATION)
+    lr = await _seed_request(db, Mode.STUDY)
+    lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+    await lesson_generator.generate_one_section(db, lesson, _intent(Mode.STUDY), expl_ord, client=client)
+    await db.commit()
+    section = await db.scalar(
+        select(LessonSection).where(LessonSection.lesson_id == lesson.id, LessonSection.ordinal == expl_ord)
+    )
+
+    started = {"n": 0}
+
+    async def diagram(*, output_model, usage_sink=None, **_kw):
+        started["n"] += 1
+        if started["n"] > 1:
+            await _asyncio.sleep(5)  # the retry: slower than the time left
+        usage = client_mod.Usage(input_tokens=137, output_tokens=1690, model="claude-opus-5-5")
+        if usage_sink is not None:
+            usage_sink.append(usage)
+        cut_off = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 9 9'><rect x="
+        return output_model(svg=cut_off, alt="diagram", caption=None), usage
+
+    assert SvgGenerationOutput  # (the model the diagram call asks for)
+    monkeypatch.setattr(client_mod, "generate_structured", diagram)
+    monkeypatch.setattr(settings, "per_visual_timeout_s", 0.5)
+    before = await _usage_rows()
+    await lesson_generator.realize_section_visuals(section.id)
+
+    async with SessionLocal() as verify:
+        sv = await verify.scalar(select(SectionVisual).where(SectionVisual.lesson_section_id == section.id))
+    assert started["n"] == 2 and sv.status == "failed"
+    assert await _usage_rows() - before == 1  # the call that returned (and was billed)

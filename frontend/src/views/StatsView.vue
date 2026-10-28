@@ -32,11 +32,10 @@ const treeLoading = ref(false)
 
 onMounted(async () => {
   if (!hasProfile.value) return
-  try {
-    if (!session.gamification) await session.refreshGamification()
-  } catch {
-    /* best-effort */
-  }
+  // Always re-read: the streak "as it stands now" changes with time. A snapshot already loaded shows
+  // meanwhile; without one, wait for it.
+  const fresh = session.refreshGamification().catch(() => {}) // best-effort
+  if (!session.gamification) await fresh
   treeLoading.value = true
   try {
     tree.value = (await api.getTree()) as KnowledgeTreeData

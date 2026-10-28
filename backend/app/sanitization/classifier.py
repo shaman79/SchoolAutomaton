@@ -33,6 +33,10 @@ CLASSIFIER_SYSTEM_PROMPT = (
     "language (ISO-639-1, the language the STUDENT wrote in), whether it is genuinely educational, "
     "whether it is off-task (not a learning request), any child-safety flags, and your confidence "
     "(0..1). Output ONLY the structured fields.\n\n"
+    "A greeting ('ahoj', 'hi'), 'I don't know' ('nevím co'), or a learning ask with no clear topic "
+    "('school stuff', 'help me study') is a learner who has not picked a topic yet: is_educational="
+    "true, off_task=false, confidence below 0.5, so the app asks what they want to learn. Use "
+    "is_educational=false / off_task=true only for asks about something other than learning.\n\n"
     "school_year: the learner's exact school year ONLY when the text states or clearly implies it, "
     "counted from the first year of compulsory primary school (1 = first grade, age 6-7; "
     "0 = kindergarten/preschool); otherwise null — never guess it from the topic, and leave it null "
@@ -63,6 +67,16 @@ class ClassifierUnavailable(RuntimeError):
 
     The pipeline fails closed (no heuristic guessing); the caller surfaces a clear, friendly
     'assistant unavailable' message and logs the underlying reason."""
+
+
+class ClassifierDeclined(RuntimeError):
+    """The classifier model's own safety layer declined to read the prompt (``stop_reason:
+    "refusal"``; Haiku 5.5 has no server-side fallback). That is a verdict about the prompt, not an
+    outage: the pipeline refuses it with friendly redirects instead of "assistant unavailable"."""
+
+    def __init__(self, category: str | None = None) -> None:
+        super().__init__(f"classifier declined the prompt (category={category})")
+        self.category = category
 
 
 def detect_language(text: str) -> str:
@@ -99,6 +113,10 @@ async def classify(clean_text: str, pre: PreprocessResult) -> StructuredIntent:
             output_model=StructuredIntent,
         )
     except Exception as exc:  # noqa: BLE001 — any provider/transport failure → fail closed
+        from ..llm.client import RefusalError  # noqa: PLC0415 (lazy, as above)
+
+        if isinstance(exc, RefusalError):
+            raise ClassifierDeclined(exc.category) from exc
         raise ClassifierUnavailable(str(exc)) from exc
 
     intent = result[0] if isinstance(result, tuple) else result

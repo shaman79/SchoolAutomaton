@@ -87,6 +87,10 @@ DAILY_NEW_CAP: dict[str, int] = {
 # Mastery aggregation weights by FSRS card state (0=New,1=Learning,2=Review,3=Relearning).
 MASTERY_STATE_WEIGHTS: dict[int, float] = {0: 0.0, 1: 0.5, 2: 1.0, 3: 0.7}
 MASTERY_MASTERED_THRESHOLD = 0.85
+# "Mastered" needs evidence that outlasts one sitting: correct answers on this many different (UTC)
+# days. Until then mastery is held just below the threshold (MASTERY_UNPROVEN_CAP).
+MASTERY_MIN_CORRECT_DAYS = 2
+MASTERY_UNPROVEN_CAP = 0.84
 
 # Interleaved review composition (must sum to ~1.0).
 INTERLEAVE_COMPOSITION = {"current": 0.55, "related": 0.25, "prereq": 0.20}

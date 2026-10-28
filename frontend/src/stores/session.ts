@@ -13,7 +13,12 @@ import { ApiError } from '@/lib/apiError'
 import { isTransient } from '@/lib/errors'
 import { clearReadingAnchor } from '@/lib/readingAnchor'
 import { withRetry } from '@/lib/retry'
-import type { GamificationSnapshot, ProfileEnvelope, ProfilePublic } from '@/types/session'
+import type {
+  GamificationSnapshot,
+  ProfileEnvelope,
+  ProfilePublic,
+  StreakInfo,
+} from '@/types/session'
 
 import { useGenerationStore } from './generation'
 import { useLessonStore } from './lesson'
@@ -22,6 +27,9 @@ import { useTestStore } from './test'
 
 /** Pauses before re-trying GET /profiles/me after a transient failure (3 attempts in total). */
 export const PROFILE_RETRY_DELAYS_MS = [600, 1800] as const
+
+/** A gamification snapshot older than this is re-read when the learner comes back to the tab. */
+export const SNAPSHOT_STALE_MS = 5 * 60_000
 
 /** The only answer that proves a stored code is gone for good. */
 function isUnknownCode(e: unknown): boolean {
@@ -65,6 +73,10 @@ export const useSessionStore = defineStore('session', () => {
   let identityEpoch = 0
   // One ensureProfile at a time, so a double tap can never create two profiles.
   let ensuring: Promise<void> | null = null
+  // When the snapshot was last read from the server, and how many settled streaks were applied since
+  // start (a re-read that began before an answer's streak was applied must not roll it back).
+  let snapshotReadAt = 0
+  let streaksApplied = 0
 
   function _adopt(
     env: { profile: ProfilePublic; settings: unknown; gamification: GamificationSnapshot },
@@ -72,6 +84,7 @@ export const useSessionStore = defineStore('session', () => {
   ) {
     profile.value = env.profile
     gamification.value = env.gamification
+    snapshotReadAt = Date.now()
     usePrefsStore().hydrateFromServer(env.settings as Record<string, unknown>, opts)
   }
 
@@ -209,8 +222,34 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   async function refreshGamification(): Promise<void> {
-    gamification.value = await api.getGamification()
-    if (profile.value) profile.value.total_xp = gamification.value.total_xp
+    const epoch = identityEpoch
+    const applied = streaksApplied
+    const fresh = await api.getGamification()
+    if (epoch !== identityEpoch) return // another learner took over this device meanwhile
+    snapshotReadAt = Date.now()
+    // A streak an answer settled while this was in flight is newer than what the server read.
+    const current = gamification.value
+    gamification.value = applied !== streaksApplied && current ? { ...fresh, streak: current.streak } : fresh
+    if (profile.value) profile.value.total_xp = fresh.total_xp
+  }
+
+  /** Show the streak a response just settled (a graded answer, a finished lesson part) in the header
+   *  — no extra request. Callers apply it AFTER any refresh they await: the server commits after it
+   *  responds, so a snapshot fetched right away can still predate the answer. */
+  function applyStreak(streak: StreakInfo | null | undefined): void {
+    if (!streak || !gamification.value) return
+    streaksApplied += 1
+    gamification.value = { ...gamification.value, streak }
+  }
+
+  /** The snapshot's streak is "as it stands" when it was read — it drops to 0 once a gap can no
+   *  longer be bridged, which can happen while a phone keeps the tab in the background for days.
+   *  Re-read it when the learner comes back to the tab (App.vue), if it is more than a few minutes
+   *  old. Best-effort. */
+  function refreshIfStale(): void {
+    if (!gamification.value || !resumeCode.value) return
+    if (Date.now() - snapshotReadAt < SNAPSHOT_STALE_MS) return
+    void refreshGamification().catch(() => {})
   }
 
   /** Push current local prefs to the server so they follow the resume code. */
@@ -254,6 +293,8 @@ export const useSessionStore = defineStore('session', () => {
     reconnect,
     resumeWithCode,
     refreshGamification,
+    applyStreak,
+    refreshIfStale,
     syncPrefs,
     forget,
   }

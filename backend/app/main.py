@@ -77,8 +77,26 @@ async def lifespan(app: FastAPI):
         await _reap_stuck_requests(db)
         await _reap_stuck_visuals(db)
         await db.commit()
+    await _catch_up_streaks()
     logger.info("SchoolAutomaton backend ready (env=%s)", settings.env)
     yield
+
+
+async def _catch_up_streaks() -> None:
+    """Count activity the streak hasn't seen yet (see services.streak_catchup). Best-effort: a failure
+    leaves streaks as stored and never stops the app from starting."""
+    from .services.streak_catchup import catch_up_streaks  # noqa: PLC0415
+
+    async with SessionLocal() as db:
+        try:
+            moved = await catch_up_streaks(db)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            logger.exception("Streak catch-up failed; streaks continue from their stored state")
+            return
+    if moved:
+        logger.info("Streak catch-up: counted earlier activity for %s learner(s)", moved)
 
 
 # The interactive docs + schema stay a development aid: in production they'd hand anyone a map of

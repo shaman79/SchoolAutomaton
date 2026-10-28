@@ -32,7 +32,7 @@ from ..models import (
 from ..schemas.gamification import GradeResult, MisconceptionInfo
 from ..schemas.profile import LearningSessionSummary
 from ..schemas.progress import LessonProgressOut, RestoredAnswer, SessionProgress
-from . import gamification
+from . import badges, gamification
 
 
 def _aware(dt: datetime | None) -> datetime | None:
@@ -205,7 +205,10 @@ async def save_lesson_progress(
     now: datetime | None = None,
 ) -> LessonProgressOut:
     """Record that the learner has revealed (at least) ``revealed_up_to`` and is active in the lesson
-    now. Forward-only and clamped to the sections generated so far; returns the merged state."""
+    now. Forward-only and clamped to the sections generated so far; returns the merged state.
+
+    Moving the boundary forward means the learner finished a lesson part: that counts toward the
+    daily streak (the result then carries ``streak``)."""
     now = now or datetime.now(UTC)
     # INSERT OR IGNORE then read back: two tabs opening the same lesson must not race into the
     # (profile, lesson) unique constraint.
@@ -221,12 +224,22 @@ async def save_lesson_progress(
         .on_conflict_do_nothing(index_elements=["profile_id", "lesson_id"])
     )
     row = await _lesson_row(db, profile.id, lesson.id)
-    state = await _lesson_state(db, profile, lesson, max(row.revealed_up_to or 0, revealed_up_to))
+    before = row.revealed_up_to or 0
+    state = await _lesson_state(db, profile, lesson, max(before, revealed_up_to))
     row.revealed_up_to = state.revealed_up_to
     row.last_active_at = now
     if state.completed and row.completed_at is None:
         row.completed_at = now
     await db.flush()
+    # Only a move the learner asked for: opening a lesson reports 0, and a boundary healed forward
+    # from an earlier answer is no new part finished.
+    if revealed_up_to > before and state.revealed_up_to > before:
+        state.streak = await gamification.settle_streak(db, profile, now)
+        # A streak badge (back after a break) shouldn't have to wait for the next answer or quiz —
+        # and is returned, since it is awarded (and so announced) only once.
+        state.new_badges = await badges.evaluate_badges(
+            db, profile, {"type": "lesson_part", "lesson_id": lesson.id, "now": now}
+        )
     return state
 
 

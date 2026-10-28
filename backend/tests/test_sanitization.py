@@ -182,6 +182,18 @@ class TestValidate:
         d = validate.build_decision(intent(classifier_confidence=0.3), "rid")
         assert d.type == DecisionType.CLARIFY
 
+    def test_an_unsure_not_a_learning_request_asks_instead_of_refusing(self):
+        """A bare "ahoj" or "school stuff": ask what they want to learn, don't lecture about safety."""
+        for unsure in (intent(is_educational=False, classifier_confidence=0.3),
+                       intent(off_task=True, classifier_confidence=0.3)):
+            assert validate.build_decision(unsure, "rid").type == DecisionType.CLARIFY
+
+    def test_an_unsure_unsafe_request_still_refuses(self):
+        d = validate.build_decision(
+            intent(safety_flags=[SafetyFlag.ILLEGAL_DANGEROUS], is_educational=False,
+                   classifier_confidence=0.3), "rid")
+        assert d.type == DecisionType.REFUSE
+
     def test_injection_proceeds_but_drops_freetext(self):
         d = validate.build_decision(
             intent(

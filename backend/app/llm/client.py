@@ -1,15 +1,15 @@
 """Thin AsyncAnthropic wrapper: structured output + prompt caching + usage telemetry.
 
-Every Opus 4.8 call goes through :func:`generate_structured`. It:
+Every Opus call goes through :func:`generate_structured`. It:
 
 * orders ``tools -> system -> messages`` (system carries the big byte-identical cached
   pedagogy prefix marked ``cache_control:{type:'ephemeral'}``);
 * sets ``thinking={'type':'adaptive'}`` and an ``output_config.effort`` (no temperature / top_p /
-  top_k / prefill — all 400 on Opus 4.8);
-* parses the response into the supplied Pydantic ``output_model`` via
-  ``client.messages.parse(output_format=...)`` (the installed anthropic 0.105.x API), with a
-  tool-use JSON fallback for models/transports without native structured output;
-* checks ``stop_reason`` (refusal / max_tokens / pause) before trusting the parse;
+  top_k / prefill — all 400 on Opus 4.8+);
+* gets the supplied Pydantic ``output_model`` as JSON — native structured output (the format
+  ``messages.parse`` builds, sent with ``messages.create``), JSON in the prompt for big schemas, or
+  tool use — and validates it itself, after logging the call's usage;
+* checks ``stop_reason`` (refusal / max_tokens / pause) before trusting the output;
 * retries up to twice on Pydantic ``ValidationError``, appending a corrective instruction that
   restates the numeric/length bounds (Opus 4.8 strips schema ``minimum/maximum`` — SPEC §5);
 * logs a :class:`GenerationUsage` row (input / cache_creation / cache_read / output tokens, plus the
@@ -23,6 +23,7 @@ so generators are unit-testable with a mock — no network, no key.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from dataclasses import dataclass
@@ -96,6 +97,81 @@ class StopReasonError(GenerationError):
     """The model stopped in a way the same request would only repeat (refusal, max_tokens,
     pause_turn). Not retried with a correction: a retry re-bills up to max_tokens of output and makes
     the child wait minutes longer for the same failure."""
+
+
+class RefusalError(StopReasonError):
+    """A safety-classifier decline (``stop_reason: "refusal"``; for Opus 5.5 after its server-side
+    fallback also declined). ``category`` is informational (``bio``, ``cyber``, ``general_harms``...)."""
+
+    def __init__(self, message: str, category: str | None = None) -> None:
+        super().__init__(message)
+        self.category = category
+
+
+# --------------------------------------------------------------------------- model capabilities
+# What each configured model accepts. Opus 5.5 / Haiku 5.5 changed the request surface (see the
+# claude-api migration guide): effort everywhere, refusals, and Opus 5.5 rejects forced tool use.
+def _supports_effort(model: str) -> bool:
+    """``output_config.effort`` errors on Haiku 4.5; every other model we run accepts it."""
+    return not model.startswith("claude-haiku-4")
+
+
+def _rejects_forced_tool_choice(model: str) -> bool:
+    """Opus 5.5 / Sonnet 5.5 / Fable 5.1 400 on tool_choice any|tool (Haiku 5.5 accepts it)."""
+    return model.startswith(("claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1"))
+
+
+def _server_fallback_kwargs(model: str) -> dict[str, Any]:
+    """Opt Opus 5/5.5 into server-side refusal fallbacks: a safety-classifier false positive on a
+    school topic is then re-run on Anthropic's recommended fallback model inside the same call,
+    instead of failing the child's lesson. (Haiku 5.5 has no server-side fallback — don't send it.)"""
+    if model.startswith("claude-opus-5"):
+        return {
+            "extra_headers": {"anthropic-beta": "server-side-fallback-2026-07-01"},
+            "extra_body": {"fallbacks": "default"},
+        }
+    return {}
+
+
+# Refusal categories billed even when the decline came before any output ("How refusals are billed",
+# platform docs, as of September 2026). A pre-output decline in any other category (cyber,
+# general_harms, null) is reported but not billed.
+_BILLED_BEFORE_OUTPUT = frozenset({"bio", "frontier_llm", "reasoning_extraction"})
+
+
+def _field(obj: Any, name: str) -> Any:
+    return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+
+
+def _attempt_usages(message: Any, requested_model: str, request_id: str | None) -> list[Usage]:
+    """One Usage per billed attempt behind a response, each priced by the model that ran it; the
+    last is the attempt that produced the returned message.
+
+    With a server-side fallback, ``usage.iterations`` is the per-attempt billing record: each hop
+    that declined is a "message" entry, the one that answered a "fallback_message" entry, and the
+    top-level usage covers only that last one. A hop that declined before any output is billed only
+    in some refusal categories (the k-th ``fallback`` content block names the k-th hop's). Without
+    iterations, no fallback ran and the top-level usage is the whole call."""
+    served_by = getattr(message, "model", None)
+    served_by = served_by if isinstance(served_by, str) and served_by else requested_model
+    top = getattr(message, "usage", None)
+    iterations = list(_field(top, "iterations") or []) if top is not None else []
+    if not iterations:
+        return [_coerce_usage(top, served_by, request_id)]
+    declined_because = iter([
+        _field(_field(block, "trigger") or {}, "category")
+        for block in (getattr(message, "content", None) or [])
+        if _field(block, "type") == "fallback"
+    ])
+    usages: list[Usage] = []
+    for entry in iterations:
+        if _field(entry, "type") == "message":  # a hop that declined
+            category = next(declined_because, None)
+            if not _field(entry, "output_tokens") and category not in _BILLED_BEFORE_OUTPUT:
+                continue  # declined before any output, in a category that isn't billed
+        ran = _field(entry, "model")
+        usages.append(_coerce_usage(entry, ran if isinstance(ran, str) and ran else served_by, request_id))
+    return usages or [_coerce_usage(top, served_by, request_id)]
 
 
 def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
@@ -175,9 +251,12 @@ def _system_blocks(system_blocks: list[str] | str) -> list[dict[str, Any]]:
     return out
 
 
-def _check_stop_reason(stop_reason: str | None) -> None:
+def _check_stop_reason(stop_reason: str | None, stop_details: Any = None) -> None:
     if stop_reason == "refusal":
-        raise StopReasonError("Model refused to generate the requested content.")
+        category = getattr(stop_details, "category", None)
+        if category is None and isinstance(stop_details, dict):
+            category = stop_details.get("category")
+        raise RefusalError("Model refused to generate the requested content.", category)
     if stop_reason == "max_tokens":
         raise StopReasonError("Generation hit max_tokens before completing the structured output.")
     if stop_reason == "pause_turn":
@@ -224,7 +303,22 @@ _thinking_unsupported: set[str] = set()
 
 
 def _is_thinking_unsupported(exc: Exception) -> bool:
-    return "thinking" in str(exc).lower()
+    """The API answered 400 because this model doesn't take ``thinking`` — not just any error whose
+    text contains the word: a validation error quoting the model's own answer ("Nice careful
+    thinking!") used to switch thinking off for that model until the next restart."""
+    return (
+        isinstance(exc, anthropic.APIStatusError)
+        and exc.status_code == 400
+        and "thinking" in str(exc).lower()
+    )
+
+
+@functools.cache
+def _output_format(output_model: type[BaseModel]) -> dict[str, Any]:
+    """The native structured-output format for ``output_model``, built exactly as the SDK's
+    ``messages.parse(output_format=...)`` builds it (so the request is byte-for-byte the same)."""
+    schema = pydantic.TypeAdapter(output_model).json_schema()
+    return {"schema": anthropic.transform_schema(schema), "type": "json_schema"}
 
 
 async def _provider_call(
@@ -236,7 +330,11 @@ async def _provider_call(
       compiled, so this is the only viable mode for big/nested content schemas (lesson/quiz) whose
       constrained-decoding grammar would exceed Anthropic's size/time cap.
     * ``"tools"`` — tool-use structured output (widely supported; used for the Haiku classifier).
-    * ``"parse"`` — native structured-output parse (grammar-constrained); fine for small schemas.
+    * ``"parse"`` — native structured output (grammar-constrained); fine for small schemas. Sent
+      with ``messages.create`` and the format ``messages.parse`` would build: ``parse`` validates
+      inside the call, so a cut-off or invalid answer raised before its usage was logged or its
+      stop_reason checked (and a max_tokens cut-off was retried as if merely invalid).
+      generate_structured validates the text itself, after both.
 
     ``thinking`` is only sent when ``send_thinking``."""
     common: dict[str, Any] = {
@@ -244,19 +342,30 @@ async def _provider_call(
         "max_tokens": max_tokens,
         "system": system,
         "messages": messages,
+        **_server_fallback_kwargs(model),
     }
     if send_thinking:
         common["thinking"] = ADAPTIVE_THINKING
+    # Effort on EVERY call that accepts it — JSON mode used to omit it, so lesson/quiz calls ran at
+    # the model's default (Opus 4.8: high; Opus 5.5: medium) whatever the caller asked for.
+    output_config: dict[str, Any] = {"effort": effort} if _supports_effort(model) else {}
     if mode == "json":
+        if output_config:
+            common["output_config"] = output_config
         return await cli.messages.create(**common)
     if mode == "tools":
         tool = _tool_for(output_model)
-        return await cli.messages.create(
-            tools=[tool], tool_choice={"type": "tool", "name": tool["name"]}, **common
-        )
-    return await cli.messages.parse(
-        output_config={"effort": effort}, output_format=output_model, **common
-    )
+        if _rejects_forced_tool_choice(model):
+            # Forced tool use 400s here: let the model choose, with a strict schema, and say so.
+            tool = {**tool, "strict": True}
+            choice: dict[str, Any] = {"type": "auto"}
+        else:
+            choice = {"type": "tool", "name": tool["name"]}  # Haiku: forced call, no thinking
+        if output_config and choice["type"] == "auto":
+            common["output_config"] = output_config
+        return await cli.messages.create(tools=[tool], tool_choice=choice, **common)
+    common["output_config"] = {**output_config, "format": _output_format(output_model)}
+    return await cli.messages.create(**common)
 
 
 def _extract_json_text(message: Any) -> str:
@@ -342,9 +451,8 @@ async def generate_structured[OutputT: BaseModel](
         messages = [{"role": "user", "content": user_text}]
 
         try:
-            # The provider call AND its parse/validate live inside the try so a pydantic
-            # ValidationError raised by messages.parse (the SDK validates synchronously during the
-            # await) triggers the corrective-instruction retry instead of escaping (SPEC §5).
+            # The provider call AND the validation of its output live inside the try so a pydantic
+            # ValidationError triggers the corrective-instruction retry instead of escaping (SPEC §5).
             send_thinking = use_thinking and model not in _thinking_unsupported
             call_kwargs = {
                 "model": model, "max_tokens": max_tokens, "system": system, "messages": messages,
@@ -364,12 +472,18 @@ async def generate_structured[OutputT: BaseModel](
                 getattr(message, "_request_id", None)
                 or getattr(message, "id", None)
             )
-            usage = _coerce_usage(getattr(message, "usage", None), model, raw_request_id)
-            if usage_sink is not None:
-                usage_sink.append(usage)
-            _log_usage(db, usage, request_id=request_id, profile_id=profile_id)
+            # Every billed attempt, each priced by the model that ran it (a server-side fallback may
+            # have run a declined attempt first); `usage` is the one that answered.
+            attempts = _attempt_usages(message, model, raw_request_id)
+            usage = attempts[-1]
+            for billed in attempts:
+                if usage_sink is not None:
+                    usage_sink.append(billed)
+                _log_usage(db, billed, request_id=request_id, profile_id=profile_id)
 
-            _check_stop_reason(getattr(message, "stop_reason", None))
+            _check_stop_reason(
+                getattr(message, "stop_reason", None), getattr(message, "stop_details", None)
+            )
 
             if mode == "json":
                 text = _extract_json_text(message)
