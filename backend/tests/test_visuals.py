@@ -7,6 +7,7 @@ placeholder degradation on provider failure. Imports stay within the B3 module +
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.models import VisualAsset
+from app.models import GenerationUsage, VisualAsset
 from app.schemas.enums import LayoutSlot, VisualKind
 from app.schemas.generation import GenVisualSpec
 from app.visuals import cache, claude_svg, ensure_visual, replicate_raster
@@ -260,6 +261,67 @@ async def test_a_cut_off_svg_is_asked_for_once_more():
     out = await claude_svg.generate_svg(svg_spec(), language="en", grade_band="G3-5")
     assert "<circle" in out["svg"]
     assert client.calls == 2
+
+
+class SlowSvgClient(FakeSvgClient):
+    """Each answer takes ``seconds``; the first one is cut off mid-tag."""
+
+    def __init__(self, seconds: float):
+        super().__init__()
+        self.seconds = seconds
+
+    async def parse(self, *, system, user, output_format):  # noqa: ANN001
+        await asyncio.sleep(self.seconds)
+        self.svg = VALID_SVG[:60] if self.calls == 0 else VALID_SVG
+        return await super().parse(system=system, user=user, output_format=output_format)
+
+
+async def test_a_slow_broken_diagram_is_not_retried_into_the_timeout(monkeypatch):
+    """A retry as slow as the first try would be cancelled by the callers' per-visual timeout and
+    leave no picture at all — give up at once so the placeholder shows."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "per_visual_timeout_s", 0.3)
+    slow = SlowSvgClient(0.2)
+    claude_svg.set_svg_client(slow)
+    with pytest.raises(SvgSanitizeError):
+        await claude_svg.generate_svg(svg_spec(), language="en", grade_band="G3-5")
+    assert slow.calls == 1
+
+    quick = SlowSvgClient(0.01)  # a quick broken answer still gets its second chance
+    claude_svg.set_svg_client(quick)
+    out = await claude_svg.generate_svg(svg_spec(), language="en", grade_band="G3-5")
+    assert "<circle" in out["svg"] and quick.calls == 2
+
+
+@pytest.mark.parametrize(("replies", "placeholder"), [
+    ([VALID_SVG[:60], VALID_SVG], False),
+    ([VALID_SVG[:60], VALID_SVG[:60]], True),
+], ids=["cut-off-then-fine", "cut-off-twice"])
+async def test_every_billed_diagram_call_counts_toward_the_daily_budget(db, monkeypatch, replies, placeholder):
+    """Diagram calls were never logged to generation_usage, so the daily AI cap couldn't see them."""
+    from app.llm import client as llm_client
+    from app.services import cost_guard
+
+    calls: list[str] = []
+
+    async def fake_generate_structured(*, output_model, usage_sink=None, effort="high", **_kw):
+        usage = llm_client.Usage(input_tokens=137, cache_read_tokens=556, output_tokens=1690,
+                                 anthropic_request_id=f"r{len(calls)}", model="claude-opus-5-5")
+        if usage_sink is not None:
+            usage_sink.append(usage)
+        calls.append(effort)
+        return output_model(svg=replies[len(calls) - 1], alt="the water cycle", caption=None), usage
+
+    monkeypatch.setattr(llm_client, "generate_structured", fake_generate_structured)
+    asset = await ensure_visual(db, svg_spec(), language="en", grade_band="G3-5")
+    await db.commit()
+    rows = (await db.scalars(select(GenerationUsage))).all()
+    assert calls == ["medium", "medium"]
+    assert (asset.model == "placeholder") is placeholder
+    assert [r.model for r in rows] == ["claude-opus-5-5"] * 2
+    assert await cost_guard.spent_today_usd(db) == pytest.approx(sum(r.est_cost_usd for r in rows))
+    assert all(r.est_cost_usd > 0 for r in rows)
 
 
 # --------------------------------------------------------------------------- router: svg cache miss/hit

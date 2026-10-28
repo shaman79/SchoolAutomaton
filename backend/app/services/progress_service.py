@@ -235,8 +235,9 @@ async def save_lesson_progress(
     # from an earlier answer is no new part finished.
     if revealed_up_to > before and state.revealed_up_to > before:
         state.streak = await gamification.settle_streak(db, profile, now)
-        # A streak badge (back after a break) shouldn't have to wait for the next answer or quiz.
-        await badges.evaluate_badges(
+        # A streak badge (back after a break) shouldn't have to wait for the next answer or quiz —
+        # and is returned, since it is awarded (and so announced) only once.
+        state.new_badges = await badges.evaluate_badges(
             db, profile, {"type": "lesson_part", "lesson_id": lesson.id, "now": now}
         )
     return state

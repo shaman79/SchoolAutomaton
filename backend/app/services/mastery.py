@@ -1,6 +1,7 @@
 """Derived mastery + knowledge-tree node state (SPEC §4 #5). Mastery is NOT a second scheduling
-algorithm — it aggregates per-item FSRS retrievability, weighted by each card's FSRS state, plus one
-evidence rule (correct answers on two different days). The retrievability values come from
+algorithm — it aggregates per-item FSRS retrievability, weighted by each card's FSRS state and its
+latest answer, plus one evidence rule (correct answers on two different days). The retrievability
+values come from
 ``srs_service`` (FSRS is the single source of truth); this module only aggregates them, so it is pure
 and fully unit-tested."""
 
@@ -24,6 +25,7 @@ class CardView:
 
     state: int          # 0 New, 1 Learning, 2 Review, 3 Relearning
     retrievability: float  # R(t,S) at evaluation time, 0..1 (0 for New / unscheduled)
+    last_correct: bool = False  # the learner's latest graded answer on this item was correct
 
 
 def _clamp01(x: float) -> float:
@@ -41,19 +43,28 @@ def concept_mastery(cards: list[CardView], *, correct_days: int) -> float:
     answer made a concept "mastered" (badges, and 0 XP for its next correct answers). The day rule
     makes "mastered" mean remembered on another day, not just answered once.
 
+    Once the concept is proven, a card whose latest answer was correct counts at full weight
+    whatever its FSRS state: a correct but slow or hinted answer is rated Hard, and Hard never
+    advances a learning step, so such a card stays in Learning however often it is answered right —
+    on state weights alone a slow reader could never master anything. A wrong latest answer keeps
+    the state weight, so a slip still drops the concept below mastered until it is answered right.
+
     Returns 0.0 when there are no cards or every card is New."""
+    proven = correct_days >= MASTERY_MIN_CORRECT_DAYS
     num = 0.0
     seen = 0
     for c in cards:
         w = MASTERY_STATE_WEIGHTS.get(c.state, 0.0)
         if w <= 0.0:
             continue  # New / unscheduled: no retention signal yet
+        if proven and c.last_correct:
+            w = 1.0
         num += w * _clamp01(c.retrievability)
         seen += 1
     if seen == 0:
         return 0.0
     value = _clamp01(num / seen)
-    if correct_days < MASTERY_MIN_CORRECT_DAYS:
+    if not proven:
         value = min(value, MASTERY_UNPROVEN_CAP)
     return value
 

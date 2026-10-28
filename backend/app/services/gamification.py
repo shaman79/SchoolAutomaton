@@ -367,28 +367,26 @@ async def _get_or_create_card(
     return card
 
 
-async def _correct_days(
-    db: AsyncSession, profile: Profile, concept_id: int, now: datetime, *, answered_correct: bool
-) -> int:
-    """Distinct UTC days with a correct answer on this concept — including the answer being graded
-    right now (its Answer row is written after mastery is recomputed)."""
-    days = set(
-        (
-            await db.scalars(
-                select(func.date(Answer.created_at))
-                .join(Item, Item.id == Answer.item_id)
-                .where(
-                    Answer.profile_id == profile.id,
-                    Item.concept_id == concept_id,
-                    Answer.is_correct.is_(True),
-                )
-                .distinct()
-            )
-        ).all()
-    )
-    if answered_correct:
-        days.add(now.astimezone(UTC).date().isoformat())
-    return len(days)
+async def _answer_evidence(
+    db: AsyncSession, profile: Profile, concept_id: int
+) -> tuple[set[str], dict[int, bool]]:
+    """From this learner's graded answers on the concept: the distinct UTC days ('YYYY-MM-DD') with
+    a correct answer, and whether each item's latest answer was correct. One query, newest first."""
+    rows = (
+        await db.execute(
+            select(Answer.item_id, Answer.is_correct, func.date(Answer.created_at))
+            .join(Item, Item.id == Answer.item_id)
+            .where(Answer.profile_id == profile.id, Item.concept_id == concept_id)
+            .order_by(Answer.created_at.desc(), Answer.id.desc())
+        )
+    ).all()
+    correct_days: set[str] = set()
+    latest: dict[int, bool] = {}
+    for item_id, is_correct, day in rows:
+        latest.setdefault(item_id, bool(is_correct))
+        if is_correct:
+            correct_days.add(day)
+    return correct_days, latest
 
 
 async def _recompute_mastery(
@@ -397,12 +395,15 @@ async def _recompute_mastery(
     concept_id: int,
     now: datetime,
     *,
+    item_id: int | None = None,
     answered_correct: bool = False,
 ) -> tuple[SkillMastery, float, float, NodeState]:
     """Recompute SkillMastery for one concept from its cards' FSRS retrievability (SPEC §4 #5).
 
-    ``answered_correct``: the answer being graded now was correct (it counts toward the
-    correct-on-two-days rule before its row exists). Returns (row, before, after, node_state)."""
+    ``item_id`` / ``answered_correct``: the answer being graded right now — its Answer row is
+    written after mastery is recomputed, so it is folded in here (it counts toward the
+    correct-on-two-days rule and is that item's latest answer). Returns (row, before, after,
+    node_state)."""
     retention = profile.desired_retention
     cards = (
         await db.execute(
@@ -412,19 +413,24 @@ async def _recompute_mastery(
         )
     ).scalars().all()
 
+    correct_days, latest_correct = await _answer_evidence(db, profile, concept_id)
+    if item_id is not None:
+        latest_correct[item_id] = answered_correct
+        if answered_correct:
+            correct_days.add(now.astimezone(UTC).date().isoformat())
+
     views: list[mastery.CardView] = []
     mastered_due: list[datetime] = []
     for c in cards:
         state = srs_service.card_state(c.fsrs_card_json)
         r = srs_service.get_retrievability(c.fsrs_card_json, now, desired_retention=retention)
-        views.append(mastery.CardView(state=state, retrievability=r))
+        views.append(mastery.CardView(
+            state=state, retrievability=r, last_correct=latest_correct.get(c.item_id, False)
+        ))
         if state == 2 and c.due is not None:  # Review-state cards drive decay timing
             mastered_due.append(c.due if c.due.tzinfo else c.due.replace(tzinfo=UTC))
 
-    correct_days = await _correct_days(
-        db, profile, concept_id, now, answered_correct=answered_correct
-    )
-    after = mastery.concept_mastery(views, correct_days=correct_days)
+    after = mastery.concept_mastery(views, correct_days=len(correct_days))
     decay_due_at = min(mastered_due) if (mastered_due and mastery.is_mastered(after)) else None
 
     prereqs_met = await _prereqs_met(db, profile, concept_id)
@@ -683,7 +689,7 @@ async def grade_and_reward(
     # 3) Mastery before failure-state was recorded → recompute concept mastery + node_state.
     failed_before = await _concept_was_failed(db, profile, item.concept_id) if is_correct else False
     sm_row, mastery_before, mastery_after, node_state = await _recompute_mastery(
-        db, profile, item.concept_id, now, answered_correct=is_correct
+        db, profile, item.concept_id, now, item_id=item.id, answered_correct=is_correct
     )
     mastery_delta = round(mastery_after - mastery_before, 4)
 
@@ -835,7 +841,7 @@ async def review_with_rating(
 
     failed_before = await _concept_was_failed(db, profile, item.concept_id) if is_correct else False
     _sm_row, mastery_before, mastery_after, node_state = await _recompute_mastery(
-        db, profile, item.concept_id, now, answered_correct=is_correct
+        db, profile, item.concept_id, now, item_id=item.id, answered_correct=is_correct
     )
     mastery_delta = round(mastery_after - mastery_before, 4)
 
@@ -971,11 +977,15 @@ async def _resolve_misconception(
 
 # --------------------------------------------------------------------------- attempt finalize
 async def finalize_attempt(db: AsyncSession, profile: Profile, attempt_id: int) -> ResultsSummary:
-    """Finalize a quiz attempt: compute score/accuracy, end-of-session badge eval + streak settle."""
+    """Finalize a quiz attempt: compute score/accuracy, end-of-session badge eval + streak settle.
+
+    Finishing it again (a double tap, a stale second tab the next day) returns the same summary and
+    records nothing: no new completion time, no streak day, no badges."""
     now = datetime.now(UTC)
     attempt = await db.get(QuizAttempt, attempt_id)
     if attempt is None:
         raise ValueError("attempt not found")
+    already_finished = attempt.completed_at is not None
 
     rows = (
         await db.execute(
@@ -1059,6 +1069,20 @@ async def finalize_attempt(db: AsyncSession, profile: Profile, attempt_id: int) 
                 after=sm.mastery,
                 state=NodeState(sm.node_state) if sm.node_state in NodeState._value2member_map_ else NodeState.LEARNING,
             )
+        )
+
+    if already_finished:
+        row = await db.get(StreakState, profile.id)
+        return ResultsSummary(
+            score=score,
+            max_score=max_score,
+            accuracy=accuracy,
+            xp_awarded=xp_awarded,
+            combo_max=combo_max,
+            new_badges=[],
+            streak=await streak_info_as_of(db, profile, row, now) if row is not None else StreakInfo(),
+            mastery_changes=mastery_changes,
+            level_up=None,
         )
 
     attempt.completed_at = now
@@ -1156,11 +1180,12 @@ def next_streak_step(streak: StreakState, *, now: datetime, rest_cap: int) -> St
     which it only reads.
 
     Bounded, mostly-invisible forgiveness (design gamification_design), applied in this order to the
-    missed days of a gap: 1) the weekly rest-day allowance (``rest_cap`` per ISO week, renewed
-    whenever ``now`` falls in a later ISO week than the last active day — before any of it is spent
-    on this gap), 2) the freeze inventory (cap 2, or 5 for >=30-day streaks), 3) the 48 h repair
-    window for a single missed day. Nothing is spent on a gap that can't be bridged. Never
-    loss-framed; ``is_perfect`` = no freeze or repair needed in this streak."""
+    missed days of a gap: 1) rest days — ``rest_cap`` per ISO week, each missed day drawing on the
+    allowance of its OWN week (a missed Sunday and Monday are one rest day in each of two weeks);
+    the stored count is for the week of the last active day, 2) the freeze inventory (cap 2, or 5
+    for >=30-day streaks), 3) the 48 h repair window for a single missed day. Nothing is spent on a
+    gap that can't be bridged. Never loss-framed; ``is_perfect`` = no freeze or repair needed in
+    this streak."""
     today = _utc_day(now)
     last = streak.last_active_date
     current = streak.current_streak_len or 0
@@ -1187,13 +1212,23 @@ def next_streak_step(streak: StreakState, *, now: datetime, rest_cap: int) -> St
     if today <= last:
         return step(STREAK_SAME_DAY, current, last_active_date=last)
 
-    if _iso_week(today) != _iso_week(last):
-        rest_used = 0  # a new week's allowance, whichever weekday the learner comes back on
     missed = (today - last).days - 1
+    same_week = _iso_week(today) == _iso_week(last)
     if missed == 0:
-        return step(STREAK_NEXT_DAY, current + 1, rest_days_used=rest_used)
+        return step(STREAK_NEXT_DAY, current + 1, rest_days_used=rest_used if same_week else 0)
 
-    use_rest = min(missed, max(0, rest_cap - rest_used))
+    # Rest days: every missed day is charged to its own ISO week's allowance.
+    if same_week:
+        use_rest = min(missed, max(0, rest_cap - rest_used))
+        rest_this_week = rest_used + use_rest
+    else:
+        tail = 6 - last.weekday()  # missed days left in the last active day's week
+        head = today.weekday()  # missed days in today's week, before today
+        whole_weeks = (missed - tail - head) // 7  # weeks missed entirely in between
+        rest_this_week = min(head, rest_cap)
+        use_rest = (
+            min(tail, max(0, rest_cap - rest_used)) + whole_weeks * rest_cap + rest_this_week
+        )
     left = missed - use_rest
     use_freeze = min(left, max(0, min(inventory, _freeze_cap(current) - freezes_used)))
     left -= use_freeze
@@ -1207,7 +1242,7 @@ def next_streak_step(streak: StreakState, *, now: datetime, rest_cap: int) -> St
         current + 1,
         freeze_inventory=inventory - use_freeze,
         freezes_used=freezes_used + use_freeze,
-        rest_days_used=rest_used + use_rest,
+        rest_days_used=rest_this_week,
         is_perfect=perfect and not forgiven,
         frozen=forgiven,
     )

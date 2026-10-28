@@ -132,6 +132,47 @@ def _server_fallback_kwargs(model: str) -> dict[str, Any]:
     return {}
 
 
+# Refusal categories billed even when the decline came before any output ("How refusals are billed",
+# platform docs, as of September 2026). A pre-output decline in any other category (cyber,
+# general_harms, null) is reported but not billed.
+_BILLED_BEFORE_OUTPUT = frozenset({"bio", "frontier_llm", "reasoning_extraction"})
+
+
+def _field(obj: Any, name: str) -> Any:
+    return obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+
+
+def _attempt_usages(message: Any, requested_model: str, request_id: str | None) -> list[Usage]:
+    """One Usage per billed attempt behind a response, each priced by the model that ran it; the
+    last is the attempt that produced the returned message.
+
+    With a server-side fallback, ``usage.iterations`` is the per-attempt billing record: each hop
+    that declined is a "message" entry, the one that answered a "fallback_message" entry, and the
+    top-level usage covers only that last one. A hop that declined before any output is billed only
+    in some refusal categories (the k-th ``fallback`` content block names the k-th hop's). Without
+    iterations, no fallback ran and the top-level usage is the whole call."""
+    served_by = getattr(message, "model", None)
+    served_by = served_by if isinstance(served_by, str) and served_by else requested_model
+    top = getattr(message, "usage", None)
+    iterations = list(_field(top, "iterations") or []) if top is not None else []
+    if not iterations:
+        return [_coerce_usage(top, served_by, request_id)]
+    declined_because = iter([
+        _field(_field(block, "trigger") or {}, "category")
+        for block in (getattr(message, "content", None) or [])
+        if _field(block, "type") == "fallback"
+    ])
+    usages: list[Usage] = []
+    for entry in iterations:
+        if _field(entry, "type") == "message":  # a hop that declined
+            category = next(declined_because, None)
+            if not _field(entry, "output_tokens") and category not in _BILLED_BEFORE_OUTPUT:
+                continue  # declined before any output, in a category that isn't billed
+        ran = _field(entry, "model")
+        usages.append(_coerce_usage(entry, ran if isinstance(ran, str) and ran else served_by, request_id))
+    return usages or [_coerce_usage(top, served_by, request_id)]
+
+
 def _coerce_usage(raw: Any, model: str, request_id: str | None) -> Usage:
     """Map an anthropic ``Usage`` object (or mapping) onto our normalized dataclass."""
 
@@ -413,13 +454,14 @@ async def generate_structured[OutputT: BaseModel](
                 getattr(message, "_request_id", None)
                 or getattr(message, "id", None)
             )
-            # Price by the model that actually answered (a server-side fallback may have served it).
-            served_by = getattr(message, "model", None)
-            served_by = served_by if isinstance(served_by, str) and served_by else model
-            usage = _coerce_usage(getattr(message, "usage", None), served_by, raw_request_id)
-            if usage_sink is not None:
-                usage_sink.append(usage)
-            _log_usage(db, usage, request_id=request_id, profile_id=profile_id)
+            # Every billed attempt, each priced by the model that ran it (a server-side fallback may
+            # have run a declined attempt first); `usage` is the one that answered.
+            attempts = _attempt_usages(message, model, raw_request_id)
+            usage = attempts[-1]
+            for billed in attempts:
+                if usage_sink is not None:
+                    usage_sink.append(billed)
+                _log_usage(db, billed, request_id=request_id, profile_id=profile_id)
 
             _check_stop_reason(
                 getattr(message, "stop_reason", None), getattr(message, "stop_details", None)

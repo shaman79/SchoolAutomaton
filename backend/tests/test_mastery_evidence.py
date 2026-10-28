@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy import select
 
-from app.core.constants import MASTERY_MASTERED_THRESHOLD
+from app.core.constants import LATENCY_THRESHOLDS, MASTERY_MASTERED_THRESHOLD
 from app.models import SkillMastery
 from app.schemas.enums import NodeState
 from app.schemas.questions import AnswerIn
@@ -23,9 +23,10 @@ MCQ = {
 DAY1 = datetime(2026, 10, 27, 15, 0, tzinfo=UTC)
 
 
-async def _answer(db, profile, item, value, now):  # noqa: F811
+async def _answer(db, profile, item, value, now, latency_ms=None):  # noqa: F811
     return await gamification.grade_and_reward(
-        db, profile, item, AnswerIn(item_id=item.id, submitted_value=value), None, now=now
+        db, profile, item,
+        AnswerIn(item_id=item.id, submitted_value=value, latency_ms=latency_ms), None, now=now,
     )
 
 
@@ -84,3 +85,35 @@ async def test_wrong_answers_on_day_two_do_not_count_as_evidence(db):  # noqa: F
     await _answer(db, p, it, "a", DAY1 + timedelta(minutes=5))
     await _answer(db, p, it, "b", DAY1 + timedelta(days=1))
     assert (await _mastery(db, p)).mastery < MASTERY_MASTERED_THRESHOLD
+
+
+SLOW = LATENCY_THRESHOLDS["mcq"]["slow"] + 5_000  # right, but slower than the "slow" line: FSRS Hard
+
+
+@pytest.mark.asyncio
+async def test_a_slow_reader_who_answers_right_on_two_days_masters_the_topic(db):  # noqa: F811
+    """Hard never moves a card out of Learning, so a child who is always right but slow used to be
+    stuck at 50% for good — answered right on ten different days, never "mastered"."""
+    p = await _make_profile(db)
+    c = await _make_concept(db)
+    it = await _make_item(db, c.id, "mcq", MCQ)
+    first = await _answer(db, p, it, "a", DAY1, latency_ms=SLOW)
+    assert first.fsrs_rating == 2  # Hard
+    assert (await _mastery(db, p)).mastery < MASTERY_MASTERED_THRESHOLD
+    await _answer(db, p, it, "a", DAY1 + timedelta(days=1), latency_ms=SLOW)
+    sm = await _mastery(db, p)
+    assert sm.node_state == NodeState.MASTERED.value
+
+
+@pytest.mark.asyncio
+async def test_a_slip_drops_a_mastered_topic_until_it_is_answered_right_again(db):  # noqa: F811
+    p = await _make_profile(db)
+    c = await _make_concept(db)
+    it = await _make_item(db, c.id, "mcq", MCQ)
+    await _answer(db, p, it, "a", DAY1)
+    await _answer(db, p, it, "a", DAY1 + timedelta(days=1))
+    assert (await _mastery(db, p)).node_state == NodeState.MASTERED.value
+    await _answer(db, p, it, "b", DAY1 + timedelta(days=2))
+    assert (await _mastery(db, p)).mastery < MASTERY_MASTERED_THRESHOLD
+    await _answer(db, p, it, "a", DAY1 + timedelta(days=3), latency_ms=SLOW)
+    assert (await _mastery(db, p)).node_state == NodeState.MASTERED.value

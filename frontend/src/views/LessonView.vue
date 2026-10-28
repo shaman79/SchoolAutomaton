@@ -30,6 +30,7 @@ import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
 import { toast } from '@/components/common/useToasts'
+import { announceBadges } from '@/components/gamification/announceBadges'
 import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
 import { speechLang } from '@/lib/speechLang'
@@ -180,6 +181,7 @@ async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
     if (res.is_correct) void celebrateCorrect(target ?? null)
     if (res.xp_awarded) await session.refreshGamification().catch(() => {})
     session.applyStreak(res.streak) // every graded answer counts toward today, right or wrong
+    announceBadges(res.new_badges)
   } catch (err) {
     // The question stays answerable with the learner's input in place; say what happened.
     if (!leaving) toast.error(t(answerErrorKey(err)))

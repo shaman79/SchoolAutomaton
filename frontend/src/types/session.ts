@@ -199,6 +199,8 @@ export interface LessonProgress {
   answers: RestoredAnswer[]
   /** Set when this call moved the boundary forward — a finished part counts toward the streak. */
   streak?: StreakInfo | null
+  /** Badges that finished part unlocked (shown once, like an answer's). */
+  new_badges?: { code: string; title: string; tier: number }[]
 }
 export interface AttemptStart {
   attempt_id: number

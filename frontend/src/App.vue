@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
+import { onBeforeUnmount, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView } from 'vue-router'
 
@@ -33,7 +33,20 @@ watch(
  */
 onMounted(() => {
   if (session.resumeCode) void session.loadExisting()
+  document.addEventListener('visibilitychange', onShown)
+  window.addEventListener('pageshow', onShown)
 })
+onBeforeUnmount(() => {
+  document.removeEventListener('visibilitychange', onShown)
+  window.removeEventListener('pageshow', onShown)
+})
+
+// Phones keep a tab alive in the background for days. Coming back to it, re-read the header's
+// numbers: the streak "as it stands now" may have dropped to 0 meanwhile, and the first answer would
+// otherwise turn an old 7 into a 1 in front of the child.
+function onShown() {
+  if (document.visibilityState === 'visible') session.refreshIfStale()
+}
 </script>
 
 <template>

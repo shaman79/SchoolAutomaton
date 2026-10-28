@@ -166,10 +166,22 @@ async def _ensure_svg(db: AsyncSession, spec: GenVisualSpec, *, language: str, g
     if existing is not None:
         return existing
 
+    from ..llm.client import usage_row  # noqa: PLC0415 — lazy, like claude_svg's client import
+
+    calls: list = []
     try:
-        result = await claude_svg.generate_svg(spec, language=language, grade_band=grade_band)
+        result = await claude_svg.generate_svg(
+            spec, language=language, grade_band=grade_band, usage_sink=calls
+        )
     except Exception:  # provider/sanitize failure → never hard-fail generation
         logger.warning("Claude-SVG generation failed; using placeholder", exc_info=True)
+        result = None
+    finally:
+        # Every billed attempt counts toward the daily AI budget. Staged only now that no call is in
+        # flight; the callers' commits write the rows.
+        for usage in calls:
+            db.add(usage_row(usage, request_id=None))
+    if result is None:
         return await _placeholder_asset(db, spec, language=language)
 
     return await _store_svg(

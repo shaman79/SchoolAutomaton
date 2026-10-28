@@ -143,3 +143,70 @@ async def test_a_classifier_refusal_is_a_friendly_refusal_not_an_outage(db, monk
     decision = await sanitize_request(db, "how to culture a dangerous pathogen", ctx, "rid-r")
     assert isinstance(decision, RefuseDecision)
     assert decision.redirect_suggestions
+
+
+# --------------------------------------------------------------------------- refusal fallback billing
+# Shapes from the platform docs ("Refusals and fallback"): a hop that declined is a "message" entry in
+# usage.iterations, the hop that answered a "fallback_message" entry; top-level usage covers only the
+# latter. A decline before any output is billed only for bio / frontier_llm / reasoning_extraction.
+def _fallback_body(*, declined_output: int, category: str | None) -> dict:
+    declined = {"type": "message", "model": "claude-opus-5-5", "input_tokens": 6200,
+                "output_tokens": declined_output, "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0}
+    served = {"type": "fallback_message", "model": "claude-opus-4-8", "input_tokens": 6100,
+              "output_tokens": 4000, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+    return {
+        "id": "msg_fallback", "type": "message", "role": "assistant", "model": "claude-opus-4-8",
+        "content": [
+            {"type": "fallback", "from": {"model": "claude-opus-5-5"},
+             "to": {"model": "claude-opus-4-8"}, "trigger": {"type": "refusal", "category": category}},
+            {"type": "text", "text": '{"x": 1}'},
+        ],
+        "stop_reason": "end_turn", "stop_sequence": None, "stop_details": None,
+        "usage": {"input_tokens": 6100, "output_tokens": 4000, "cache_read_input_tokens": 0,
+                  "cache_creation_input_tokens": 0, "iterations": [declined, served]},
+    }
+
+
+def _sdk_answering(body: dict):
+    """The real SDK (it must keep usage.iterations and the fallback block), only the HTTP faked."""
+    import anthropic
+    import httpx2
+
+    transport = httpx2.MockTransport(lambda _request: httpx2.Response(200, json=body))
+    return anthropic.AsyncAnthropic(
+        api_key="test-key", max_retries=0,
+        http_client=anthropic.DefaultAsyncHttpxClient(transport=transport),
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("declined_output", "category", "billed_models"), [
+    (7000, "cyber", ["claude-opus-5-5", "claude-opus-4-8"]),  # declined mid-output: billed
+    (0, "cyber", ["claude-opus-4-8"]),  # declined before any output, unbilled category
+    (0, "bio", ["claude-opus-5-5", "claude-opus-4-8"]),  # ...in a billed one
+], ids=["mid-output", "before-output-cyber", "before-output-bio"])
+async def test_a_declined_attempt_counts_toward_the_budget_when_it_is_billed(
+    db, declined_output, category, billed_models
+):
+    from sqlalchemy import select
+
+    from app.core.pricing import estimate_cost_usd
+    from app.models import GenerationUsage
+    from app.services.cost_guard import spent_today_usd
+
+    out, usage = await cl.generate_structured(
+        system_blocks="s", user="u", output_model=_Out, model="claude-opus-5-5", effort="medium",
+        use_json_mode=True, db=db,
+        client=_sdk_answering(_fallback_body(declined_output=declined_output, category=category)),
+    )
+    await db.flush()
+    rows = (await db.scalars(select(GenerationUsage).order_by(GenerationUsage.id))).all()
+    assert out.x == 1
+    assert usage.model == "claude-opus-4-8"  # the attempt that answered
+    assert [r.model for r in rows] == billed_models
+    expected = sum(
+        estimate_cost_usd(r.model, input_tokens=r.input_tokens, output_tokens=r.output_tokens)
+        for r in rows
+    )
+    assert await spent_today_usd(db) == pytest.approx(expected)

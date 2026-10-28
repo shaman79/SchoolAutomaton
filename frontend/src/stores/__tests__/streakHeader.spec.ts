@@ -4,7 +4,7 @@
  * and never rolled back by a snapshot fetched before the server committed the answer.
  */
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GamificationSnapshot, GradeResult, Lesson, StreakInfo } from '@/types/session'
 
@@ -25,9 +25,10 @@ vi.mock('@/lib/api', async (importOriginal) => {
   }
 })
 
+import { toast, toasts } from '@/components/common/useToasts'
 import { api } from '@/lib/api'
 import { useLessonStore } from '@/stores/lesson'
-import { useSessionStore } from '@/stores/session'
+import { SNAPSHOT_STALE_MS, useSessionStore } from '@/stores/session'
 import { useTestStore } from '@/stores/test'
 
 const mocked = vi.mocked(api)
@@ -195,6 +196,32 @@ describe('after a lesson part', () => {
     expect(mocked.getGamification).not.toHaveBeenCalled()
   })
 
+  it('announces a badge the finished part unlocked (it is reported only once)', async () => {
+    for (const t of [...toasts.items]) toast.dismiss(t.id)
+    mocked.getLesson.mockResolvedValue(lesson())
+    mocked.syncLessonProgress.mockResolvedValueOnce({
+      lesson_id: 9,
+      revealed_up_to: 0,
+      completed: false,
+      answers: [],
+    })
+    const store = useLessonStore()
+    await store.load(9)
+
+    mocked.syncLessonProgress.mockResolvedValueOnce({
+      lesson_id: 9,
+      revealed_up_to: 1,
+      completed: false,
+      answers: [],
+      streak: streak(1),
+      new_badges: [{ code: 'resilient', title: 'Resilient', tier: 1 }],
+    })
+    await store.revealNext()
+    await vi.waitFor(() =>
+      expect(toasts.items.map((t) => t.message)).toContain('Badge unlocked: Resilient!'),
+    )
+  })
+
   it('ignores a reply that lands after the learner left the lesson', async () => {
     mocked.getLesson.mockResolvedValue(lesson())
     mocked.syncLessonProgress.mockResolvedValueOnce({
@@ -230,3 +257,55 @@ describe('applyStreak', () => {
     expect(session.gamification).toBeNull()
   })
 })
+
+describe('coming back to a tab left open', () => {
+  afterEach(() => vi.useRealTimers())
+
+  function adoptSnapshotAt(time: string, current: number) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(time))
+    const session = useSessionStore()
+    session.resumeCode = 'ABCD-EFGH'
+    mocked.getGamification.mockResolvedValueOnce(snapshot(current))
+    return session.refreshGamification().then(() => session)
+  }
+
+  it('re-reads the streak once the snapshot is a few minutes old', async () => {
+    const session = await adoptSnapshotAt('2026-10-26T18:00:00Z', 7)
+    session.refreshIfStale() // just read: nothing to do
+    expect(mocked.getGamification).toHaveBeenCalledTimes(1)
+
+    vi.setSystemTime(new Date(Date.parse('2026-10-26T18:00:00Z') + SNAPSHOT_STALE_MS - 1))
+    session.refreshIfStale() // still fresh enough
+    expect(mocked.getGamification).toHaveBeenCalledTimes(1)
+
+    vi.setSystemTime(new Date('2026-10-30T16:00:00Z')) // Friday: the gap can't be bridged any more
+    mocked.getGamification.mockResolvedValueOnce(snapshot(0))
+    session.refreshIfStale()
+    await vi.waitFor(() => expect(session.gamification?.streak.current).toBe(0))
+  })
+
+  it('a re-read that started before an answer never rolls the answer’s streak back', async () => {
+    const session = await adoptSnapshotAt('2026-10-30T16:00:00Z', 0)
+    let reply: (v: GamificationSnapshot) => void = () => {}
+    mocked.getGamification.mockReturnValueOnce(new Promise((r) => (reply = r)) as never)
+    const reading = session.refreshGamification()
+    session.applyStreak(streak(1)) // the first answer lands meanwhile
+    reply({ ...snapshot(0), total_xp: 170 }) // read before the answer was committed
+    await reading
+    expect(session.gamification?.streak.current).toBe(1)
+    expect(session.gamification?.total_xp).toBe(170)
+  })
+
+  it('drops a re-read that lands after another learner took over the device', async () => {
+    const session = await adoptSnapshotAt('2026-10-30T16:00:00Z', 3)
+    let reply: (v: GamificationSnapshot) => void = () => {}
+    mocked.getGamification.mockReturnValueOnce(new Promise((r) => (reply = r)) as never)
+    const reading = session.refreshGamification()
+    session.forget()
+    reply(snapshot(3))
+    await reading
+    expect(session.gamification).toBeNull()
+  })
+})
+

@@ -19,6 +19,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
+import { announceBadges } from '@/components/gamification/announceBadges'
 import { api } from '@/lib/api'
 import type { SubmittedValue } from '@/types/question'
 import type { GradeResult, Lesson, LessonProgress, LessonSection } from '@/types/session'
@@ -202,7 +203,9 @@ export const useLessonStore = defineStore('lesson', () => {
     void api
       .syncLessonProgress(lessonId, revealedUpTo.value)
       .then((progress) => {
-        if (epoch === loadEpoch) useSessionStore().applyStreak(progress?.streak) // not after a switch
+        if (epoch !== loadEpoch) return // not after a switch
+        useSessionStore().applyStreak(progress?.streak)
+        announceBadges(progress?.new_badges) // e.g. back after a break: awarded, and told, once
       })
       .catch(() => {})
   }

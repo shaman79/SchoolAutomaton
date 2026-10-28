@@ -9,6 +9,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import StreakFlame from '@/components/gamification/StreakFlame.vue'
 import { i18n, setLocale } from '@/i18n'
+import { api } from '@/lib/api'
 import { usePrefsStore } from '@/stores/prefs'
 import { useSessionStore } from '@/stores/session'
 import type { StreakInfo } from '@/types/session'
@@ -77,7 +78,7 @@ describe('the progress screen with a streak of 0', () => {
     setActivePinia(createPinia())
     usePrefsStore().locale = locale // the UI language follows the prefs store
     const session = useSessionStore()
-    session.gamification = {
+    const snapshot = {
       level: 2,
       total_xp: 150,
       xp_to_next: 40,
@@ -87,6 +88,8 @@ describe('the progress screen with a streak of 0', () => {
       daily_progress_xp: 0,
       badges: [],
     }
+    session.gamification = snapshot
+    vi.mocked(api.getGamification).mockResolvedValue(snapshot) // the screen re-reads it on open
     const blank = { template: '<div />' }
     const router = createRouter({
       history: createMemoryHistory(),

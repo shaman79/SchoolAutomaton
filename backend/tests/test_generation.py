@@ -753,7 +753,7 @@ async def test_generation_never_holds_the_write_lock_during_an_llm_call(db, mode
     seen = _record_open_writes(client, raw, db)
     pictures: list[bool] = []
 
-    async def fake_svg(spec, *, language, grade_band):
+    async def fake_svg(spec, *, language, grade_band, usage_sink=None):
         pictures.append(raw.in_transaction)
         return {"svg": '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"></svg>', "alt": "x"}
 

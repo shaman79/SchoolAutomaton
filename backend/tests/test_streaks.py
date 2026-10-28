@@ -3,8 +3,8 @@
 * What counts: a graded answer (lesson practice, quiz question, review card), a finished lesson part
   (the reveal boundary moved forward) and a finished quiz — one streak update per request, idempotent
   per UTC day. Not: an ungraded crisis response, a refused request (404/409/422), opening a lesson.
-* Forgiveness, in order: rest days (a fresh allowance every ISO week, whichever day the learner comes
-  back on), freezes, the 48 h repair window. Nothing is spent on a gap that can't be bridged.
+* Forgiveness, in order: rest days (a fresh allowance every ISO week; each missed day is charged to
+  its own week), freezes, the 48 h repair window. Nothing is spent on a gap that can't be bridged.
 * The snapshot shows the streak as it stands NOW (0 once the gap can't be bridged) without writing,
   through the same pure helper settle_streak uses — so the two can never disagree.
 
@@ -20,16 +20,19 @@ from sqlalchemy import select
 
 from app.db.session import SessionLocal
 from app.models import (
+    Answer,
     BadgeDefinition,
     Lesson,
     Profile,
     ProfileBadge,
     ProfileSettings,
+    QuizAttempt,
     StreakState,
 )
 from app.schemas.questions import AnswerIn
 from app.services import gamification, profile_service, progress_service
 from app.services.gamification import STREAK_BRIDGED, STREAK_BROKEN, next_streak_step
+from app.services.streak_catchup import catch_up_streaks
 from tests.test_cost_tracking import _seed
 from tests.test_progress_resume import _new_profile, _seed_lesson, _seed_quiz
 
@@ -260,6 +263,82 @@ async def test_skipping_monday_still_renews_the_rest_day_budget(client):
         assert info.current == 1
 
 
+def _at(month: int, day: int, hour: int) -> datetime:
+    return datetime(2026, month, day, hour, 0, tzinfo=UTC)
+
+
+def test_each_missed_day_uses_the_rest_day_of_its_own_week():
+    """Away Sun 27 (ISO week 39) and Mon 28 (week 40) with one rest day a week: one rest day from
+    each week covers the gap — it used to be one allowance per gap, so this broke the streak (or
+    spent a freeze)."""
+    state = {"current_streak_len": 6, "longest_streak": 6, "last_active_date": date(2026, 9, 26)}
+    back_tuesday = _at(9, 29, 19)
+    step = next_streak_step(_state(freeze_inventory=0, **state), now=back_tuesday, rest_cap=1)
+    assert (step.outcome, step.current, step.rest_days_used) == (STREAK_BRIDGED, 7, 1)
+    step = next_streak_step(_state(freeze_inventory=2, **state), now=back_tuesday, rest_cap=1)
+    assert (step.freeze_inventory, step.frozen, step.is_perfect) == (2, False, True)
+
+
+def test_a_week_whose_rest_day_is_spent_does_not_borrow_the_next_weeks():
+    """Rest day used on Wed 23; away Sat 26 and Sun 27 (both week 39), back Mon 28 (week 40)."""
+    step = next_streak_step(
+        _state(current_streak_len=3, longest_streak=3, last_active_date=date(2026, 9, 25),
+               rest_days_used_this_week=1, freeze_inventory=0),
+        now=_at(9, 28, 19), rest_cap=1,
+    )
+    assert step.outcome == STREAK_BROKEN
+
+
+async def test_a_rest_day_in_each_of_two_weeks_keeps_the_streak(client):
+    async with SessionLocal() as db:
+        profile, _ = await _seed(db)
+        (await db.get(ProfileSettings, profile.id)).rest_days_per_week = 1
+        await _set_streak(db, profile.id, freeze_inventory=0)
+        for day in range(21, 27):  # Mon 21 .. Sat 26 Sep
+            await gamification.settle_streak(db, profile, _at(9, day, 18))
+        info = await gamification.settle_streak(db, profile, _at(9, 28, 8))  # rested Sun 27
+        assert info.current == 7
+        for day in (29, 30):
+            info = await gamification.settle_streak(db, profile, _at(9, day, 8))
+        info = await gamification.settle_streak(db, profile, _at(10, 2, 18))  # rested Thu 1 Oct
+        assert (info.current, info.frozen) == (10, False)
+
+
+def _day_by_day(last: date, today: date, rest_cap: int, rest_used: int) -> tuple[int, int]:
+    """Reference rule: each missed day takes a rest day from its own ISO week while one is left.
+    Returns (missed days covered, rest days used in today's week)."""
+    used = {last.isocalendar()[:2]: rest_used}
+    covered = 0
+    day = last + timedelta(days=1)
+    while day < today:
+        week = day.isocalendar()[:2]
+        if used.get(week, 0) < rest_cap:
+            used[week] = used.get(week, 0) + 1
+            covered += 1
+        day += timedelta(days=1)
+    return covered, used.get(today.isocalendar()[:2], 0)
+
+
+def test_rest_days_match_a_day_by_day_count_on_every_gap():
+    monday = date(2026, 9, 21)
+    for start, gap, rest_cap in itertools.product(range(7), range(1, 24), range(3)):
+        for rest_used in range(rest_cap + 1):
+            last = monday + timedelta(days=start)
+            today = last + timedelta(days=gap)
+            covered, used_today = _day_by_day(last, today, rest_cap, rest_used)
+            step = next_streak_step(
+                _state(current_streak_len=4, longest_streak=4, last_active_date=last,
+                       rest_days_used_this_week=rest_used, freeze_inventory=0),
+                now=datetime(today.year, today.month, today.day, 12, tzinfo=UTC), rest_cap=rest_cap,
+            )
+            case = (last, today, rest_cap, rest_used)
+            if covered == gap - 1:
+                assert step.outcome != STREAK_BROKEN, case
+                assert step.rest_days_used == used_today, case
+            else:
+                assert step.outcome == STREAK_BROKEN, case
+
+
 def test_forgiveness_order_is_rest_days_then_freezes_then_repair():
     last = date(2026, 9, 22)  # a Tuesday
     # Two missed days (Wed, Thu): the rest day takes one, a freeze the other.
@@ -402,6 +481,10 @@ async def test_the_comeback_badge_reaches_a_lesson_only_learner(client):
         state = await progress_service.save_lesson_progress(db, profile, lesson, 1, now=TUE)
         assert state.streak is not None and state.streak.current == 1
         assert await _resilient_unlocked(db, pid)
+        # ...and the reply says so: it is awarded only once, so this is the one chance to show it.
+        assert [b.code for b in state.new_badges] == ["resilient"]
+        again = await progress_service.save_lesson_progress(db, profile, lesson, 2, now=TUE)
+        assert again.new_badges == []
 
 
 async def test_finishing_a_quiz_still_counts(client, clock):
@@ -412,3 +495,88 @@ async def test_finishing_a_quiz_still_counts(client, clock):
     assert r.status_code == 200, r.text
     assert r.json()["streak"]["current"] == 1
     assert await _streak_row(pid) == (1, TUE.date())
+
+
+async def test_finishing_a_finished_quiz_again_records_nothing(client, clock):
+    """A stale second tab taps Finish the next day: the same summary comes back, but no new
+    completion time, no streak day and no badges."""
+    headers, pid = await _new_profile(client)
+    quiz_id, (i1, i2) = await _seed_quiz("streak-refinish", pid, n=2)
+    aid = (await client.post(f"{API}/quizzes/{quiz_id}/attempts", headers=headers, json={})).json()["attempt_id"]
+    for item in (i1, i2):
+        r = await client.post(f"{API}/answers", headers=headers,
+                              json={"item_id": item, "attempt_id": aid, "submitted_value": "a"})
+        assert r.status_code == 200, r.text
+    first = await client.post(f"{API}/attempts/{aid}/complete", headers=headers)
+    assert first.status_code == 200 and first.json()["streak"]["current"] == 1
+    async with SessionLocal() as db:
+        finished_at = (await db.get(QuizAttempt, aid)).completed_at
+
+    clock.now = TUE + DAY
+    again = await client.post(f"{API}/attempts/{aid}/complete", headers=headers)
+    assert again.status_code == 200, again.text
+    body = again.json()
+    assert (body["score"], body["max_score"], body["new_badges"]) == (2, 2, [])
+    assert body["streak"]["current"] == 1  # as it stands now: yesterday's day, nothing added
+    assert await _streak_row(pid) == (1, TUE.date())
+    async with SessionLocal() as db:
+        assert (await db.get(QuizAttempt, aid)).completed_at == finished_at
+
+
+# --------------------------------------------------------------------------- the day the rule went live
+LAST_QUIZ = datetime(2026, 10, 20, 17, 0, tzinfo=UTC)
+
+
+async def _lesson_answers(pid: int, item_id: int, moments) -> None:
+    async with SessionLocal() as db:
+        for moment in moments:
+            db.add(Answer(profile_id=pid, item_id=item_id, attempt_id=None, submitted_value_json="a",
+                          is_correct=True, fsrs_rating=3, created_at=moment))
+        await db.commit()
+
+
+async def test_lesson_days_before_the_new_rule_are_counted_once(client):
+    """Only a finished quiz used to move the streak: a child learning through lessons every day would
+    have seen 0 the day the new rule went live. Their lesson days are counted at startup."""
+    headers, pid = await _new_profile(client)
+    _, item_id = await _seed_lesson("catch-up-lessons", pid)
+    async with SessionLocal() as db:
+        await _set_streak(db, pid, current_streak_len=4, longest_streak=4,
+                          last_active_date=LAST_QUIZ.date(), freeze_inventory=2,
+                          repair_window_expires_at=LAST_QUIZ + timedelta(hours=48))
+        await db.commit()
+    await _lesson_answers(pid, item_id, [LAST_QUIZ + d * DAY for d in range(1, 8)])  # 21..27 Oct
+
+    async with SessionLocal() as db:
+        seen_at = (await db.get(Profile, pid)).last_active_at
+        assert await catch_up_streaks(db) == 1
+        await db.commit()
+    assert await _streak_row(pid) == (11, date(2026, 10, 27))
+    async with SessionLocal() as db:
+        profile = await db.get(Profile, pid)
+        assert profile.last_active_at == seen_at  # not moved back to a replayed day
+        assert (await profile_service.build_snapshot(db, profile, now=_at(10, 28, 7))).streak.current == 11
+        # Idempotent: nothing is after the stored last active day any more.
+        assert await catch_up_streaks(db) == 0
+    assert await _streak_row(pid) == (11, date(2026, 10, 27))
+
+
+async def test_a_lesson_only_learner_gets_their_streak(client):
+    headers, pid = await _new_profile(client)
+    _, item_id = await _seed_lesson("catch-up-only-lessons", pid)
+    await _lesson_answers(pid, item_id, [_at(10, day, 16) for day in (25, 26, 26, 27)])
+    async with SessionLocal() as db:
+        assert await catch_up_streaks(db) == 1
+        await db.commit()
+    assert await _streak_row(pid) == (3, date(2026, 10, 27))
+
+
+async def test_a_failing_catch_up_never_stops_the_app_from_starting(monkeypatch):
+    from app import main
+    from app.services import streak_catchup
+
+    async def boom(_db):
+        raise RuntimeError("bad row")
+
+    monkeypatch.setattr(streak_catchup, "catch_up_streaks", boom)
+    await main._catch_up_streaks()  # logged, not raised

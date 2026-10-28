@@ -325,7 +325,7 @@ async def _generate_section(
         attempts = 3 if stub.kind == SectionKind.EXPLANATION and _is_english(intent.language) else 1
         section: GenSection | None = None
         for i in range(attempts):
-            section, usage = await generate_structured(
+            section, _usage = await generate_structured(
                 system_blocks=prompts.system_pedagogy(intent.language),
                 user=user,
                 output_model=GenSection,
@@ -336,8 +336,8 @@ async def _generate_section(
                 db=None,  # logged serially by the caller (gather is not session-safe)
                 request_id=request_id,
                 client=client,
+                usage_sink=usages,  # every billed call: validation retries, a declined attempt
             )
-            usages.append(usage)
             if stub.kind != SectionKind.EXPLANATION or not _is_english(intent.language):
                 break
             measured = _fkgl_english(section.body_markdown)

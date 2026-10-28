@@ -278,7 +278,7 @@ async def test_lesson_progress_restores_boundary_and_answers(client):
     assert r.status_code == 200, r.text
     assert r.json() == {
         "lesson_id": lesson_id, "revealed_up_to": 0, "completed": False, "answers": [],
-        "streak": None,
+        "streak": None, "new_badges": [],
     }
 
     # Revealing moves the boundary forward only.

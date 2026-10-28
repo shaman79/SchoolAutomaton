@@ -31,6 +31,20 @@ def test_each_card_counts_at_most_its_state_weight():
     assert concept_mastery([CardView(state=3, retrievability=1.0)], correct_days=PROVEN) == 0.7
 
 
+def test_once_proven_a_card_answered_right_last_counts_in_full():
+    """FSRS Hard (a correct but slow or hinted answer) never advances a learning step, so on state
+    weights alone a slow reader's card would sit at 0.5 forever."""
+    slow_but_right = [CardView(state=1, retrievability=1.0, last_correct=True)]
+    assert concept_mastery(slow_but_right, correct_days=PROVEN) == 1.0
+    assert concept_mastery([CardView(state=3, retrievability=0.95, last_correct=True)],
+                           correct_days=PROVEN) == 0.95
+    # Not before it's proven on two days: day one stays where it was.
+    assert concept_mastery(slow_but_right, correct_days=1) == 0.5
+    # A wrong latest answer keeps the state weight.
+    assert concept_mastery([CardView(state=3, retrievability=1.0, last_correct=False)],
+                           correct_days=PROVEN) == 0.7
+
+
 def test_new_cards_do_not_dilute():
     cards = [CardView(state=2, retrievability=0.9), CardView(state=0, retrievability=0.0)]
     assert abs(concept_mastery(cards, correct_days=PROVEN) - 0.9) < 1e-9
