@@ -47,6 +47,19 @@ class AnswerSupport(AppModel):
     disclosure: str
 
 
+class StreakInfo(AppModel):
+    """The daily streak. In the gamification snapshot ``current`` is the streak as it stands now
+    (0 once a gap can no longer be bridged — the stored length is only replaced when the learner
+    is next active); in a settle result it includes today. ``frozen``: this settle bridged a missed
+    day with a freeze or the repair window (never set in a snapshot)."""
+
+    current: int = 0
+    longest: int = 0
+    freeze_inventory: int = 0
+    is_perfect: bool = True
+    frozen: bool = False
+
+
 class GradeResult(AppModel):
     """Returned by POST /answers and POST /review/{item_id}. Reveals the correct answer HERE.
 
@@ -68,17 +81,12 @@ class GradeResult(AppModel):
     new_badges: list[BadgeAward] = []
     level_up: LevelUp | None = None
     support: AnswerSupport | None = None
+    # The streak after this answer counted toward today (lets the header update without a refetch);
+    # null when nothing was recorded (``support``) or for a replayed answer.
+    streak: StreakInfo | None = None
 
 
 # --------------------------------------------------------------------------- snapshots
-class StreakInfo(AppModel):
-    current: int = 0
-    longest: int = 0
-    freeze_inventory: int = 0
-    is_perfect: bool = True
-    frozen: bool = False
-
-
 class BadgeInfo(AppModel):
     code: str
     title: str

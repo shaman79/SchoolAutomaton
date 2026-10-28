@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import Field
 
 from .common import AppModel, StrictModel
-from .gamification import GradeResult
+from .gamification import GradeResult, StreakInfo
 
 
 class RestoredAnswer(AppModel):
@@ -45,6 +45,9 @@ class LessonProgressOut(AppModel):
     revealed_up_to: int
     completed: bool = False
     answers: list[RestoredAnswer] = []
+    # Set when this call moved the boundary forward — a finished lesson part counts toward the daily
+    # streak — so the header can update without a refetch; null otherwise.
+    streak: StreakInfo | None = None
 
 
 class AttemptPosition(StrictModel):
