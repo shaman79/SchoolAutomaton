@@ -272,11 +272,13 @@ async def test_lesson_progress_restores_boundary_and_answers(client):
     def reveal(n):
         return client.put(url, headers=headers, json={"revealed_up_to": n})
 
-    # Opening the lesson reports 0: nothing saved yet, so it starts at the top.
+    # Opening the lesson reports 0: nothing saved yet, so it starts at the top (and opening isn't a
+    # finished part, so nothing counts toward the streak).
     r = await reveal(0)
     assert r.status_code == 200, r.text
     assert r.json() == {
         "lesson_id": lesson_id, "revealed_up_to": 0, "completed": False, "answers": [],
+        "streak": None,
     }
 
     # Revealing moves the boundary forward only.

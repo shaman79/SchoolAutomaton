@@ -23,6 +23,8 @@ import { api } from '@/lib/api'
 import type { SubmittedValue } from '@/types/question'
 import type { GradeResult, Lesson, LessonProgress, LessonSection } from '@/types/session'
 
+import { useSessionStore } from './session'
+
 const POLL_INTERVAL_MS = 2500
 const POLL_DEADLINE_MS = 90_000
 
@@ -191,11 +193,18 @@ export const useLessonStore = defineStore('lesson', () => {
   }
 
   /** Tell the server how far the learner has revealed, so they can resume here. Best-effort: the
-   *  server never resumes behind a part the learner answered a question in anyway. */
+   *  server never resumes behind a part the learner answered a question in anyway. A finished part
+   *  counts toward today's streak; the reply carries it for the header. */
   function _saveBoundary(): void {
     const lessonId = lesson.value?.id
     if (lessonId == null) return
-    void api.syncLessonProgress(lessonId, revealedUpTo.value).catch(() => {})
+    const epoch = loadEpoch
+    void api
+      .syncLessonProgress(lessonId, revealedUpTo.value)
+      .then((progress) => {
+        if (epoch === loadEpoch) useSessionStore().applyStreak(progress?.streak) // not after a switch
+      })
+      .catch(() => {})
   }
 
   async function load(id: number): Promise<void> {

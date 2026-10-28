@@ -7,7 +7,7 @@ import { computed, ref } from 'vue'
 
 import { ApiError, api } from '@/lib/api'
 import type { AnswerEvent, SubmittedValue } from '@/types/question'
-import type { AttemptStart, GradeResult, Quiz } from '@/types/session'
+import type { AttemptStart, GradeResult, Quiz, StreakInfo } from '@/types/session'
 
 import { useSessionStore } from './session'
 
@@ -92,8 +92,10 @@ export const useTestStore = defineStore('test', () => {
     }
     if (res.support) return res
     results.value[event.questionId] = res
+    const session = useSessionStore()
     // The answer is graded and saved; a failed header refresh must not turn that into an error.
-    if (res.xp_awarded) await useSessionStore().refreshGamification().catch(() => {})
+    if (res.xp_awarded) await session.refreshGamification().catch(() => {})
+    session.applyStreak(res.streak) // every graded answer counts toward today, right or wrong
     return res
   }
 
@@ -110,7 +112,10 @@ export const useTestStore = defineStore('test', () => {
   async function complete(): Promise<unknown> {
     if (attemptId.value == null) return null
     summary.value = await api.completeAttempt(attemptId.value)
-    await useSessionStore().refreshGamification()
+    const session = useSessionStore()
+    await session.refreshGamification()
+    // Finishing the quiz counts too (also one finished without a single answer) — as in submit().
+    session.applyStreak((summary.value as { streak?: StreakInfo } | null)?.streak)
     // Release the resumable attempt so a FINISHED quiz isn't auto-resumed on a later visit (the
     // summary stays persisted for the results screen).
     attemptId.value = null

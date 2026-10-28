@@ -13,7 +13,12 @@ import { ApiError } from '@/lib/apiError'
 import { isTransient } from '@/lib/errors'
 import { clearReadingAnchor } from '@/lib/readingAnchor'
 import { withRetry } from '@/lib/retry'
-import type { GamificationSnapshot, ProfileEnvelope, ProfilePublic } from '@/types/session'
+import type {
+  GamificationSnapshot,
+  ProfileEnvelope,
+  ProfilePublic,
+  StreakInfo,
+} from '@/types/session'
 
 import { useGenerationStore } from './generation'
 import { useLessonStore } from './lesson'
@@ -213,6 +218,14 @@ export const useSessionStore = defineStore('session', () => {
     if (profile.value) profile.value.total_xp = gamification.value.total_xp
   }
 
+  /** Show the streak a response just settled (a graded answer, a finished lesson part) in the header
+   *  — no extra request. Callers apply it AFTER any refresh: the server commits after it responds,
+   *  so a snapshot fetched right away can still predate the answer. */
+  function applyStreak(streak: StreakInfo | null | undefined): void {
+    if (!streak || !gamification.value) return
+    gamification.value = { ...gamification.value, streak }
+  }
+
   /** Push current local prefs to the server so they follow the resume code. */
   async function syncPrefs(): Promise<void> {
     if (!isAuthenticated.value) return
@@ -254,6 +267,7 @@ export const useSessionStore = defineStore('session', () => {
     reconnect,
     resumeWithCode,
     refreshGamification,
+    applyStreak,
     syncPrefs,
     forget,
   }

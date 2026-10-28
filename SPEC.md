@@ -63,6 +63,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 | 11 | Leaderboards | **OFF** by default. `competitive_opt_in` flag + personal-best framing exist; ability-banded leagues NOT shipped in v1. |
 | 12 | Batches pre-gen | Mechanism provided as an **admin-triggered** action + script; no automatic nightly cron in v1. |
 | 13 | Resume where you left off | **The server owns the position.** `lesson_progress.revealed_up_to` per (profile, lesson) and `quiz_attempts.current_index` per open attempt — both forward-only, and never behind a question the learner already answered. On open the client restores from `PUT /lessons/{id}/progress` / `POST /quizzes/{id}/attempts`, which replay the learner's already-graded answers: read-only (no FSRS review, no XP) and never for an unanswered item. `GET /profiles/me/continue` feeds the home "Continue" card. The exact scroll offset is device-local (localStorage) only. A quiz is reviewable (`GET /quizzes/{id}/review`) only once an attempt is **completed**. |
+| 14 | Daily streak | **Anything finished counts; days are UTC dates** (not tied to one country's time zone). One `settle_streak` per request, idempotent within a UTC day, from: a **graded answer** — lesson practice, quiz question or review card (`grade_and_reward` / `review_with_rating`); a crisis-support result (`support`) or a refused request (404/409/422/429) records nothing — a **finished lesson part** (`PUT /lessons/{id}/progress` moving the boundary forward; opening a lesson doesn't count) and a **finished quiz** (`finalize_attempt`). Missed days are forgiven silently, in order: rest days (`rest_days_per_week`, at least 1 for early_primary; a fresh allowance in every ISO week, whichever day the learner returns), freezes, then the 48 h repair window for a single missed day; nothing is spent on a gap that can't be bridged. The snapshot shows the streak **as it stands now** without writing: the stored length while the gap could still be bridged, else 0 (copy stays an invitation, never a loss). `settle_streak` and the snapshot share one pure helper (`next_streak_step`), so they can't disagree. Answer and lesson-progress responses carry the settled `streak` so the header updates without a refetch. |
 
 ## 5. Conventions (all code)
 
@@ -127,9 +128,9 @@ def item_xp(item_difficulty: int, mastery_before: float, *, base: int = BASE_ITE
 def combo_multiplier(consecutive_first_try: int) -> float   # pure/sync; 1.0 → 2.0 cap at 8
 
 # app/services/gamification.py  (async, DB-touching)
-async def grade_and_reward(db, profile, item, answer, attempt_id) -> GradeResult   # orchestrates srs+mastery+xp+badges+streak
-async def finalize_attempt(db, profile, attempt_id) -> ResultsSummary              # end-of-quiz score/accuracy/mastery-delta
-async def settle_streak(db, profile, now) -> StreakInfo                            # silent freeze/rest-day/repair forgiveness
+async def grade_and_reward(db, profile, item, answer, attempt_id) -> GradeResult   # orchestrates srs+mastery+xp+streak+badges
+async def finalize_attempt(db, profile, attempt_id) -> ResultsSummary              # end-of-quiz score/accuracy/mastery-delta + streak
+async def settle_streak(db, profile, now) -> StreakInfo                            # once per request that finished something (§4 #14); silent rest-day/freeze/repair forgiveness
 
 # app/services/badges.py
 async def evaluate_badges(db, profile, event) -> list[BadgeAward]
