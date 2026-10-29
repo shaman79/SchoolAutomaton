@@ -192,8 +192,9 @@ exclamation-mark cheerleading); G9-12 close to adult, precise and to the point. 
 native to the output language, never a word-for-word rendering of English phrasing. This is a
 self-paced app, not a classroom: say "this lesson", never "this class period" or "at the end of the
 hour". Simplify without becoming inaccurate: a simpler sentence must still be a true one.
-Internal metadata is never learner-facing: never write "Bloom", tier numbers or taxonomy level names
-(remember/understand/apply...) in any text the learner reads; bloom_tier lives only in its JSON field.
+Internal metadata is never learner-facing: never label any text the learner reads with its Bloom tier
+- no "Bloom", tier numbers or taxonomy level names as a tag, prefix or heading; bloom_tier lives only
+in its JSON field.
 
 Accessibility: write alt_text for every visual that conveys the same information as the image in one
 clear sentence. Never rely on color alone to carry meaning in a description. Prefer plain language

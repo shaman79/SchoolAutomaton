@@ -238,6 +238,8 @@ async def test_the_daily_budget_change_is_what_the_cap_uses(client):
         ("daily_budget_usd", -1),
         ("daily_budget_usd", runtime_settings.BUDGET_MAX_USD + 1),
         ("daily_budget_usd", "100"),
+        ("daily_budget_usd", 0.004),  # would round to 0 = no cap at all
+        ("daily_budget_usd", 12.555),
         ("daily_budget_usd", True),
     ],
 )

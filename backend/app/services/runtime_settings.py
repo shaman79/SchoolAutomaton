@@ -133,6 +133,9 @@ def validate(key: str, value: Any) -> Any:
     hi = spec.max if spec.max is not None else math.inf
     if not lo <= value <= hi:
         raise InvalidValue(f"{key} must be between {spec.min:g} and {spec.max:g}")
+    # Whole cents only: rounding would turn 0.004 into 0 — which switches the daily cap off.
+    if abs(round(value, 2) - value) > 1e-9:
+        raise InvalidValue(f"{key} must be in whole cents (at most two decimal places)")
     return round(float(value), 2)
 
 

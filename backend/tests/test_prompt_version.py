@@ -25,7 +25,7 @@ import pytest
 
 from app.core.constants import PROMPT_VERSION
 from app.llm import client as llm_client
-from app.llm import prompts
+from app.llm import lesson_generator, prompts
 from app.llm.prompts import curriculum
 from app.llm.prompts.curriculum import base_language, curriculum_directive
 from app.sanitization import classifier
@@ -38,7 +38,7 @@ from app.visuals import claude_svg, replicate_raster
 PROMPT_VERSIONS: dict[str, str] = {
     # 2026.06.06 (the first) was never recorded. 2026.10.29: the September lesson-text fixes, the
     # Opus 5.5 / Haiku 5.5 prompt changes and everything since June.
-    "2026.10.29": "cabfb4a185d73b580b77a45013c664fa439ecddab40a55242f7c465633461e28",
+    "2026.10.29": "b74529f20652d4f851bfae188fef99b06c4866306abf8775be97b2bd0f5be49e",
 }
 
 _VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}(\.\d+)?$")
@@ -73,6 +73,7 @@ def _texts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
         ("svg_system", claude_svg._SYSTEM_PROMPT),
         ("json_mode", llm_client.JSON_MODE_INSTRUCTION),
         ("validation_retry", llm_client.VALIDATION_RETRY_INSTRUCTION),
+        ("simplify", lesson_generator.SIMPLIFY_INSTRUCTION.format(measured=9.4, target=5.0)),
     ]
     for i, intent in enumerate(_intents()):
         tag = f"{intent.education_locale}/{intent.grade_band.value}/{intent.school_year}"
@@ -97,9 +98,11 @@ def _texts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
         texts.append((f"image:{kind.value}", replicate_raster.build_prompt(spec, grade_band="G3-5")))
     for model in _OUTPUT_MODELS:
         name = model.__name__
-        texts.append((f"schema:{name}", json.dumps(model.model_json_schema(), sort_keys=True)))
-        texts.append((f"format:{name}", json.dumps(llm_client._output_format(model), sort_keys=True)))
-        texts.append((f"tool:{name}", json.dumps(llm_client._tool_for(model), sort_keys=True)))
+        # Exactly as sent (field order matters to the model): the JSON-mode schema text, the
+        # structured-output format and the tool definition.
+        texts.append((f"schema:{name}", json.dumps(model.model_json_schema(), separators=(",", ":"))))
+        texts.append((f"format:{name}", json.dumps(llm_client._output_format(model))))
+        texts.append((f"tool:{name}", json.dumps(llm_client._tool_for(model))))
     # The version itself is part of some texts; the fingerprint is about everything else.
     return [(name, text.replace(PROMPT_VERSION, "<PROMPT_VERSION>")) for name, text in texts]
 
@@ -137,6 +140,12 @@ def test_the_fingerprint_notices_a_prompt_change(monkeypatch):
     assert _fingerprint(_texts(monkeypatch)) == before  # deterministic
     with monkeypatch.context() as mp:
         mp.setattr(classifier, "CLASSIFIER_SYSTEM_PROMPT", classifier.CLASSIFIER_SYSTEM_PROMPT + " ")
+        assert _fingerprint(_texts(mp)) != before
+    with monkeypatch.context() as mp:
+        schema = GenQuiz.model_json_schema()
+        props = schema["properties"]
+        swapped = dict(reversed(list(props.items())))
+        mp.setattr(GenQuiz, "model_json_schema", classmethod(lambda cls, *a, **k: {**schema, "properties": swapped}))
         assert _fingerprint(_texts(mp)) != before
     with monkeypatch.context() as mp:
         data = copy.deepcopy(curriculum.CURRICULA)

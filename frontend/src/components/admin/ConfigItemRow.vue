@@ -57,38 +57,49 @@ const envPinned = computed(
     props.item.value !== props.item.default_value,
 )
 
-function initialDraft(): string | number {
+function initialDraft(): string {
   const v = props.item.value
-  return typeof v === 'number' || typeof v === 'string' ? v : ''
+  return typeof v === 'number' || typeof v === 'string' ? String(v) : ''
 }
 
-// Vue casts a type="number" input's value to a number (or leaves '' / an unparsable string).
-const draft = ref<string | number>(initialDraft())
-const confirming = ref(false)
+// Numbers are typed into a text field (inputmode decimal): a type="number" field silently drops a
+// typed comma, so "12,5" became 125. Parsed below, accepting a comma or a dot.
+const draft = ref<string>(initialDraft())
+/** What waits for the inline confirmation (model rows): a save or an undo — both switch every learner. */
+const pending = ref<'save' | 'undo' | null>(null)
+const confirming = computed(() => pending.value !== null)
 const busy = ref(false)
 const error = ref<string | null>(null)
 const confirmBtn = ref<HTMLButtonElement | null>(null)
 const inputEl = ref<HTMLInputElement | HTMLSelectElement | null>(null)
 
-// A new value from the server (after a save / undo here) resets the control. Watching the primitive
-// fields — not the object — keeps what the admin typed in OTHER rows when the whole config reloads.
+// A new value from the server (after a save / undo here) resets the control. Separate sources, not
+// one getter returning a fresh array (that fires on every reload and wiped what the admin had typed
+// in OTHER rows whenever the whole config reloaded).
 watch(
-  () => [props.item.value, props.item.source] as const,
+  [() => props.item.value, () => props.item.source, () => props.item.updated_at],
   () => {
     draft.value = initialDraft()
-    confirming.value = false
+    pending.value = null
     error.value = null
   },
 )
 // Picking another value while the confirmation is open withdraws it.
 watch(draft, () => {
-  confirming.value = false
+  pending.value = null
 })
 
-const draftNumber = computed(() => (draft.value === '' ? NaN : Number(draft.value)))
+const DECIMAL = /^\d+(?:\.\d+)?$/
+const INTEGER = /^\d+$/
+const normalized = computed(() => draft.value.trim().replace(',', '.'))
+const draftNumber = computed(() => {
+  const s = normalized.value
+  return (props.item.kind === 'integer' ? INTEGER : DECIMAL).test(s) ? Number(s) : NaN
+})
 const changed = computed(() => {
-  if (isNumber.value) return draft.value !== '' && draftNumber.value !== props.item.value
-  return draft.value !== '' && draft.value !== props.item.value
+  if (draft.value.trim() === '') return false
+  if (isNumber.value) return draftNumber.value !== props.item.value
+  return draft.value !== props.item.value
 })
 
 const describedBy = computed(() =>
@@ -106,12 +117,10 @@ const undoText = computed(() =>
 
 function rangeError(): string | null {
   const v = draftNumber.value
-  const { min, max, kind } = props.item
-  const ok =
-    Number.isFinite(v) &&
-    (min === null || v >= min) &&
-    (max === null || v <= max) &&
-    (kind !== 'integer' || Number.isInteger(v))
+  const { min, max } = props.item
+  // The server keeps cents: more decimals would be rounded — 0.004 to 0, which turns the cap off.
+  if (props.item.kind === 'number' && /\.\d{3,}$/.test(normalized.value)) return t(`${P}.too_many_decimals`)
+  const ok = Number.isFinite(v) && (min === null || v >= min) && (max === null || v <= max)
   if (ok) return null
   return t(`${P}.invalid_number`, {
     min: formatValue(props.item, min ?? 0),
@@ -120,9 +129,13 @@ function rangeError(): string | null {
 }
 
 function valueToSend(): string | number {
-  if (!isNumber.value) return String(draft.value)
-  const v = draftNumber.value
-  return props.item.kind === 'integer' ? v : Math.round(v * 100) / 100 // the server keeps cents
+  return isNumber.value ? draftNumber.value : draft.value
+}
+
+async function askConfirm(action: 'save' | 'undo') {
+  pending.value = action
+  await nextTick()
+  confirmBtn.value?.focus()
 }
 
 async function onSave() {
@@ -135,21 +148,46 @@ async function onSave() {
       return
     }
   }
-  if (needsConfirm.value && !confirming.value) {
-    confirming.value = true
-    await nextTick()
-    confirmBtn.value?.focus()
+  if (needsConfirm.value) {
+    await askConfirm('save')
     return
   }
   await send()
 }
 
+async function onUndo() {
+  if (busy.value) return
+  error.value = null
+  if (needsConfirm.value) {
+    await askConfirm('undo')
+    return
+  }
+  await undo()
+}
+
+function onConfirm() {
+  if (pending.value === 'undo') void undo()
+  else void send()
+}
+
 function cancelConfirm() {
-  confirming.value = false
+  pending.value = null
   nextTick(() => inputEl.value?.focus())
 }
 
+/** After a save / undo the confirmation (or the Undo button) is gone and the field was disabled: put
+ *  keyboard focus back on the field instead of letting it drop to the page start. */
+async function refocus() {
+  await nextTick()
+  inputEl.value?.focus()
+}
+
 function failure(e: unknown): void {
+  // The account lost the right to edit while signed in: not an expired session.
+  if (e instanceof ApiError && e.status === 403 && e.detail === 'Read-only role') {
+    error.value = t(`${P}.error_read_only`)
+    return
+  }
   if (isUnauthorized(e)) {
     emit('unauthorized')
     return
@@ -173,33 +211,38 @@ function failure(e: unknown): void {
 }
 
 async function send() {
+  if (busy.value) return
   busy.value = true
   error.value = null
   try {
     const updated = (await api.adminSetConfig(props.token, props.item.key, valueToSend())) as ConfigItem
-    confirming.value = false
+    pending.value = null
     toast.success(t(`${P}.saved`, { label: rowLabel.value, value: formatValue(updated, updated.value) }))
     emit('updated', updated)
   } catch (e) {
-    confirming.value = false
+    pending.value = null
     failure(e)
   } finally {
     busy.value = false
+    void refocus()
   }
 }
 
-async function onUndo() {
+async function undo() {
   if (busy.value) return
   busy.value = true
   error.value = null
   try {
     const updated = (await api.adminResetConfig(props.token, props.item.key)) as ConfigItem
+    pending.value = null
     toast.success(t(`${P}.undone`, { label: rowLabel.value, value: formatValue(updated, updated.value) }))
     emit('updated', updated)
   } catch (e) {
+    pending.value = null
     failure(e)
   } finally {
     busy.value = false
+    void refocus()
   }
 }
 
@@ -264,11 +307,9 @@ const fieldClass =
           :id="ids.input"
           ref="inputEl"
           v-model="draft"
-          type="number"
+          type="text"
           :inputmode="item.kind === 'integer' ? 'numeric' : 'decimal'"
-          :step="item.kind === 'integer' ? 1 : 0.01"
-          :min="item.min ?? undefined"
-          :max="item.max ?? undefined"
+          autocomplete="off"
           :class="fieldClass"
           :disabled="busy"
           :aria-invalid="error ? 'true' : undefined"
@@ -307,7 +348,11 @@ const fieldClass =
         @keydown.esc="cancelConfirm"
       >
         <p :id="ids.confirmTitle" class="font-bold [overflow-wrap:anywhere]">
-          {{ t('admin.settings.confirm_title', { value: String(draft) }) }}
+          {{
+            pending === 'undo'
+              ? t('admin.settings.confirm_undo_title', { value: formatValue(item, item.base_value) })
+              : t('admin.settings.confirm_title', { value: String(draft) })
+          }}
         </p>
         <p :id="ids.confirmText" class="text-sm">{{ t('admin.settings.confirm_model') }}</p>
         <div class="flex flex-col gap-2 sm:flex-row">
@@ -318,7 +363,7 @@ const fieldClass =
             :aria-describedby="ids.confirmText"
             :disabled="busy"
             data-test="confirm-yes"
-            @click="send"
+            @click="onConfirm"
           >
             {{ t('admin.settings.confirm') }}
           </button>

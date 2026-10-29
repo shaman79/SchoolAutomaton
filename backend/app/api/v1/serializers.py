@@ -149,8 +149,18 @@ async def _assets_for(
 
 # Bloom tiers are internal difficulty metadata; a model sometimes echoes them into learner-facing text
 # ("… (Bloom 1 – zapamatování)", "[Bloom 3: apply]"). Stripped on the way out so lessons already
-# stored are cleaned too. Only bracketed tags naming Bloom — never ordinary prose.
-_BLOOM_TAG = re.compile(r"[ \t]*[(\[][^()\[\]\n]*\bBloom\w*\b[^()\[\]\n]*[)\]]", re.IGNORECASE)
+# stored are cleaned too. Only a bracket that STARTS with a capitalised "Bloom" followed by a level
+# number or level name: the word in a lesson ("The roses ___ (bloom)"), a name ("Leopold Bloom"), a
+# link to "Bloom's taxonomy" or code all stay.
+_BLOOM_LEVEL = (
+    r"(?:[1-6]|(?i:remember|understand|apply|analy[sz]e|evaluate|create"
+    r"|zapamatování|porozumění|aplikace|analýza|hodnocení|tvorba))"
+)
+_BLOOM_TAG = re.compile(
+    r"[ \t]*[(\[]\s*Bloom(?:'s)?(?:\s+(?:tier|level|úroveň|stupeň))?\s*[:#–—-]?\s*"
+    + _BLOOM_LEVEL
+    + r"\b[^()\[\]\n]*[)\]]"
+)
 
 
 def strip_internal_tags(text: str | None) -> str | None:

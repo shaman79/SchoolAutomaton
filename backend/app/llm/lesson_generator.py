@@ -310,6 +310,12 @@ async def _persist_item(
 
 # --------------------------------------------------------------------------- section generation
 
+# Added to an English explanation that read above its grade (part of what PROMPT_VERSION covers).
+SIMPLIFY_INSTRUCTION = (
+    "\n\nYour previous draft read at grade {measured:.1f}; the target is {target:.1f}. "
+    "Simplify: shorter sentences, more common words, fewer new terms."
+)
+
 
 async def _generate_section(
     intent: StructuredIntent,
@@ -359,8 +365,7 @@ async def _generate_section(
                 prompts.build_section_user(
                     intent, kind=stub.kind.value, title=stub.title, objective=stub.objective
                 )
-                + f"\n\nYour previous draft read at grade {measured:.1f}; the target is {target:.1f}. "
-                "Simplify: shorter sentences, more common words, fewer new terms."
+                + SIMPLIFY_INSTRUCTION.format(measured=measured, target=target)
             )
     assert section is not None
     return section, usages

@@ -73,7 +73,8 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
   every generated row. **Bump `PROMPT_VERSION` whenever any text sent to a model changes** (prompts, curriculum
   data, output schemas) — `tests/test_prompt_version.py` fingerprints it all and fails until you do; it is also
   part of the picture cache key.
-- **Runtime settings** (`services/runtime_settings.py`, admin → Settings): the admin sees every setting with its
+- **Runtime settings** (`services/runtime_settings.py`, admin → Settings): the admin sees the settings that matter day to day
+  (models, budget, limits, timeouts, whether API keys are set, environment, prompt version) with their
   source (default / env / admin / code) and today's AI calls per model. Only `model_id`, `sanitizer_model_id`
   (fixed, evaluated, priced lists) and `daily_budget_usd` are editable — stored in `app_settings`, precedence
   **admin > environment > default**, applied in-process at once and re-applied at startup (one backend

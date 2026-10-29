@@ -211,8 +211,8 @@ Settings read by the ops scripts (environment or `.env`):
 
 ### Settings in the app
 
-Sign in at `/admin` → **Settings** to see every setting the backend runs with and where each comes
-from: the app's default, the server's `.env` (named), or a change made on that page. It also lists
+Sign in at `/admin` → **Settings** to see the main settings the backend runs with (models, budget,
+limits, timeouts, whether the API keys are set) and where each comes from: the app's default, the server's `.env` (named), or a change made on that page. It also lists
 today's AI calls and cost per model, which shows which model is really answering.
 
 The **AI models** (from the list the app was tested with) and the **daily AI budget** can be changed

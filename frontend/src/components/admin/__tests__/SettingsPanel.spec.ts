@@ -320,9 +320,9 @@ describe('the daily budget', () => {
     const w = await mountPanel()
     const budget = row(w, 'daily_budget_usd')
     const input = budget.find('input')
-    expect(input.attributes('step')).toBe('0.01')
-    expect(input.attributes('min')).toBe('0')
-    expect(input.attributes('max')).toBe('1000')
+    // A text field: a type="number" field drops a typed comma ("12,5" became 125).
+    expect(input.attributes('type')).toBe('text')
+    expect(input.attributes('inputmode')).toBe('decimal')
     expect(w.find(`label[for="${input.attributes('id')}"]`).text()).toBe('Daily AI budget')
 
     mocked.adminConfig.mockResolvedValue(config({ budget_usd: 30 }, [saved]))
@@ -395,6 +395,25 @@ describe('undo', () => {
     expect(toastTexts()).toEqual(['Daily AI budget: back to $100.00.'])
   })
 
+  it('for a model, asks for confirmation first — it switches every learner back', async () => {
+    const changed = modelItem({ value: 'claude-opus-5-5', source: 'admin', updated_by: 'owner', updated_at: CHANGED_AT })
+    mocked.adminConfig.mockResolvedValue(config({}, [changed]))
+    const w = await mountPanel()
+    const main = row(w, 'model_id')
+    await main.find('[data-test="undo"]').trigger('click')
+    expect(mocked.adminResetConfig).not.toHaveBeenCalled()
+    expect(main.find('[data-test="confirm"]').text()).toContain('Switch back to claude-opus-4-8?')
+
+    const reset = modelItem()
+    mocked.adminResetConfig.mockResolvedValue(reset)
+    mocked.adminConfig.mockResolvedValue(config({}, [reset]))
+    await main.find('[data-test="confirm-yes"]').trigger('click')
+    await flushPromises()
+    expect(mocked.adminResetConfig).toHaveBeenCalledWith(TOKEN, 'model_id')
+    expect(mocked.adminSetConfig).not.toHaveBeenCalled()
+    expect(row(w, 'model_id').find('[data-test="value"]').text()).toBe('claude-opus-4-8')
+  })
+
   it('for a model, names the server setting it goes back to', async () => {
     mocked.adminConfig.mockResolvedValue(
       config({}, [modelItem({ value: 'claude-opus-5-5', source: 'admin', updated_by: 'owner', updated_at: CHANGED_AT })]),
@@ -454,5 +473,73 @@ describe('in Czech', () => {
     expect(rows[0].text()).toContain('12 volání')
     expect(rows[1].text()).toContain('cena neznámá')
     expect(row(w, 'daily_budget_usd').find('[data-test="undo"]').text()).toMatch(/^Vrátit zpět na 100,00\s?US\$ \(výchozí hodnota\)$/)
+  })
+})
+
+describe('found in review', () => {
+  it('a reload keeps what was typed in other rows (and an open confirmation)', async () => {
+    const w = await mountPanel()
+    await row(w, 'daily_budget_usd').find('input').setValue('75')
+    const main = row(w, 'model_id')
+    await main.find('select').setValue('claude-opus-5-5')
+    await main.find('[data-test="save"]').trigger('click')
+    // Same values from the server, new objects: nothing the admin did may be wiped.
+    mocked.adminConfig.mockResolvedValue(config())
+    await w.find('[data-test="refresh"]').trigger('click')
+    await flushPromises()
+    expect(mocked.adminConfig).toHaveBeenCalledTimes(2)
+    expect((row(w, 'daily_budget_usd').find('input').element as HTMLInputElement).value).toBe('75')
+    expect((row(w, 'model_id').find('select').element as HTMLSelectElement).value).toBe('claude-opus-5-5')
+    expect(row(w, 'model_id').find('[data-test="confirm"]').exists()).toBe(true)
+  })
+
+  it('a decimal comma is read as a decimal point', async () => {
+    mocked.adminSetConfig.mockResolvedValue(budgetItem({ value: 12.5 }))
+    const w = await mountPanel()
+    const budget = row(w, 'daily_budget_usd')
+    await budget.find('input').setValue('12,5')
+    await budget.find('[data-test="save"]').trigger('click')
+    await flushPromises()
+    expect(mocked.adminSetConfig).toHaveBeenCalledWith(TOKEN, 'daily_budget_usd', 12.5)
+  })
+
+  it('refuses fractions of a cent instead of rounding 0.004 to 0 (which turns the cap off)', async () => {
+    const w = await mountPanel()
+    const budget = row(w, 'daily_budget_usd')
+    for (const typed of ['0.004', '12.555', '12,5x', 'abc']) {
+      await budget.find('input').setValue(typed)
+      await budget.find('[data-test="save"]').trigger('click')
+      expect(budget.find('[data-test="error"]').exists()).toBe(true)
+    }
+    expect(mocked.adminSetConfig).not.toHaveBeenCalled()
+    await budget.find('input').setValue('0.004')
+    await budget.find('[data-test="save"]').trigger('click')
+    expect(budget.find('[data-test="error"]').text()).toContain(tr('admin.settings.too_many_decimals'))
+  })
+
+  it('losing edit rights mid-session says so on the row instead of logging out', async () => {
+    mocked.adminSetConfig.mockRejectedValue(new ApiError(403, 'Read-only role', undefined, 'Read-only role'))
+    const w = await mountPanel()
+    const budget = row(w, 'daily_budget_usd')
+    await budget.find('input').setValue('75')
+    await budget.find('[data-test="save"]').trigger('click')
+    await flushPromises()
+    expect(w.emitted('unauthorized')).toBeUndefined()
+    expect(budget.find('[data-test="error"]').text()).toContain(tr('admin.settings.error_read_only'))
+  })
+
+  it('keyboard focus returns to the field after a confirmed change', async () => {
+    const saved = modelItem({ value: 'claude-opus-5-5', source: 'admin', updated_by: 'owner', updated_at: CHANGED_AT })
+    mocked.adminSetConfig.mockResolvedValue(saved)
+    const w = mount(SettingsPanel, { props: { token: TOKEN }, global: { plugins: [i18n] }, attachTo: document.body })
+    await flushPromises()
+    const main = row(w, 'model_id')
+    await main.find('select').setValue('claude-opus-5-5')
+    await main.find('[data-test="save"]').trigger('click')
+    mocked.adminConfig.mockResolvedValue(config({}, [saved]))
+    await main.find('[data-test="confirm-yes"]').trigger('click')
+    await flushPromises()
+    expect(document.activeElement).toBe(row(w, 'model_id').find('select').element)
+    w.unmount()
   })
 })
