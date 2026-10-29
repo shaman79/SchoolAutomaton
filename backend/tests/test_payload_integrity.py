@@ -101,3 +101,14 @@ def test_common_alias_keys_are_accepted_not_discarded():
     # A canonical key always wins over an alias.
     both = dict(match, correct=[{"left_id": "l1", "right_id": "r1"}], pairs=[])
     assert coerce_payload(ItemType.MATCH, both)["correct"] == [{"left_id": "l1", "right_id": "r1"}]
+
+
+def test_bloom_tags_never_reach_the_learner():
+    """Bloom tiers are internal metadata; a model echoing them into text is cleaned on the way out."""
+    from app.api.v1.serializers import strip_internal_tags
+
+    body = "- Umím popsat páku. (Bloom 1 – zapamatování)\n- Umím to spočítat [Bloom 3: apply]"
+    assert strip_internal_tags(body) == "- Umím popsat páku.\n- Umím to spočítat"
+    # Ordinary parentheses, and prose that merely mentions the name, stay untouched.
+    assert strip_internal_tags("Síla (v newtonech) působí.") == "Síla (v newtonech) působí."
+    assert strip_internal_tags(None) is None
