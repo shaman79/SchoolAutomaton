@@ -297,6 +297,18 @@ def _tool_for(output_model: type[BaseModel], name: str = "emit_result") -> dict[
     }
 
 
+# Instruction texts this module adds to the user message (part of what PROMPT_VERSION covers).
+JSON_MODE_INSTRUCTION = (
+    "\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Output "
+    "raw JSON with no markdown fences and no prose before or after it.\nJSON Schema:\n"
+)
+VALIDATION_RETRY_INSTRUCTION = (
+    "Your previous output failed validation. Re-emit a SINGLE valid object that "
+    "strictly matches the required schema and ALL stated bounds (exact counts, ranges, "
+    "and field types). Do not add extra fields. Validation error: "
+)
+
+
 # Models that rejected `thinking` (e.g. Haiku: "adaptive thinking is not supported on this model").
 # We remember them so we stop sending it after the first rejection.
 _thinking_unsupported: set[str] = set()
@@ -435,11 +447,7 @@ async def generate_structured[OutputT: BaseModel](
     json_suffix = ""
     if mode == "json":
         schema = json.dumps(output_model.model_json_schema(), separators=(",", ":"))
-        json_suffix = (
-            "\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Output "
-            "raw JSON with no markdown fences and no prose before or after it.\nJSON Schema:\n"
-            + schema
-        )
+        json_suffix = JSON_MODE_INSTRUCTION + schema
 
     last_error: Exception | None = None
     correction = ""
@@ -503,12 +511,7 @@ async def generate_structured[OutputT: BaseModel](
             raise
         except (pydantic.ValidationError, GenerationError, json.JSONDecodeError) as exc:
             last_error = exc
-            correction = (
-                "Your previous output failed validation. Re-emit a SINGLE valid object that "
-                "strictly matches the required schema and ALL stated bounds (exact counts, ranges, "
-                "and field types). Do not add extra fields. Validation error: "
-                f"{str(exc)[:500]}"
-            )
+            correction = f"{VALIDATION_RETRY_INSTRUCTION}{str(exc)[:500]}"
             continue
 
         # Caching is best-effort to *observe* (a real call after warm-up reads the cache); we do not

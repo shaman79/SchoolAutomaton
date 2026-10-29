@@ -8,10 +8,12 @@ that feed FSRS/mastery/XP is a contract change — update the matching unit-test
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Versioning — stamped on every generated row for audit + cache-busting.
-# Bump PROMPT_VERSION whenever a cached system prefix or generation prompt changes.
+# Versioning — stamped on every generated row (which instructions made it) and part of the picture
+# cache key (pictures made under older instructions aren't reused). Bump it whenever any text sent to
+# a model changes — prompts, curriculum data, output schemas; tests/test_prompt_version.py fails until
+# you do. Format YYYY.MM.DD (YYYY.MM.DD.N for another bump the same day).
 # ---------------------------------------------------------------------------
-PROMPT_VERSION = "2026.06.06"
+PROMPT_VERSION = "2026.10.29"
 
 # ---------------------------------------------------------------------------
 # Readability targets per grade band: (target_FKGL, lexile_band, max_words_per_sentence, max_new_terms)
