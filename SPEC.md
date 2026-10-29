@@ -70,7 +70,15 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
 - **Async everywhere** (SQLAlchemy async session, AsyncAnthropic, async replicate, async routes).
 - **Config constants** centralized in `app/core/config.py` (env-driven `Settings`) and `app/core/constants.py`
   (pedagogy/gamification/visual constants). `MODEL_ID`, `SANITIZER_MODEL_ID`, `PROMPT_VERSION` are stamped on
-  every generated row.
+  every generated row. **Bump `PROMPT_VERSION` whenever any text sent to a model changes** (prompts, curriculum
+  data, output schemas) — `tests/test_prompt_version.py` fingerprints it all and fails until you do; it is also
+  part of the picture cache key.
+- **Runtime settings** (`services/runtime_settings.py`, admin → Settings): the admin sees the settings that matter day to day
+  (models, budget, limits, timeouts, whether API keys are set, environment, prompt version) with their
+  source (default / env / admin / code) and today's AI calls per model. Only `model_id`, `sanitizer_model_id`
+  (fixed, evaluated, priced lists) and `daily_budget_usd` are editable — stored in `app_settings`, precedence
+  **admin > environment > default**, applied in-process at once and re-applied at startup (one backend
+  process). API keys come only from the environment and are reported as set / not set.
 - **Structured LLM output**: the native structured-output format `messages.parse(output_format=PydanticModel)` builds, sent with `messages.create` so usage is logged and `stop_reason` checked before the output is validated (JSON-in-prompt for big schemas, tool use for the classifier). **Never** assistant
   prefill, **never** send `temperature`/`top_p`/`top_k`/`budget_tokens` (400 on Opus 4.8+). `thinking={"type":
   "adaptive"}` always on. Always check `stop_reason` before trusting parsed output. JSON-schema `minimum/maximum/

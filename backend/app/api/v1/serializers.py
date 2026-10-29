@@ -6,6 +6,7 @@ correct / correct_order / tolerance reaches the client. Grading reveals the corr
 from __future__ import annotations
 
 import random
+import re
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -146,6 +147,26 @@ async def _assets_for(
     return out
 
 
+# Bloom tiers are internal difficulty metadata; a model sometimes echoes them into learner-facing text
+# ("… (Bloom 1 – zapamatování)", "[Bloom 3: apply]"). Stripped on the way out so lessons already
+# stored are cleaned too. Only a bracket that STARTS with a capitalised "Bloom" followed by a level
+# number or level name: the word in a lesson ("The roses ___ (bloom)"), a name ("Leopold Bloom"), a
+# link to "Bloom's taxonomy" or code all stay.
+_BLOOM_LEVEL = (
+    r"(?:[1-6]|(?i:remember|understand|apply|analy[sz]e|evaluate|create"
+    r"|zapamatování|porozumění|aplikace|analýza|hodnocení|tvorba))"
+)
+_BLOOM_TAG = re.compile(
+    r"[ \t]*[(\[]\s*Bloom(?:'s)?(?:\s+(?:tier|level|úroveň|stupeň))?\s*[:#–—-]?\s*"
+    + _BLOOM_LEVEL
+    + r"\b[^()\[\]\n]*[)\]]"
+)
+
+
+def strip_internal_tags(text: str | None) -> str | None:
+    return _BLOOM_TAG.sub("", text) if text else text
+
+
 async def item_public(db: AsyncSession, item: Item, *, with_assets: bool = True) -> ItemPublic:
     payload = _strip_payload(item.item_type, item.payload_json, item.id)
     if item.item_type == "hotspot" and with_assets:
@@ -158,7 +179,7 @@ async def item_public(db: AsyncSession, item: Item, *, with_assets: bool = True)
         item_type=item.item_type,
         bloom_tier=item.bloom_tier,
         points=getattr(item, "points", 10) or 10,
-        stem_markdown=item.stem_markdown,
+        stem_markdown=strip_internal_tags(item.stem_markdown) or "",
         payload=payload,
         hint_available=bool(item.hint_ladder_json),
     )
@@ -211,7 +232,7 @@ async def lesson_section_public(db: AsyncSession, s: LessonSection) -> LessonSec
         ordinal=s.ordinal,
         kind=s.kind,
         title=s.title,
-        body_markdown=s.body_markdown,
+        body_markdown=strip_internal_tags(s.body_markdown),
         gated=s.gated,
         gen_status=getattr(s, "gen_status", "ready"),
         assets=assets,
@@ -222,7 +243,7 @@ async def lesson_section_public(db: AsyncSession, s: LessonSection) -> LessonSec
 async def lesson_public(db: AsyncSession, lesson: Lesson) -> LessonPublic:
     objectives = [
         LessonObjectivePublic(
-            text=o.get("text", ""),
+            text=strip_internal_tags(o.get("text", "")) or "",
             bloom_tier=o.get("bloom_tier", 1),
             concept_id=o.get("concept_id"),
         )

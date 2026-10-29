@@ -101,3 +101,27 @@ def test_common_alias_keys_are_accepted_not_discarded():
     # A canonical key always wins over an alias.
     both = dict(match, correct=[{"left_id": "l1", "right_id": "r1"}], pairs=[])
     assert coerce_payload(ItemType.MATCH, both)["correct"] == [{"left_id": "l1", "right_id": "r1"}]
+
+
+def test_bloom_tags_never_reach_the_learner():
+    """Bloom tiers are internal metadata; a model echoing them into text is cleaned on the way out."""
+    from app.api.v1.serializers import strip_internal_tags
+
+    body = "- Umím popsat páku. (Bloom 1 – zapamatování)\n- Umím to spočítat [Bloom 3: apply]"
+    assert strip_internal_tags(body) == "- Umím popsat páku.\n- Umím to spočítat"
+    for tag in ("(Bloom level 2)", "(Bloom's tier 4 – analyze)", "(Bloom: Apply)", "[Bloom 6]"):
+        assert strip_internal_tags(f"Umím to. {tag}") == "Umím to.", tag
+    # Ordinary parentheses, and text that merely contains the word, stay untouched — including the
+    # answer of an English vocabulary item, a name, a link and code.
+    for keep in (
+        "Síla (v newtonech) působí.",
+        "Doplň: The roses ___ every June. (bloom)",
+        "In spring the cherry trees flower (bloom) all over Japan.",
+        "Hlavní postava (Leopold Bloom) bloudí Dublinem.",
+        "Read more in [Bloom's taxonomy](https://en.wikipedia.org/wiki/Bloom%27s_taxonomy).",
+        "```python\nflowers = ['rose', 'bloom']\n```",
+        "Write `f(bloom)` here",
+        "The exhibition (Bloom 2021) opens in May.",
+    ):
+        assert strip_internal_tags(keep) == keep, keep
+    assert strip_internal_tags(None) is None

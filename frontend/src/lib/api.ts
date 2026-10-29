@@ -220,9 +220,14 @@ export const api = {
   adminDashboard: (token: string) => request<unknown>('/admin/dashboard', { bearer: token }),
   adminAudit: (token: string, params: Record<string, string> = {}) =>
     request<unknown>(`/admin/audit?${new URLSearchParams(params).toString()}`, { bearer: token }),
-  adminGetSettings: (token: string) => request<unknown>('/admin/settings', { bearer: token }),
-  adminPutSetting: (token: string, body: { key: string; value: unknown; is_secret?: boolean }) =>
-    request<unknown>('/admin/settings', { method: 'PUT', body, bearer: token }),
+  /** The settings the backend runs with now + today's AI use per model (AdminConfigOut). */
+  adminConfig: (token: string) => request<unknown>('/admin/config', { bearer: token }),
+  /** Change an editable setting (models, daily budget); returns the updated ConfigItem. */
+  adminSetConfig: (token: string, key: string, value: string | number | boolean) =>
+    request<unknown>(`/admin/config/${encodeURIComponent(key)}`, { method: 'PUT', body: { value }, bearer: token }),
+  /** Undo an admin change (back to the server's value, else the app default); returns the ConfigItem. */
+  adminResetConfig: (token: string, key: string) =>
+    request<unknown>(`/admin/config/${encodeURIComponent(key)}`, { method: 'DELETE', bearer: token }),
   adminContent: (token: string) => request<unknown>('/admin/content', { bearer: token }),
 }
 

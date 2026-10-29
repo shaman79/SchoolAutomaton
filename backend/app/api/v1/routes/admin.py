@@ -1,8 +1,7 @@
-"""Admin realm: JWT login + dashboards/audit/settings/content. Separate auth from learner profiles."""
+"""Admin realm: JWT login + dashboard/audit/runtime settings/content. Separate auth from learner profiles."""
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -10,11 +9,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ....core.config import settings as cfg
-from ....core.security import create_admin_token, encrypt_secret, verify_password_off_loop
+from ....core.security import create_admin_token, verify_password_off_loop
 from ....core.throttle import admin_login_throttle
 from ....models import (
     AdminUser,
-    AppSetting,
     GenerationUsage,
     LearningRequest,
     Lesson,
@@ -23,18 +21,26 @@ from ....models import (
     SanitizationAudit,
 )
 from ....schemas.admin import (
+    AdminConfigOut,
     AdminLoginIn,
     AuditRecord,
+    ConfigItem,
+    ConfigUpdateIn,
     ContentRecord,
     DashboardOut,
-    SettingItem,
-    SettingUpdateIn,
     TokenOut,
 )
 from ....schemas.common import Page
+from ....services import runtime_settings
 from ...deps import client_ip_hash, get_current_admin, get_db
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _utc(dt: datetime) -> datetime:
+    """SQLite hands datetimes back without a zone; they are stored in UTC. Sent without one, the
+    browser would read them as its own local time (an hour off in Prague)."""
+    return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt
 
 
 @router.post("/auth/login", response_model=TokenOut)
@@ -137,7 +143,7 @@ async def audit(
         AuditRecord(
             id=r.id,
             request_id=r.request_id,
-            ts=r.ts,
+            ts=_utc(r.ts),
             decision_type=r.decision_type,
             language=r.language,
             suspicion_score=r.suspicion_score,
@@ -152,44 +158,49 @@ async def audit(
     return Page[AuditRecord](items=items, total=int(total or 0), page=page, page_size=page_size)
 
 
-@router.get("/settings", response_model=list[SettingItem])
-async def get_settings(_: AdminUser = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    rows = (await db.execute(select(AppSetting))).scalars().all()
-    return [
-        SettingItem(
-            key=r.key,
-            value="***" if r.is_secret else r.value_json,
-            is_secret=r.is_secret,
-            updated_at=r.updated_at,
-        )
-        for r in rows
-    ]
+@router.get("/config", response_model=AdminConfigOut)
+async def get_config(admin: AdminUser = Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """The settings the backend runs with now, where each comes from, and today's AI use per model."""
+    return await runtime_settings.config_for_admin(db, can_edit=admin.role == "admin")
 
 
-@router.put("/settings", response_model=SettingItem)
-async def put_setting(
-    body: SettingUpdateIn,
+def _config_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, runtime_settings.UnknownSetting):
+        return HTTPException(status.HTTP_404_NOT_FOUND, "Unknown setting")
+    if isinstance(exc, runtime_settings.NotEditable):
+        return HTTPException(status.HTTP_400_BAD_REQUEST, "This setting can only be changed on the server")
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
+
+
+@router.put("/config/{key}", response_model=ConfigItem)
+async def put_config(
+    key: str,
+    body: ConfigUpdateIn,
     admin: AdminUser = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    """Change an editable setting (models, daily budget). Applies at once and survives restarts."""
     if admin.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Read-only role")
-    row = await db.get(AppSetting, body.key)
-    stored = encrypt_secret(json.dumps(body.value)) if body.is_secret else body.value
-    if row is None:
-        row = AppSetting(key=body.key, value_json=stored, is_secret=body.is_secret, updated_by=admin.id)
-        db.add(row)
-    else:
-        row.value_json = stored
-        row.is_secret = body.is_secret
-        row.updated_by = admin.id
-    await db.flush()
-    return SettingItem(
-        key=row.key,
-        value="***" if row.is_secret else row.value_json,
-        is_secret=row.is_secret,
-        updated_at=row.updated_at,
-    )
+    try:
+        return await runtime_settings.set_override(db, key, body.value, admin)
+    except (LookupError, ValueError) as exc:
+        raise _config_error(exc) from exc
+
+
+@router.delete("/config/{key}", response_model=ConfigItem)
+async def delete_config(
+    key: str,
+    admin: AdminUser = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Undo an admin change: back to the server environment's value, else the app default."""
+    if admin.role != "admin":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Read-only role")
+    try:
+        return await runtime_settings.clear_override(db, key, admin)
+    except (LookupError, ValueError) as exc:
+        raise _config_error(exc) from exc
 
 
 @router.get("/content", response_model=list[ContentRecord])
@@ -212,13 +223,13 @@ async def content(
     out = [
         ContentRecord(
             id=lz.id, kind="lesson", topic=lz.topic, grade_band=lz.grade_band,
-            language=lz.detected_language, cache_key=lz.content_cache_key, created_at=lz.created_at,
+            language=lz.detected_language, cache_key=lz.content_cache_key, created_at=_utc(lz.created_at),
         )
         for lz in lessons
     ] + [
         ContentRecord(
             id=q.id, kind="quiz", topic=q.title, grade_band=q.grade_band,
-            language=q.language, cache_key=None, created_at=q.created_at,
+            language=q.language, cache_key=None, created_at=_utc(q.created_at),
         )
         for q in quizzes
     ]

@@ -77,9 +77,25 @@ async def lifespan(app: FastAPI):
         await _reap_stuck_requests(db)
         await _reap_stuck_visuals(db)
         await db.commit()
+    await _load_admin_settings()
     await _catch_up_streaks()
-    logger.info("SchoolAutomaton backend ready (env=%s)", settings.env)
+    logger.info(
+        "SchoolAutomaton backend ready (env=%s, model=%s, sanitizer=%s)",
+        settings.env, settings.model_id, settings.sanitizer_model_id,
+    )
     yield
+
+
+async def _load_admin_settings() -> None:
+    """Re-apply the changes an admin made on the Settings page (models, daily budget). Best-effort:
+    on failure the environment / defaults apply and the app still starts."""
+    from .services.runtime_settings import load_overrides  # noqa: PLC0415
+
+    async with SessionLocal() as db:
+        try:
+            await load_overrides(db)
+        except Exception:
+            logger.exception("Could not load the admin settings; using the environment / defaults")
 
 
 async def _catch_up_streaks() -> None:

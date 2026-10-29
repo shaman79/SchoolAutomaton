@@ -7,12 +7,14 @@ from __future__ import annotations
 
 from . import enums
 from .admin import (
+    AdminConfigOut,
     AdminLoginIn,
     AuditRecord,
+    ConfigItem,
+    ConfigUpdateIn,
     ContentRecord,
     DashboardOut,
-    SettingItem,
-    SettingUpdateIn,
+    ModelUsageToday,
     TokenOut,
 )
 from .common import AppModel, ErrorResponse, Page, StrictModel
@@ -105,6 +107,6 @@ __all__ = [
     "ProfileEnvelope", "ProfilePublic", "ProfileSettingsPublic", "ProfileSettingsUpdate",
     "CreateProfileIn", "ResumeIn", "ProfileCreateOut",
     # admin
-    "AdminLoginIn", "TokenOut", "DashboardOut", "AuditRecord", "SettingItem",
-    "SettingUpdateIn", "ContentRecord",
+    "AdminLoginIn", "TokenOut", "DashboardOut", "AuditRecord", "AdminConfigOut",
+    "ConfigItem", "ConfigUpdateIn", "ModelUsageToday", "ContentRecord",
 ]

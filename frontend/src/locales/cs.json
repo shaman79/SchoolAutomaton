@@ -248,6 +248,7 @@
     "retry": "Zkusit znovu",
     "refresh": "Obnovit",
     "tabs": {
+      "label": "Části administrace",
       "overview": "Přehled",
       "audit": "Audit",
       "settings": "Nastavení",
@@ -302,30 +303,143 @@
       "showing": "{count} z {total} záznamů"
     },
     "settings": {
-      "title": "Nastavení aplikace",
-      "desc": "Konfigurace za běhu. Tajné hodnoty (API klíče) lze pouze zapisovat a zobrazují se maskované.",
-      "col_key": "Klíč",
-      "col_value": "Hodnota",
-      "col_updated": "Aktualizováno",
-      "secret_badge": "Tajné",
-      "secret_masked": "•••••••• (pouze zápis)",
-      "edit": "Upravit",
+      "intro": "S čím aplikace právě teď běží a odkud se jednotlivé hodnoty berou.",
+      "read_only_note": "Tento účet může nastavení prohlížet, ale ne měnit.",
+      "sections": {
+        "models": "AI modely",
+        "spending": "Útrata za AI dnes",
+        "limits": "Limity",
+        "keys": "API klíče",
+        "about": "O serveru",
+        "other": "Další nastavení"
+      },
+      "items": {
+        "model_id": {
+          "label": "Hlavní AI model",
+          "help": "Píše lekce, kvízy a obrázky a kontroluje odpovědi psané vlastními slovy."
+        },
+        "sanitizer_model_id": {
+          "label": "AI model pro kontrolu zadání",
+          "help": "Jako první čte, co žák napíše: ověří, že je to v pořádku, a zjistí téma."
+        },
+        "daily_budget_usd": {
+          "label": "Denní rozpočet na AI",
+          "help": "Jakmile útrata za AI dosáhne této částky v amerických dolarech, nové lekce a kvízy se do konce dne (UTC) pozastaví. 0 limit vypne."
+        },
+        "rate_per_min": {
+          "label": "Požadavků na žáka za minutu"
+        },
+        "rate_per_day": {
+          "label": "Požadavků na žáka za den"
+        },
+        "rate_ip_multiplier": {
+          "label": "Limit pro síť (× limit žáka)"
+        },
+        "answer_rate_per_min": {
+          "label": "Odpovědí na žáka za minutu"
+        },
+        "answer_llm_rate_per_min": {
+          "label": "Odpovědí kontrolovaných AI na žáka za minutu"
+        },
+        "profile_create_per_hour": {
+          "label": "Nových žáků z jedné sítě za hodinu"
+        },
+        "resume_fail_limit": {
+          "label": "Povolených chybných kódů pro návrat z jedné sítě"
+        },
+        "resume_fail_window_s": {
+          "label": "…počítáno za"
+        },
+        "admin_login_fail_limit": {
+          "label": "Chybných hesel do administrace za minutu"
+        },
+        "llm_request_timeout_s": {
+          "label": "Časový limit volání AI"
+        },
+        "visual_phase_budget_s": {
+          "label": "Čas na obrázky jedné lekce"
+        },
+        "per_visual_timeout_s": {
+          "label": "Čas na jeden obrázek"
+        },
+        "anthropic_api_key": {
+          "label": "API klíč Anthropic"
+        },
+        "replicate_api_token": {
+          "label": "API token Replicate (obrázky)"
+        },
+        "env": {
+          "label": "Prostředí"
+        },
+        "prompt_version": {
+          "label": "Verze instrukcí pro AI"
+        }
+      },
+      "in_effect": "Teď se používá:",
+      "source": {
+        "default": "Výchozí hodnota aplikace",
+        "env": "Nastaveno na serveru ({env})",
+        "env_unnamed": "Nastaveno na serveru",
+        "admin": "Změněno tady ({user}, {date})",
+        "admin_by": "Změněno tady ({user})",
+        "admin_at": "Změněno tady ({date})",
+        "admin_plain": "Změněno tady",
+        "code": "Dáno touto verzí aplikace"
+      },
+      "base_source": {
+        "default": "výchozí hodnota",
+        "env": "nastavení serveru",
+        "admin": "změněno tady",
+        "code": "dáno verzí aplikace"
+      },
+      "app_default_is": "výchozí: {value}",
+      "env_pinned": "Soubor .env na serveru tohle nastavuje na {value} (výchozí hodnota aplikace je {default}). Změna tady má přednost, dokud ji nevrátíte.",
+      "env_pinned_view": "Soubor .env na serveru tohle nastavuje na {value} (výchozí hodnota aplikace je {default}).",
+      "recommended": "{value} (doporučeno)",
+      "unlisted": "{value} (používá se, není v nabídce)",
       "save": "Uložit",
+      "undo": "Vrátit zpět na {value} ({source})",
+      "confirm_title": "Přepnout na {value}?",
+      "confirm_undo_title": "Přepnout zpátky na {value}?",
+      "confirm_model": "Od teď tenhle model použije každá nová lekce, kvíz i kontrola odpovědí.",
+      "confirm": "Potvrdit",
       "cancel": "Zrušit",
-      "new_secret_placeholder": "Zadejte nové tajemství pro nahrazení…",
-      "value_placeholder": "Hodnota (JSON, např. true, 90, \"text\")",
-      "invalid_json": "Zadejte platnou hodnotu JSON (true, false, číslo nebo \"text v uvozovkách\").",
-      "saved": "Nastavení uloženo.",
-      "save_error": "Uložení se nezdařilo. Možná nemáte oprávnění upravovat nastavení.",
-      "is_secret_toggle": "Uložit jako tajné (pouze zápis)",
-      "add_title": "Přidat nebo přepsat nastavení",
-      "add_key_placeholder": "klic_nastaveni",
-      "add": "Přidat nastavení",
-      "empty_title": "Zatím žádná nastavení",
-      "empty_desc": "Přidejte nastavení pro konfiguraci chování za běhu.",
-      "quick_toggles": "Rychlé přepínače",
-      "boolean_on": "Zapnuto",
-      "boolean_off": "Vypnuto"
+      "saved": "{label}: nově {value}.",
+      "undone": "{label}: zpět na {value}.",
+      "invalid_number": "Zadejte číslo od {min} do {max}.",
+      "too_many_decimals": "Zadejte nejvýš dvě desetinná místa (celé centy).",
+      "error_save": "Uložení se nepovedlo. Zkontrolujte připojení a zkuste to znovu.",
+      "error_invalid": "Server tuhle hodnotu nepřijal.",
+      "error_not_editable": "Tohle nastavení jde změnit jen na serveru.",
+      "error_read_only": "Váš účet už nastavení měnit nemůže. Načtěte stránku znovu, ať je vidíte aktuální.",
+      "error_unknown": "Tohle nastavení už neexistuje. Načtěte stránku znovu.",
+      "spending": {
+        "spent_of": "Dnes utraceno: {spent} z {budget}",
+        "spent_no_cap": "Dnes utraceno: {spent} (bez denního limitu)",
+        "used": "Vyčerpáno {pct} denního rozpočtu",
+        "reached": "Rozpočet je vyčerpaný: nové lekce a kvízy jsou pozastavené do 00:00 UTC.",
+        "day_start": "„Dnes“ začalo v 00:00 UTC (u vás v {local}).",
+        "usage_title": "Využití AI dnes podle modelu",
+        "usage_help": "Modely, které dnes opravdu odpovídaly. Po změně modelu se tu nová volání objeví pod novým názvem.",
+        "usage_empty": "Dnes zatím žádná volání AI (od 00:00 UTC).",
+        "calls": "{n} volání | {n} volání | {n} volání",
+        "price_unknown": "cena neznámá",
+        "last_call": "naposledy {time}",
+        "in_use_as": "Používá se jako: {label}"
+      },
+      "status": {
+        "set": "Nastaveno",
+        "not_set": "Nenastaveno",
+        "env_hint": "Patří do souboru .env na serveru jako {env}"
+      },
+      "units": {
+        "seconds": "{n} s",
+        "seconds_minutes": "{n} s ({m} min)",
+        "times": "{n}×"
+      },
+      "yes": "Ano",
+      "no": "Ne",
+      "empty_value": "—"
     },
     "content": {
       "title": "Knihovna obsahu",
