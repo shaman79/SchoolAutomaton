@@ -160,8 +160,10 @@ backups/weekly/schoolautomaton-YYYY-Www.db.gz     newest 8 kept    (SA_BACKUP_KE
 older backups. Log: `logs/backup.log`. Two more things for a real disaster:
 - **Copy backups off the machine** (e.g. `rclone`/`rsync` of `backups/` from another box) — a dead
   disk takes `./backups` with it.
-- **Keep a copy of `.env`** somewhere safe: provider keys saved from the admin Settings page are
-  encrypted with `APP_SECRET`; a restored DB with a different secret can't decrypt them.
+- **Keep a copy of `.env`** somewhere safe: the API keys live only there (backups hold the database,
+  not `.env`), and a restored DB needs the same `APP_SECRET` to read the encrypted text of
+  safety-flagged requests. Changes made on the admin **Settings** page are in the database, so a
+  backup carries them.
 
 > Don't back up by tar-ing the volume while the app runs: the DB is in WAL mode, so copying the
 > `.db`/`-wal`/`-shm` files independently can produce an inconsistent or corrupt copy.
@@ -207,8 +209,22 @@ Settings read by the ops scripts (environment or `.env`):
 | `SA_BACKUP_DIR` | `backups` | backup location (relative to the repo, or absolute) |
 | `SA_BACKUP_KEEP_DAILY` / `_WEEKLY` | `14` / `8` | rotation |
 
-> Provider keys can also be managed at runtime from the admin **Settings** page (stored
-> Fernet-encrypted); env values win at boot.
+### Settings in the app
+
+Sign in at `/admin` → **Settings** to see every setting the backend runs with and where each comes
+from: the app's default, the server's `.env` (named), or a change made on that page. It also lists
+today's AI calls and cost per model, which shows which model is really answering.
+
+The **AI models** (from the list the app was tested with) and the **daily AI budget** can be changed
+there. A change applies to the next lesson at once, survives restarts and **wins over `.env`**;
+**Undo** returns to the `.env` value, else the default. Everything else (limits, timeouts) is changed
+in `.env` and applied with `docker compose up -d backend`. API keys stay in `.env` and are shown only
+as set / not set.
+
+> Servers installed before 2026-10-28 have `SA_MODEL_ID=claude-opus-4-8` and
+> `SA_SANITIZER_MODEL_ID=claude-haiku-4-5` in `.env` (copied from the old template), which keeps the
+> previous models. Switch on the Settings page, or comment the two lines out and restart the backend:
+> `sed -i 's/^SA_MODEL_ID=claude-opus-4-8$/# &/; s/^SA_SANITIZER_MODEL_ID=claude-haiku-4-5$/# &/' .env && docker compose up -d backend`
 
 ## 8. Images and dependencies
 

@@ -23,7 +23,8 @@ class AdminUser(Base):
 
 
 class AppSetting(Base):
-    """KV runtime config + API keys. Secrets are Fernet-encrypted at rest and masked in responses."""
+    """Admin changes to runtime settings (``services/runtime_settings.py``): key = the setting.
+    ``is_secret`` is unused — API keys stay in the environment."""
 
     __tablename__ = "app_settings"
 

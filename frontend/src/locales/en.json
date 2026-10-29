@@ -245,6 +245,7 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "tabs": {
+      "label": "Admin sections",
       "overview": "Overview",
       "audit": "Audit",
       "settings": "Settings",
@@ -299,30 +300,140 @@
       "showing": "{count} of {total} records"
     },
     "settings": {
-      "title": "App settings",
-      "desc": "Runtime configuration. Secret values (API keys) are write-only and shown masked.",
-      "col_key": "Key",
-      "col_value": "Value",
-      "col_updated": "Updated",
-      "secret_badge": "Secret",
-      "secret_masked": "•••••••• (write-only)",
-      "edit": "Edit",
+      "intro": "What the app runs with right now, and where each value comes from.",
+      "read_only_note": "This account can view the settings but not change them.",
+      "sections": {
+        "models": "AI models",
+        "spending": "AI spending today",
+        "limits": "Limits",
+        "keys": "API keys",
+        "about": "About this server",
+        "other": "Other settings"
+      },
+      "items": {
+        "model_id": {
+          "label": "Main AI model",
+          "help": "Writes lessons, quizzes and pictures, and checks free-text answers."
+        },
+        "sanitizer_model_id": {
+          "label": "Input-check AI model",
+          "help": "Reads what a learner types first: checks it is safe and works out the topic."
+        },
+        "daily_budget_usd": {
+          "label": "Daily AI budget",
+          "help": "New lessons and quizzes pause for the rest of the day (UTC) once AI spending reaches this amount in US dollars. 0 turns the cap off."
+        },
+        "rate_per_min": {
+          "label": "Requests per learner per minute"
+        },
+        "rate_per_day": {
+          "label": "Requests per learner per day"
+        },
+        "rate_ip_multiplier": {
+          "label": "Network limit (× a learner's limit)"
+        },
+        "answer_rate_per_min": {
+          "label": "Answers per learner per minute"
+        },
+        "answer_llm_rate_per_min": {
+          "label": "AI-checked answers per learner per minute"
+        },
+        "profile_create_per_hour": {
+          "label": "New learners per network per hour"
+        },
+        "resume_fail_limit": {
+          "label": "Wrong resume codes allowed per network"
+        },
+        "resume_fail_window_s": {
+          "label": "…counted over"
+        },
+        "admin_login_fail_limit": {
+          "label": "Wrong admin passwords per minute"
+        },
+        "llm_request_timeout_s": {
+          "label": "AI call time limit"
+        },
+        "visual_phase_budget_s": {
+          "label": "Time for a lesson's pictures"
+        },
+        "per_visual_timeout_s": {
+          "label": "Time per picture"
+        },
+        "anthropic_api_key": {
+          "label": "Anthropic API key"
+        },
+        "replicate_api_token": {
+          "label": "Replicate API token (pictures)"
+        },
+        "env": {
+          "label": "Environment"
+        },
+        "prompt_version": {
+          "label": "AI instructions version"
+        }
+      },
+      "in_effect": "In use now:",
+      "source": {
+        "default": "App default",
+        "env": "Set on the server ({env})",
+        "env_unnamed": "Set on the server",
+        "admin": "Changed here by {user}, {date}",
+        "admin_by": "Changed here by {user}",
+        "admin_at": "Changed here, {date}",
+        "admin_plain": "Changed here",
+        "code": "Built into this version"
+      },
+      "base_source": {
+        "default": "app default",
+        "env": "server setting",
+        "admin": "changed here",
+        "code": "built in"
+      },
+      "app_default_is": "app default: {value}",
+      "env_pinned": "The server's .env sets this to {value} (the app default is {default}). A change here overrides it until you undo it.",
+      "env_pinned_view": "The server's .env sets this to {value} (the app default is {default}).",
+      "recommended": "{value} (recommended)",
+      "unlisted": "{value} (in use, not on the list)",
       "save": "Save",
+      "undo": "Undo — back to {value} ({source})",
+      "confirm_title": "Switch to {value}?",
+      "confirm_model": "Every new lesson, quiz and answer check uses this model from now on.",
+      "confirm": "Confirm",
       "cancel": "Cancel",
-      "new_secret_placeholder": "Enter new secret to replace…",
-      "value_placeholder": "Value (JSON, e.g. true, 90, \"text\")",
-      "invalid_json": "Enter a valid JSON value (true, false, a number, or \"quoted text\").",
-      "saved": "Setting saved.",
-      "save_error": "Could not save. You may not have permission to edit settings.",
-      "is_secret_toggle": "Store as secret (write-only)",
-      "add_title": "Add or override a setting",
-      "add_key_placeholder": "setting_key",
-      "add": "Add setting",
-      "empty_title": "No settings yet",
-      "empty_desc": "Add a setting to configure runtime behavior.",
-      "quick_toggles": "Quick toggles",
-      "boolean_on": "On",
-      "boolean_off": "Off"
+      "saved": "{label}: now {value}.",
+      "undone": "{label}: back to {value}.",
+      "invalid_number": "Enter a number from {min} to {max}.",
+      "error_save": "Could not save. Check the connection and try again.",
+      "error_invalid": "The server did not accept this value.",
+      "error_not_editable": "This setting can only be changed on the server.",
+      "error_unknown": "This setting no longer exists. Reload the page.",
+      "spending": {
+        "spent_of": "Spent today: {spent} of {budget}",
+        "spent_no_cap": "Spent today: {spent} (no daily cap)",
+        "used": "{pct} of the daily budget used",
+        "reached": "Budget reached: new lessons and quizzes are paused until 00:00 UTC.",
+        "day_start": "“Today” started at 00:00 UTC ({local} your time).",
+        "usage_title": "AI use today, by model",
+        "usage_help": "The models that really answered today. After a model change, new calls show up here under the new name.",
+        "usage_empty": "No AI calls yet today (since 00:00 UTC).",
+        "calls": "{n} call | {n} calls",
+        "price_unknown": "price unknown",
+        "last_call": "last call {time}",
+        "in_use_as": "In use: {label}"
+      },
+      "status": {
+        "set": "Set",
+        "not_set": "Not set",
+        "env_hint": "Goes in the server's .env as {env}"
+      },
+      "units": {
+        "seconds": "{n} s",
+        "seconds_minutes": "{n} s ({m} min)",
+        "times": "{n}×"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "empty_value": "—"
     },
     "content": {
       "title": "Content library",

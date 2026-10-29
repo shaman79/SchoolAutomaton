@@ -1,8 +1,8 @@
 """Application settings (env-driven). Single source for credentials, paths and runtime knobs.
 
-Loaded once as the module-level ``settings`` singleton. Secrets read from env at boot can be
-overridden/extended at runtime via the ``app_settings`` DB table (admin), but env always wins for
-provider keys at startup (SPEC).
+Loaded once as the module-level ``settings`` singleton from the environment / .env. An admin can
+change a few of these at runtime — the models and the daily budget (``services/runtime_settings.py``,
+which wins over the environment). API keys only ever come from the environment.
 """
 
 from __future__ import annotations

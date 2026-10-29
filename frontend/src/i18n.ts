@@ -40,11 +40,23 @@ export function czechPluralRule(choice: number, choicesLength: number): number {
   return n >= 2 && n <= 4 ? 1 : 2
 }
 
+/** Named date formats for `d(date, name)` (the admin console's timestamps). Without an entry `d()`
+ *  returns an empty string. Shown in the viewer's own time zone. */
+const LONG: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+}
+const TIME: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
+
 export const i18n = createI18n({
   legacy: false,
   locale: 'en',
   fallbackLocale: 'en',
   messages: { en, cs },
+  datetimeFormats: { en: { long: LONG, time: TIME }, cs: { long: LONG, time: TIME } },
   pluralRules: { cs: czechPluralRule },
 })
 
