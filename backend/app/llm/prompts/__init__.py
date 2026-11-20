@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import json
 import secrets
+from typing import Literal
 
 from ...core.constants import READABILITY_TARGETS, TARGET_SUCCESS_RATE
 from ...schemas.enums import LESSON_SKELETON
 from ...schemas.intent import StructuredIntent
 from .curriculum import curriculum_directive
 from .pedagogy import SYSTEM_PEDAGOGY, SYSTEM_PEDAGOGY_EN
+from .rvp import rvp_outcomes_directive
 
 __all__ = [
     "SYSTEM_PEDAGOGY",
@@ -50,11 +52,14 @@ def language_directive(language: str) -> str:
     )
 
 
-def _intent_context(intent: StructuredIntent) -> str:
+def _intent_context(intent: StructuredIntent, *, outcomes: Literal["all", "matched", "none"] = "all") -> str:
     """Render the validated-intent context block (volatile; no raw student text).
 
-    Appends the education-system directive when the learner selected a region locale — kept in this
-    volatile tail (never the cached prefix) so the prompt cache stays byte-identical (SPEC §5)."""
+    Appends the education-system directive when the learner selected a region locale, then the
+    national-curriculum outcomes the topic serves (Czech RVP ZV): ``"all"`` includes the subject's
+    whole outcome list when the topic matched none, ``"matched"`` only confident matches, ``"none"``
+    nothing. All of it stays in this volatile tail (never the cached prefix) so the prompt cache stays
+    byte-identical (SPEC §5)."""
     target = READABILITY_TARGETS.get(intent.grade_band.value, READABILITY_TARGETS["unknown"])
     constraints = "; ".join(intent.constraints) if intent.constraints else "(none)"
     # The exact school year (when known) is more precise than the band — state it right after it.
@@ -77,6 +82,12 @@ def _intent_context(intent: StructuredIntent) -> str:
     curriculum = curriculum_directive(intent.education_locale, intent.grade_band, intent.school_year)
     if curriculum:
         block = f"{block}\n\n{curriculum}"
+    if outcomes != "none":
+        targets = rvp_outcomes_directive(
+            intent.education_locale, intent.subject, intent.topic, intent.grade_band, intent.school_year,
+            list_all=outcomes == "all")
+        if targets:
+            block = f"{block}\n\n{targets}"
     return block
 
 
@@ -104,7 +115,7 @@ def build_section_user(intent: StructuredIntent, *, kind: str, title: str, objec
     obj = objective or "(derive from the topic)"
     return (
         f"Fill the '{kind}' section of the lesson below. Produce a GenSection.\n\n"
-        f"{_intent_context(intent)}\n\n"
+        f"{_intent_context(intent, outcomes='matched')}\n\n"
         f"section_kind: {kind}\n"
         f"section_title: {title}\n"
         f"section_objective: {obj}\n\n"
@@ -136,7 +147,7 @@ def build_visual_spec_user(intent: StructuredIntent, section_titles: list[str]) 
         "alt_text, an optional caption, and EITHER svg_request (schematic kinds) OR image_prompt "
         "(representational kinds, written as a kid-safe subject description derived only from the "
         "topic).\n\n"
-        f"{_intent_context(intent)}\n\n"
+        f"{_intent_context(intent, outcomes='none')}\n\n"
         f"section_titles (ordered): {sections}\n\n"
         f"{language_directive(intent.language)}"
     )

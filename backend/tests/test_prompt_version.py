@@ -5,7 +5,8 @@ part of the picture cache key (so pictures made under old instructions aren't re
 "2026.06.06" through eleven prompt changes; this test makes forgetting the bump fail.
 
 The fingerprint covers everything sent, rendered for fixed sample inputs: the cached system prefix,
-every user-message builder (each grade band × education system), the curriculum data, the input-check,
+every user-message builder (each grade band × education system), the curriculum data and the Czech
+RVP ZV outcome catalogue, the input-check,
 picture and grading prompts, the client's own instructions and the output schemas the models fill.
 
 When this fails because you changed a prompt (or a schema the model fills):
@@ -26,7 +27,7 @@ import pytest
 from app.core.constants import PROMPT_VERSION
 from app.llm import client as llm_client
 from app.llm import lesson_generator, prompts
-from app.llm.prompts import curriculum
+from app.llm.prompts import curriculum, rvp
 from app.llm.prompts.curriculum import base_language, curriculum_directive
 from app.sanitization import classifier
 from app.schemas.enums import LESSON_SKELETON, GradeBand, Mode, Subject, VisualKind
@@ -39,6 +40,8 @@ PROMPT_VERSIONS: dict[str, str] = {
     # 2026.06.06 (the first) was never recorded. 2026.10.29: the September lesson-text fixes, the
     # Opus 5.5 / Haiku 5.5 prompt changes and everything since June.
     "2026.10.29": "b74529f20652d4f851bfae188fef99b06c4866306abf8775be97b2bd0f5be49e",
+    # Czech RVP ZV outcomes (NPI open data) in the lesson/quiz user messages for cs-CZ, grades 1-9.
+    "2026.11.20": "0ddc112db2607e45bd02dc895fda8076e239f07521662801d409b7211813b673",
 }
 
 _VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}(\.\d+)?$")
@@ -58,6 +61,12 @@ def _intents() -> list[StructuredIntent]:
                     topic="fractions", mode=Mode.STUDY, grade_band=band, school_year=year,
                     language=language, education_locale=locale, constraints=["use pictures"],
                 ))
+    # A Czech topic the RVP ZV catalogue matches, so the matched-outcome wording is covered too (the
+    # English "fractions" above only reaches the subject's full outcome list).
+    out.append(StructuredIntent(
+        subject=Subject.MATH, topic="zlomky", mode=Mode.STUDY, grade_band=GradeBand.G3_5, school_year=4,
+        language="cs", education_locale="cs-CZ", constraints=["use pictures"],
+    ))
     return out
 
 
@@ -68,6 +77,7 @@ def _texts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
         ("system_pedagogy", prompts.system_pedagogy("en")),
         ("system_pedagogy_registry", json.dumps(prompts.SYSTEM_PEDAGOGY, sort_keys=True)),
         ("curricula", json.dumps(curriculum.CURRICULA, sort_keys=True, ensure_ascii=False)),
+        ("rvp_zv", json.dumps(rvp.RVP_ZV, sort_keys=True, ensure_ascii=False)),
         ("classifier_system", classifier.CLASSIFIER_SYSTEM_PROMPT),
         ("classifier_block", classifier.wrap_with_nonce("I want to learn fractions")[0]),
         ("svg_system", claude_svg._SYSTEM_PROMPT),
@@ -151,4 +161,9 @@ def test_the_fingerprint_notices_a_prompt_change(monkeypatch):
         data = copy.deepcopy(curriculum.CURRICULA)
         data[next(iter(data))]["conventions"] = "changed"
         mp.setattr(curriculum, "CURRICULA", data)
+        assert _fingerprint(_texts(mp)) != before
+    with monkeypatch.context() as mp:
+        catalogue = copy.deepcopy(rvp.RVP_ZV)
+        catalogue["outcomes"][-1]["phases"]["met"] += " "
+        mp.setattr(rvp, "RVP_ZV", catalogue)
         assert _fingerprint(_texts(mp)) != before
