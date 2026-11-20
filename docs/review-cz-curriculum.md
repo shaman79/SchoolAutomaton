@@ -47,8 +47,8 @@ další práci.
 | 6 | Chyběla česká terminologie a názvy předmětů (prvouka, přírodověda, vlastivěda, přírodopis, vyjmenovaná slova, vzory…). | Obsah zní přeloženě. | ✅ opraveno |
 | 7 | Chyběly typické české formáty úloh: doplňovačky i/y přímo ve slově, slovní úlohy ve struktuře zápis → výpočet → odpověď. | Procvičování se nepodobá domácím úkolům. | ✅ opraveno (v pokynu) |
 | 8 | U cizích jazyků nebyla cílová úroveň SERR (ZŠ míří na A2, druhý cizí jazyk na A1). | Nevhodná náročnost angličtiny. | ✅ opraveno |
-| 9 | Aplikace nemá katalog očekávaných výstupů RVP. Model zná RVP jen z trénovacích dat. | Nelze doložit ani zkontrolovat, že lekce odpovídá konkrétnímu výstupu. | ⏭ doporučení P1 |
-| 10 | RVP ZV prochází revizí (Strategie 2030+). | Data zastarají. | ⏭ doporučení: verzovat v `curricula.yaml` |
+| 9 | Aplikace nemá katalog očekávaných výstupů RVP. Model zná RVP jen z trénovacích dat. | Nelze doložit ani zkontrolovat, že lekce odpovídá konkrétnímu výstupu. | ✅ katalog a výběr výstupů (listopad 2026); štítek v lekci zatím ne |
+| 10 | RVP ZV prochází revizí (Strategie 2030+). | Data zastarají. | ✅ katalog nese zdroj a datum datové sady, `scripts/import_rvp_zv.py` ho obnoví |
 | 11 | Čitelnost češtiny se nevynucuje. FKGL platí jen pro angličtinu a český proxy ukazatel se pouze zapisuje, nikdy nevede k přegenerování. | Texty pro 1.–2. třídu mohou být příliš těžké. | ⏭ doporučení P2 |
 | 12 | `profile.age_band` se nikdy nenastavuje, protože frontend ho neposílá. | Mechanismy pro nejmenší (menší denní dávka nových položek, volný den bez ztráty série) jsou mrtvý kód. | ✅ opraveno: odvozuje se z nastavené třídy |
 
@@ -138,6 +138,16 @@ kolo opakování, drobečky lekce „Matematika · 4. třída · 15 min“ a př
    pro model vložit jen relevantní výstupy a nechat ho cíle lekce na ně odkázat. V lekci pak
    zobrazit štítek „Odpovídá RVP ZV: Matematika, 2. období“. Rodiče i učitelé tím dostanou
    ověřitelnou vazbu na kurikulum.
+   *Listopad 2026: katalog a výběr hotové.* `app/data/rvp_zv.json` obsahuje 349 očekávaných výsledků
+   učení revidovaného RVP ZV z otevřených dat NPI (opendata.npi.cz, bez autorskoprávní ochrany).
+   Kódy mají nový tvar (`MAT-MAT-001-ZV5-002`) a cíle jsou stanovené pro konec 5. a 9. ročníku.
+   Ke každému výstupu jsou popisy fází „Na začátku / Na cestě / Splněno“. `app/llm/prompts/rvp.py`
+   vybere podle předmětu, ročníku a tématu nejvýš tři výstupy a s popisem fáze, ve které dítě
+   v daném ročníku obvykle je, je vloží do volatilní části promptu. Fáze určuje jen výklad a
+   náročnost, nikdy nezužuje téma. Když si tématem není jistý, pošle plánu lekce a testu celý seznam
+   výstupů předmětu. Zbývá ukládat vybrané kódy k lekcím a ukázat štítek.
+   Povinně platí revidovaný RVP ZV až od 1. 9. 2028 (1. a 6. ročník). Do té doby většina škol učí
+   podle RVP ZV z roku 2021, obsahově se ale oba programy z velké části kryjí.
 2. **Předčítání (text-to-speech).** Tlačítko 🔊 u textu lekce a zadání otázky přes Web Speech API
    s hlasem `cs-CZ`, bez dalších nákladů. Prvňáci se teprve učí číst a pomůže to i dětem s dyslexií.
 3. **Start bez psaní.** Dlaždice předmětů a pod nimi témata pro zvolenou třídu, například pro

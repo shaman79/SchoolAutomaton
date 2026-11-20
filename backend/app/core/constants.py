@@ -13,7 +13,7 @@ from __future__ import annotations
 # a model changes — prompts, curriculum data, output schemas; tests/test_prompt_version.py fails until
 # you do. Format YYYY.MM.DD (YYYY.MM.DD.N for another bump the same day).
 # ---------------------------------------------------------------------------
-PROMPT_VERSION = "2026.10.29"
+PROMPT_VERSION = "2026.11.20"
 
 # ---------------------------------------------------------------------------
 # Readability targets per grade band: (target_FKGL, lexile_band, max_words_per_sentence, max_new_terms)
