@@ -126,7 +126,7 @@ function submit() {
   <div class="sa-card sa-q">
     <SafeContent :markdown="item.stem_markdown" prose class="sa-q__stem" />
 
-    <p class="sa-cloze" :aria-label="t('q.cloze.legend')">
+    <p class="sa-cloze" :aria-label="t('q.cloze.legend')" data-speech-choices>
       <template v-for="(seg, i) in segments" :key="i">
         <SafeContent v-if="seg.type === 'text'" :markdown="seg.text" tag="span" inline />
         <template v-else>

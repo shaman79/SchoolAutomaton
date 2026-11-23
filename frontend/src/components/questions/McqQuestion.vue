@@ -80,7 +80,7 @@ function submit() {
   <div class="sa-card sa-q">
     <SafeContent :markdown="item.stem_markdown" prose class="sa-q__stem" />
 
-    <fieldset class="sa-q__options" :disabled="locked">
+    <fieldset class="sa-q__options" :disabled="locked" data-speech-choices>
       <legend class="sr-only">
         {{ payload.multiple ? t('q.mcq.select_all') : t('q.mcq.select_one') }}
       </legend>

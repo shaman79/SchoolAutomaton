@@ -1,18 +1,22 @@
 <script setup lang="ts">
 /**
  * 🔊 "Přečíst" — reads the target element aloud in the content language; toggles to "Zastavit".
- * Renders nothing when the device has no voice for that language.
+ * Renders nothing when the device has no voice for that language. In a foreign-language lesson or
+ * quiz (`foreign`), the practised words are read by a voice of that language when the device has one.
  */
 import { computed, getCurrentInstance } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import { speakableText, useSpeech } from '@/composables/useSpeech'
+import { useSpeech } from '@/composables/useSpeech'
+import { speechSegments } from '@/lib/speechText'
 
 const props = defineProps<{
   /** Element whose visible text is read. */
   target: HTMLElement | null
   /** BCP-47 language of the content (e.g. 'cs-CZ'). */
   lang: string
+  /** Language the content practises (bare code, from `foreignLanguage`), if any. */
+  foreign?: string | null
 }>()
 
 const { t } = useI18n()
@@ -24,7 +28,7 @@ const speaking = computed(() => speakingKey.value === key)
 
 function toggle() {
   if (speaking.value) return stop()
-  if (props.target) speak(key, speakableText(props.target), props.lang)
+  if (props.target) speak(key, speechSegments(props.target, { lang: props.lang, foreign: props.foreign }), props.lang)
 }
 </script>
 
