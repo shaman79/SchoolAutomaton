@@ -141,7 +141,7 @@ function submit() {
 
     <div class="sa-match">
       <!-- LEFT column: prompts + drop slots -->
-      <ul class="sa-match__left">
+      <ul class="sa-match__left" data-speech-choices>
         <li v-for="left in payload.left" :key="left.id" class="sa-match__row">
           <SafeContent :markdown="left.text" tag="span" class="sa-match__leftlabel" />
           <draggable
@@ -181,6 +181,7 @@ function submit() {
         item-key="id"
         tag="ul"
         class="sa-match__pool"
+        data-speech-choices
         group="match"
         :disabled="locked"
         :animation="0"

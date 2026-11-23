@@ -102,6 +102,7 @@ function submit() {
       item-key="id"
       tag="ol"
       class="sa-order"
+      data-speech-choices
       :disabled="locked"
       handle=".sa-order__handle"
       :animation="0"

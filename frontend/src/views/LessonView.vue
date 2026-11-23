@@ -33,7 +33,7 @@ import { toast } from '@/components/common/useToasts'
 import { announceBadges } from '@/components/gamification/announceBadges'
 import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
-import { speechLang } from '@/lib/speechLang'
+import { foreignLanguage, speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -148,6 +148,8 @@ const objectives = computed(() => lesson.value?.objectives ?? [])
 // Read-aloud: each section's rendered text, in the lesson's language.
 const sectionEls = ref<Record<number, HTMLElement | null>>({})
 const readLang = computed(() => speechLang(lesson.value?.language, prefs.educationLocale))
+// In a foreign-language lesson the practised words are read by a voice of that language.
+const readForeign = computed(() => foreignLanguage(lesson.value?.subject, [lesson.value?.topic], readLang.value))
 
 // "Matematika · 4. třída · 15 min" — subject and level named the way the learner's school names them.
 const crumbs = computed(() => {
@@ -348,7 +350,7 @@ onUnmounted(() => lessonStore.stopPolls())
     >
       <div class="sa-lesson__head">
         <h2 v-if="s.title" class="sa-lesson__h2">{{ s.title }}</h2>
-        <ReadAloudButton v-if="!isLocked(s)" :target="sectionEls[s.ordinal] ?? null" :lang="readLang" />
+        <ReadAloudButton v-if="!isLocked(s)" :target="sectionEls[s.ordinal] ?? null" :lang="readLang" :foreign="readForeign" />
       </div>
 
       <!-- Locked interactive section: explain why, don't reveal content. -->

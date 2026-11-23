@@ -25,7 +25,7 @@ import { toast } from '@/components/common/useToasts'
 import { announceBadges } from '@/components/gamification/announceBadges'
 import ReadAloudButton from '@/components/content/ReadAloudButton.vue'
 import CorrectAnswer from '@/components/questions/CorrectAnswer.vue'
-import { speechLang } from '@/lib/speechLang'
+import { foreignLanguage, speechLang } from '@/lib/speechLang'
 import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -55,6 +55,8 @@ const quiz = computed(() => (test.quiz?.request_id === props.sessionId ? test.qu
 const supportByItem = reactive<Record<number, AnswerSupport>>({})
 const questionEl = ref<HTMLElement | null>(null)
 const readLang = computed(() => speechLang(quiz.value?.language, prefs.educationLocale))
+// In a foreign-language quiz the practised words are read by a voice of that language.
+const readForeign = computed(() => foreignLanguage(quiz.value?.subject, [quiz.value?.title], readLang.value))
 const submitting = ref(false)
 const finishing = ref(false)
 
@@ -200,7 +202,7 @@ onMounted(openQuiz)
         <p class="sa-test__points">
           {{ t('test.points', { n: current.points }) }}
         </p>
-        <ReadAloudButton :target="questionEl" :lang="readLang" />
+        <ReadAloudButton :target="questionEl" :lang="readLang" :foreign="readForeign" />
       </div>
       <div ref="questionEl">
       <QuestionRenderer
