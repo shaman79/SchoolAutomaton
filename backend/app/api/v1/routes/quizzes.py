@@ -13,17 +13,30 @@ from ....schemas.gamification import ResultsSummary
 from ....schemas.progress import AttemptPosition
 from ....schemas.quiz import AttemptStartOut, QuizPublic, QuizReview, QuizReviewItem
 from ....services import gamification, progress_service
-from ...deps import get_db, get_profile
+from ....services.content_access import may_open_quiz
+from ...deps import get_db, get_optional_profile, get_profile, get_session_key
 from ..serializers import item_public, quiz_public
 
 router = APIRouter(tags=["quizzes"])
 
 
-@router.get("/quizzes/{quiz_id}", response_model=QuizPublic)
-async def get_quiz(quiz_id: int, db: AsyncSession = Depends(get_db)):
+async def _openable_quiz(db: AsyncSession, quiz_id: int, profile: Profile | None, key: str | None) -> Quiz:
+    """The quiz, if this caller may open it (services.content_access); else the same 404 as for an
+    id that doesn't exist, so ids can't be probed."""
     quiz = await db.get(Quiz, quiz_id)
-    if quiz is None:
+    if quiz is None or not await may_open_quiz(db, quiz_id, profile, key):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz not found")
+    return quiz
+
+
+@router.get("/quizzes/{quiz_id}", response_model=QuizPublic)
+async def get_quiz(
+    quiz_id: int,
+    profile: Profile | None = Depends(get_optional_profile),
+    key: str | None = Depends(get_session_key),
+    db: AsyncSession = Depends(get_db),
+):
+    quiz = await _openable_quiz(db, quiz_id, profile, key)
     return await quiz_public(db, quiz)
 
 
@@ -31,11 +44,14 @@ async def get_quiz(quiz_id: int, db: AsyncSession = Depends(get_db)):
     "/quizzes/{quiz_id}/attempts", response_model=AttemptStartOut, status_code=status.HTTP_201_CREATED
 )
 async def start_attempt(
-    quiz_id: int, profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+    quiz_id: int,
+    profile: Profile = Depends(get_profile),
+    key: str | None = Depends(get_session_key),
+    db: AsyncSession = Depends(get_db),
 ):
-    quiz = await db.get(Quiz, quiz_id)
-    if quiz is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz not found")
+    # An attempt opens the quiz for this profile later (and lets it be answered), so starting one
+    # needs the same right as opening the quiz.
+    await _openable_quiz(db, quiz_id, profile, key)
     # Idempotent: if the learner already has an open (uncompleted) attempt for this quiz, resume it
     # instead of minting a duplicate. This is the server-side anchor for resume-after-refresh and
     # stops orphaned attempts skewing stats. The response replays their position + graded answers so

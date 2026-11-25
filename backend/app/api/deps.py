@@ -87,6 +87,16 @@ async def get_optional_profile(
     return await lookup_profile_by_code(db, request, x_resume_code)
 
 
+def get_session_key(
+    x_learning_session: str | None = Header(default=None, alias="X-Learning-Session"),
+) -> str | None:
+    """The learning session (request id) the client is in, sent with lesson/quiz calls; it is what
+    opens shared content (see services.content_access). Malformed values count as absent."""
+    from ..services.content_access import session_key
+
+    return session_key(x_learning_session)
+
+
 async def get_request_context(
     request: Request,
     profile: Profile | None = Depends(get_optional_profile),

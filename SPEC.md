@@ -93,7 +93,7 @@ consume only the frozen `StructuredIntent`. See `tests/test_no_raw_leak.py`.
   grading endpoint.
 - **Naming:** Python `snake_case`, modules lowercase. Vue components `PascalCase.vue`, composables `useX.ts`,
   Pinia stores `useXStore`. JSON API keys English; all student-facing *values* localized.
-- API base path: `/api/v1`. Auth headers: learner `X-Resume-Code`; admin `Authorization: Bearer <jwt>`.
+- API base path: `/api/v1`. Auth headers: learner `X-Resume-Code`; admin `Authorization: Bearer <jwt>`. Lesson/quiz calls also send `X-Learning-Session: <request_id>`: lesson and quiz ids are sequential, so an id alone opens nothing — the request id, the creator's resume code, or having opened it before does (`services/content_access.py`; shared content such as recommendations opens by its request id).
 
 ## 6. Module ownership map (anti-drift partition)
 

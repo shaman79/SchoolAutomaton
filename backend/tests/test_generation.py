@@ -450,6 +450,7 @@ async def test_generate_section_endpoint_fills_pending(db):
     try:
         lr = await _seed_request(db, Mode.STUDY)
         lesson = await lesson_generator.generate_lesson(db, lr, _intent(Mode.STUDY), client=client)
+        lr.lesson_id = lesson.id  # what the orchestrator records; the reader opens the lesson by it
         await db.commit()
 
         pretest_ord = LESSON_SKELETON.index(SectionKind.PRETEST)
@@ -460,7 +461,7 @@ async def test_generate_section_endpoint_fills_pending(db):
         )
         assert before.gen_status == "pending" and before.body_markdown is None
 
-        res = await route_generate_section(lesson.id, pretest_ord, db)
+        res = await route_generate_section(lesson.id, pretest_ord, profile=None, key=lr.request_id, db=db)
         assert res.ordinal == pretest_ord
         assert res.gen_status == "ready"
         assert res.body_markdown

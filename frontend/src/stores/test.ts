@@ -49,7 +49,8 @@ export const useTestStore = defineStore('test', () => {
     resumed.value = started.resumed && (started.current_index > 0 || started.answers.length > 0)
   }
 
-  async function load(id: number): Promise<void> {
+  /** `sessionId` is the learning session (request id) the quiz is opened under; see api.ts `session`. */
+  async function load(id: number, sessionId: string | null = null): Promise<void> {
     // This tab's own copy of the open attempt (sessionStorage) paints instantly on a refresh; the
     // server's state then replaces it. Anything else is cleared first, so a previous quiz (or its
     // revealed answers) never flashes while this one loads.
@@ -64,7 +65,7 @@ export const useTestStore = defineStore('test', () => {
     try {
       // Idempotent server-side: an open attempt for this quiz is resumed (never duplicated) and comes
       // back with the learner's position + already-graded answers.
-      const [q, started] = await Promise.all([api.getQuiz(id), api.startAttempt(id)])
+      const [q, started] = await Promise.all([api.getQuiz(id, sessionId), api.startAttempt(id, sessionId)])
       _apply(q, started)
     } catch (e) {
       if (cached) return // e.g. a refresh while offline: carry on with the tab's own copy

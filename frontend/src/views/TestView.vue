@@ -163,7 +163,7 @@ async function openQuiz() {
       failed.value = true
       return
     }
-    await test.load(id)
+    await test.load(id, props.sessionId)
     if (!leaving && test.resumed) {
       toast.info(t('test.resumed', { current: test.currentIndex + 1, total: test.total }))
     }

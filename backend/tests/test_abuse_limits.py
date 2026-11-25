@@ -31,8 +31,8 @@ async def test_generation_limit_is_per_learner_not_shared_by_a_school_ip(client)
     over = await client.post(url, headers=h1)
     assert over.status_code == 429
     assert int(over.headers["Retry-After"]) >= 1
-    # A classmate on the same IP still has their own allowance.
-    assert (await client.post(url, headers=h2)).status_code == 200
+    # A classmate on the same IP (opening the shared lesson by its session) has their own allowance.
+    assert (await client.post(url, headers={**h2, "X-Learning-Session": "rl-lesson"})).status_code == 200
 
 
 def _ctx(profile_id: int | None, ip: str = "school-nat") -> RequestContext:

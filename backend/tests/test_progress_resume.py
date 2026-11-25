@@ -182,7 +182,9 @@ async def test_quiz_attempt_resumes_at_the_exact_question(client):
         f"{API}/attempts/{attempt_id}/position", headers=other, json={"current_index": 1}
     )
     assert r.status_code == 404
-    theirs = (await client.post(f"{API}/quizzes/{quiz_id}/attempts", headers=other, json={})).json()
+    # (opening the same quiz the way a recommendation does: by its learning session)
+    theirs = (await client.post(f"{API}/quizzes/{quiz_id}/attempts",
+                                headers={**other, "X-Learning-Session": "resume-quiz"}, json={})).json()
     assert theirs["attempt_id"] != attempt_id
     assert theirs["resumed"] is False and theirs["answers"] == []
     assert (await client.put(f"{API}/attempts/{attempt_id}/position", json={"current_index": 1})).status_code == 401
@@ -310,7 +312,8 @@ async def test_lesson_progress_restores_boundary_and_answers(client):
 
     # Per learner: someone else opening the same lesson starts at the top with nothing answered.
     other, _ = await _new_profile(client)
-    theirs = (await client.put(url, headers=other, json={"revealed_up_to": 0})).json()
+    in_lesson = {**other, "X-Learning-Session": "resume-lesson"}
+    theirs = (await client.put(url, headers=in_lesson, json={"revealed_up_to": 0})).json()
     assert theirs["revealed_up_to"] == 0 and theirs["answers"] == []
 
     # Reaching the last part completes the lesson.
