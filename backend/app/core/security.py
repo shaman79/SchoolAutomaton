@@ -44,6 +44,24 @@ def hash_resume_code(code: str) -> str:
     return hashlib.sha256(normalize_resume_code(code).encode()).hexdigest()
 
 
+# --------------------------------------------------------------------------- parent codes
+# Longer than a resume code (10 vs 8 characters) so the two can't be mistaken for each other — the
+# screens tell a parent who typed the child's own code what to do instead.
+PARENT_CODE_LEN = 10
+
+
+def generate_parent_code() -> str:
+    """A 10-char Crockford base32 parent code grouped as ``XXXXX-XXXXX`` (~50 bits)."""
+    chars = "".join(secrets.choice(_CROCKFORD) for _ in range(PARENT_CODE_LEN))
+    return f"{chars[:5]}-{chars[5:]}"
+
+
+def hash_parent_code(code: str) -> str:
+    """sha256 of the normalized parent code, in its own namespace (never equal to a resume-code
+    hash, even for the same characters)."""
+    return hashlib.sha256(f"parent:{normalize_resume_code(code)}".encode()).hexdigest()
+
+
 # --------------------------------------------------------------------------- generic hashing
 def sha256_hex(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()

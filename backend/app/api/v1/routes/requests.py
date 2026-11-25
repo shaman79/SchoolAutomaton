@@ -61,10 +61,18 @@ async def create_request(
         client_school_year=body.school_year,
     )
 
+    db.add(request_row(request_id, profile.id if profile else None, decision))
+    await db.flush()
+    return decision
+
+
+def request_row(request_id: str, profile_id: int | None, decision: Decision) -> LearningRequest:
+    """The request row for a sanitizer decision (a learner's prompt, or a task a parent gives).
+    Only the validated intent is kept — never the raw text."""
     is_proceed = isinstance(decision, ProceedDecision)
-    lr = LearningRequest(
+    return LearningRequest(
         request_id=request_id,
-        profile_id=profile.id if profile else None,
+        profile_id=profile_id,
         decision_type=decision.type.value,
         mode=decision.mode.value if is_proceed else None,
         structured_intent_json=decision.intent.model_dump(mode="json") if is_proceed else {},
@@ -74,9 +82,6 @@ async def create_request(
         prompt_version=PROMPT_VERSION,
         model_id=settings.sanitizer_model_id,
     )
-    db.add(lr)
-    await db.flush()
-    return decision
 
 
 # Why a generation failed, as a code the loading screen turns into words in the child's language. The

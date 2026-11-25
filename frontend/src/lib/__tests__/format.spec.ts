@@ -72,3 +72,19 @@ describe('formatNumber', () => {
     expect(formatNumber(3.5, 'en')).toBe('3.5')
   })
 })
+
+describe('dayLabel', () => {
+  afterEach(() => setLocale('en'))
+
+  it('says today / yesterday, else a short date, in the viewer’s own days', async () => {
+    const { dayLabel } = await import('@/lib/format')
+    const now = new Date(2026, 10, 25, 9, 0)
+    expect(dayLabel(new Date(2026, 10, 25, 0, 5).toISOString(), now)).toBe('today')
+    expect(dayLabel(new Date(2026, 10, 24, 23, 55).toISOString(), now)).toBe('yesterday')
+    setLocale('cs')
+    expect(dayLabel(new Date(2026, 10, 3, 12).toISOString(), now)).toBe('3. 11.')
+    expect(dayLabel(new Date(2026, 10, 25, 12).toISOString(), now)).toBe('dnes')
+    expect(dayLabel(null, now)).toBe('')
+    expect(dayLabel('garbage', now)).toBe('')
+  })
+})

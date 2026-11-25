@@ -40,6 +40,10 @@ export function makeRouter() {
       { path: '/test/:sessionId', name: 'test', component: blank },
       { path: '/results/:sessionId', name: 'results', component: blank },
       { path: '/resume', name: 'resume', component: blank },
+      { path: '/loading/:sessionId', name: 'loading', component: blank },
+      { path: '/daily', name: 'daily', component: blank },
+      { path: '/parents', name: 'parents', component: blank },
+      { path: '/parent', name: 'parent', component: blank },
     ],
   })
 }

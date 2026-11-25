@@ -19,6 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
       submitPrompt: vi.fn(),
       getContinue: vi.fn(),
       getRecommendations: vi.fn(),
+      getMyAssignments: vi.fn(),
     },
     getResumeCode: () => stored.code,
     setResumeCode: vi.fn((c: string | null) => {
@@ -62,6 +63,7 @@ beforeEach(() => {
   stored.code = 'OLD1-CODE'
   mocked.getContinue.mockResolvedValue(null)
   mocked.getRecommendations.mockResolvedValue([])
+  mocked.getMyAssignments.mockResolvedValue([])
   mocked.getMe.mockResolvedValue({
     profile: { id: 1, display_name: null, total_xp: 50, level: 1, age_band: 'unknown', primary_language: 'cs', created_at: null },
     settings: { locale: 'en', education_locale: 'en-US', school_year: null },
@@ -110,3 +112,39 @@ it('an unreachable server keeps the code, creates no profile, and shows one "can
   await flushPromises()
   expect(banner.text()).toBe('')
 })
+
+it('tasks from a parent come first, and their session is not offered twice', async () => {
+  const progress = { position: 2, total: 5, completed: false, last_active_at: null }
+  mocked.getMyAssignments.mockResolvedValue([
+    { id: 1, request_id: 'task-1', mode: 'test', title: 'Násobilka 7', subject: 'math', created_at: null,
+      status: 'started', progress, result: null },
+  ])
+  mocked.getContinue.mockResolvedValue({
+    request_id: 'task-1', mode: 'test', status: 'ready', lesson_id: null, quiz_id: 3, title: 'Násobilka 7',
+    subject: 'math', created_at: null, progress,
+  })
+  const w = mountHome()
+  await vi.runAllTimersAsync()
+  await flushPromises()
+  const tasks = w.find('.sa-tasks')
+  expect(tasks.text()).toContain('Násobilka 7')
+  expect(tasks.find('a').attributes('href')).toBe('/test/task-1')
+  expect(w.find('#sa-continue-title').exists()).toBe(false) // the task's own card covers it
+  // First on the screen: before the prompt box.
+  const html = w.html()
+  expect(html.indexOf('sa-tasks')).toBeLessThan(html.indexOf('sa-prompt'))
+})
+
+it('a device that follows children as a parent links to their overview', async () => {
+  const { useParentStore } = await import('@/stores/parent')
+  useParentStore().children = [
+    { id: 'a', code: 'AAAAA-AAAAA', name: 'Anička', addedAt: '' },
+    { id: 'b', code: 'BBBBB-BBBBB', name: '', addedAt: '' },
+  ]
+  const w = mountHome()
+  await flushPromises()
+  const link = w.find('a.sa-home__parent')
+  expect(link.attributes('href')).toBe('/parent')
+  expect(link.text()).toContain(i18n.global.t('parent.home_link', { names: 'Anička, ' + i18n.global.t('parent.child_fallback', { n: 2 }) }))
+})
+

@@ -14,6 +14,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import SaButton from '@/components/common/SaButton.vue'
 import { toast } from '@/components/common/useToasts'
+import { codeKind, formatParentCode } from '@/lib/codes'
 import { friendlyErrorKey } from '@/lib/errors'
 import { formatResumeCode, normalizeResumeCode, useSessionStore } from '@/stores/session'
 
@@ -27,6 +28,8 @@ const error = ref<string | null>(null)
 const busy = ref(false)
 /** A different code waiting for "yes, switch" (this device already has its own code). */
 const pendingSwitch = ref<string | null>(null)
+/** A parent code typed here: it follows a child (the parent view), it doesn't learn — say so. */
+const parentCode = ref<string | null>(null)
 
 // The code this device learns with now — shown so it can be saved (and before any switch).
 const deviceCode = computed(() => session.resumeCode)
@@ -53,7 +56,12 @@ onMounted(() => {
 async function go() {
   if (!canSubmit.value) return
   error.value = null
+  parentCode.value = null
   const c = code.value.trim()
+  if (codeKind(c) === 'parent') {
+    parentCode.value = formatParentCode(c)
+    return
+  }
   if (isSameAsDevice(c)) {
     toast.info(t('resume.already_using'))
     void router.push({ name: 'home' })
@@ -159,6 +167,12 @@ async function copyDeviceCode() {
         {{ t('resume.submit') }}
       </SaButton>
       <p v-if="error" id="resume-error" class="sa-resume__error" role="alert">{{ error }}</p>
+      <div v-if="parentCode" class="sa-resume__parent" role="alert">
+        <p>{{ t('resume.parent_code_given') }}</p>
+        <SaButton variant="ghost" size="sm" icon="users" :to="{ name: 'parent', query: { code: parentCode } }">
+          {{ t('resume.open_parent') }}
+        </SaButton>
+      </div>
       <!-- The saved-code card above already shows this hint; only show it here in the plain entry case. -->
       <p v-if="!deviceCode" id="resume-hint" class="sa-resume__hint">{{ t('resume.save_hint') }}</p>
     </form>
@@ -173,6 +187,20 @@ async function copyDeviceCode() {
   flex-direction: column;
   gap: 1.1rem;
   padding: 2.5rem 0 3rem;
+}
+.sa-resume__parent {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-btn);
+  background: var(--color-surface-2);
+  border-left: 4px solid var(--color-primary);
+}
+.sa-resume__parent p {
+  margin: 0;
+  line-height: 1.45;
 }
 .sa-resume__title {
   text-align: center;

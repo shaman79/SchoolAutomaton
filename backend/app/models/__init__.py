@@ -16,6 +16,7 @@ from .content import (
     Misconception,
     SectionVisual,
 )
+from .family import Assignment, ParentLink
 from .gamification import BadgeDefinition, ProfileBadge, SkillMastery, XpEvent
 from .learning import LearningRequest, SanitizationAudit
 from .profile import Profile, ProfileSettings, StreakState
@@ -37,6 +38,8 @@ __all__ = [
     "LessonSection",
     "Misconception",
     "SectionVisual",
+    "Assignment",
+    "ParentLink",
     "BadgeDefinition",
     "ProfileBadge",
     "SkillMastery",

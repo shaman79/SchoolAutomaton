@@ -139,6 +139,8 @@ export interface LearningSessionSummary {
   attempted?: boolean
   /** How far this learner got; null/absent = they haven't opened it yet. */
   progress?: SessionProgress | null
+  /** History only: a task a parent gave. */
+  assigned?: boolean
 }
 
 /** 1-based position in a session: lesson = parts revealed so far; quiz = the question they're on. */
@@ -320,4 +322,42 @@ export interface ParentSummary {
   due_reviews: number
   topics: TopicProgress[]
   misconceptions: string[]
+}
+
+// --------------------------------------------------------------------------- parents
+/** The learner's parent code (GET/POST /profiles/me/parent-code): follow from a parent's own device. */
+export interface ParentCodeInfo {
+  code: string
+  created_at: string | null
+  /** When a parent last opened the overview with it. */
+  last_used_at: string | null
+}
+
+/** GET /parent/child — what a parent's device knows about the child it follows (no identity). */
+export interface ParentChildInfo {
+  school_year: number | null
+  education_locale: string | null
+}
+
+/** preparing → ready → started → done; failed = couldn't be prepared (starting it retries). */
+export type AssignmentStatus = 'preparing' | 'ready' | 'started' | 'done' | 'failed'
+
+/** A task a parent gave (GET /profiles/me/assignments for the child, GET /parent/assignments). */
+export interface Assignment {
+  id: number
+  request_id: string
+  mode: Mode
+  title: string
+  subject: string | null
+  created_at: string | null
+  status: AssignmentStatus
+  progress: SessionProgress | null
+  /** A finished test: correct answers out of the questions. */
+  result: { correct: number; total: number } | null
+}
+
+/** POST /parent/assignments — the sanitizer's decision; `assignment` when it went ahead. */
+export interface AssignOutcome {
+  decision: Decision
+  assignment: Assignment | null
 }

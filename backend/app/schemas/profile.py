@@ -118,6 +118,7 @@ class LearningSessionSummary(AppModel):
     created_at: datetime | None = None
     attempted: bool = False  # quiz only: a finished, graded attempt exists (so "Review" has content)
     progress: SessionProgress | None = None  # None = this learner hasn't opened it yet
+    assigned: bool = False  # a task a parent gave (history only)
 
 
 class TopicProgress(AppModel):

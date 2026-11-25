@@ -22,6 +22,8 @@ export type IconName =
   | 'books'
   | 'share'
   | 'qr'
+  | 'clock'
+  | 'users'
 
 const props = withDefaults(
   defineProps<{
@@ -86,6 +88,15 @@ const ICONS: Record<IconName, { stroke?: string; fill?: string }> = {
     // Three finder squares + a few modules — reads as "QR code" at icon size.
     stroke:
       'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2.5v2.5H14zM17.5 17.5H20V20h-2.5zM14 20h1M20 14v1',
+  },
+  clock: {
+    // Clock face with hands at ten past — "waiting".
+    stroke: 'M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17ZM12 7.5V12l3 2',
+  },
+  users: {
+    // A grown-up and a child side by side — "for parents".
+    stroke:
+      'M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M17 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5ZM16.5 15c2.8 0 5 1.8 5 5',
   },
 }
 
