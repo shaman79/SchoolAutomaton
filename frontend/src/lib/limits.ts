@@ -6,3 +6,6 @@ export const MAX_FREE_TEXT_CHARS = 2000
 
 /** The learning prompt on the home screen (backend `max_prompt_chars`). */
 export const MAX_PROMPT_CHARS = 2000
+
+/** Tasks a parent can have waiting for one child at once (backend `MAX_OPEN_ASSIGNMENTS`). */
+export const MAX_OPEN_TASKS = 10

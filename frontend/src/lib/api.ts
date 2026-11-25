@@ -6,6 +6,8 @@
 import type { AnswerEvent, ItemPublic } from '@/types/question'
 import { ApiError, NETWORK_ERROR_STATUS, parseRetryAfter } from './apiError'
 import type {
+  AssignOutcome,
+  Assignment,
   AttemptStart,
   Decision,
   GenerationErrorCode,
@@ -15,6 +17,9 @@ import type {
   Lesson,
   LessonProgress,
   LessonSection,
+  Mode,
+  ParentChildInfo,
+  ParentCodeInfo,
   ParentSummary,
   ProfileCreateOut,
   ProfileEnvelope,
@@ -50,12 +55,16 @@ interface RequestOpts {
   /** The learning session (request id) a lesson/quiz call belongs to: it is what opens the content
    *  on the server — ids alone don't (they are sequential). Sent as `X-Learning-Session`. */
   session?: string | null
+  /** A parent's call (`/parent/*`), with the parent code of the child it is about. Sent as
+   *  `X-Parent-Code` INSTEAD of this device's own resume code: the two realms never mix. */
+  parentCode?: string
 }
 
 async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
-  if (resumeCode) headers['X-Resume-Code'] = resumeCode
+  if (opts.parentCode) headers['X-Parent-Code'] = opts.parentCode
+  else if (resumeCode) headers['X-Resume-Code'] = resumeCode
   if (opts.bearer) headers['Authorization'] = `Bearer ${opts.bearer}`
   if (opts.session) headers['X-Learning-Session'] = opts.session
 
@@ -130,6 +139,16 @@ export const api = {
     const q = qs.toString()
     return request<LearningSessionSummary[]>(`/profiles/me/recommendations${q ? `?${q}` : ''}`)
   },
+
+  /** Tasks a parent gave this learner that aren't finished yet (home screen). */
+  getMyAssignments: () => request<Assignment[]>('/profiles/me/assignments'),
+
+  /** This learner's parent code (to show / share again), or null when there is none. */
+  getParentCode: () => request<ParentCodeInfo | null>('/profiles/me/parent-code'),
+  /** Make a parent code — replaces any earlier one, which stops working on parents' devices. */
+  createParentCode: () => request<ParentCodeInfo>('/profiles/me/parent-code', { method: 'POST', body: {} }),
+  /** Stop sharing: the parent code stops working. */
+  deleteParentCode: () => request<void>('/profiles/me/parent-code', { method: 'DELETE' }),
 
   getTree: (subject?: string) =>
     request<unknown>(`/profiles/me/tree${subject ? `?subject=${encodeURIComponent(subject)}` : ''}`),
@@ -218,6 +237,20 @@ export const api = {
 
   reviewItem: (itemId: number, body: { rating?: number; submitted_value?: unknown; used_hint?: boolean; latency_ms?: number }) =>
     request<GradeResult>(`/review/${itemId}`, { method: 'POST', body }),
+
+  // ------------------------------------------------------------------------- parent's own device
+  // Every call names the child by their parent code; 401 = the code no longer works.
+  parentChild: (code: string) => request<ParentChildInfo>('/parent/child', { parentCode: code }),
+  parentSummary: (code: string, days = 7) =>
+    request<ParentSummary>(`/parent/summary?days=${days}`, { parentCode: code }),
+  parentAssignments: (code: string) => request<Assignment[]>('/parent/assignments', { parentCode: code }),
+  /** Give a task: the text is sanitized like the child's own prompt; `mode` is the parent's choice. */
+  parentAssign: (code: string, prompt: string, mode: Mode) =>
+    request<AssignOutcome>('/parent/assignments', { method: 'POST', body: { prompt, mode }, parentCode: code }),
+  parentRetryAssignment: (code: string, id: number) =>
+    request<Assignment>(`/parent/assignments/${id}/retry`, { method: 'POST', body: {}, parentCode: code }),
+  parentRemoveAssignment: (code: string, id: number) =>
+    request<void>(`/parent/assignments/${id}`, { method: 'DELETE', parentCode: code }),
 
   // ------------------------------------------------------------------------- admin
   adminLogin: (username: string, password: string) =>

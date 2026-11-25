@@ -50,13 +50,18 @@ const LONG: Intl.DateTimeFormatOptions = {
   minute: '2-digit',
 }
 const TIME: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' }
+/** A short day ("3. 11." / "11/3") — when a task was given or done. */
+const DAY: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'numeric' }
 
 export const i18n = createI18n({
   legacy: false,
   locale: 'en',
   fallbackLocale: 'en',
   messages: { en, cs },
-  datetimeFormats: { en: { long: LONG, time: TIME }, cs: { long: LONG, time: TIME } },
+  datetimeFormats: {
+    en: { long: LONG, time: TIME, day: DAY },
+    cs: { long: LONG, time: TIME, day: DAY },
+  },
   pluralRules: { cs: czechPluralRule },
 })
 

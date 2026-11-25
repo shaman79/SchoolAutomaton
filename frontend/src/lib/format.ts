@@ -63,3 +63,19 @@ export function progressLabel(
     total: p.total,
   })
 }
+
+/**
+ * When something happened, as a parent reads it: "today", "yesterday", else a short date ("3. 11.").
+ * Days are the viewer's own calendar days. Empty for a missing/garbled time.
+ */
+export function dayLabel(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return ''
+  const when = new Date(iso)
+  if (Number.isNaN(when.getTime())) return ''
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const diff = Math.round((day(now) - day(when)) / 86_400_000)
+  if (diff <= 0) return i18n.global.t('parent.today') // a clock a little ahead still says "today"
+  if (diff === 1) return i18n.global.t('parent.yesterday')
+  return i18n.global.d(when, 'day')
+}
+

@@ -4,12 +4,12 @@
  * continue on any device. Surfaced on Home and in Settings. Copy-to-clipboard with a toast.
  * Renders nothing if there's no code yet (a profile is created lazily on first prompt).
  */
-import QRCode from 'qrcode'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import SaButton from './SaButton.vue'
 import { toast } from './useToasts'
+import { qrDataUrl, shareOrCopy, writeClipboard } from '@/lib/share'
 import { useSessionStore } from '@/stores/session'
 
 withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
@@ -36,16 +36,7 @@ const qrSrc = ref('')
 
 async function renderQr() {
   if (!qrOpen.value || !shareUrl.value) return
-  try {
-    qrSrc.value = await QRCode.toDataURL(shareUrl.value, {
-      errorCorrectionLevel: 'M',
-      margin: 2,
-      width: 240,
-      color: { dark: '#1f2330', light: '#ffffff' },
-    })
-  } catch {
-    qrSrc.value = ''
-  }
+  qrSrc.value = await qrDataUrl(shareUrl.value)
 }
 
 function toggleQr() {
@@ -59,30 +50,6 @@ watch(shareUrl, () => {
   void renderQr()
 })
 
-async function writeClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    // Fallback for browsers/contexts without the async clipboard API.
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.setAttribute('readonly', '')
-    ta.style.position = 'fixed'
-    ta.style.opacity = '0'
-    document.body.appendChild(ta)
-    ta.select()
-    let ok = false
-    try {
-      ok = document.execCommand('copy')
-    } catch {
-      ok = false
-    }
-    ta.remove()
-    return ok
-  }
-}
-
 async function copy() {
   if (!code.value) return
   if (await writeClipboard(code.value)) toast.success(t('resume.copied'))
@@ -92,17 +59,9 @@ async function copy() {
 async function shareLink() {
   if (!shareUrl.value) return
   // Prefer the native share sheet (great on phones — straight to Messages/WhatsApp/email).
-  const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> }
-  if (typeof nav.share === 'function') {
-    try {
-      await nav.share({ title: t('app.name'), text: t('resume.share_text'), url: shareUrl.value })
-      return
-    } catch {
-      /* user dismissed or share unavailable → fall through to clipboard */
-    }
-  }
-  if (await writeClipboard(shareUrl.value)) toast.success(t('resume.link_copied'))
-  else toast.error(t('resume.copy_failed'))
+  const how = await shareOrCopy({ title: t('app.name'), text: t('resume.share_text'), url: shareUrl.value })
+  if (how === 'copied') toast.success(t('resume.link_copied'))
+  else if (how === 'failed') toast.error(t('resume.copy_failed'))
 }
 </script>
 

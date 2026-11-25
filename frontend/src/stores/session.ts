@@ -9,6 +9,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { api, getResumeCode, setResumeCode } from '@/lib/api'
+import { normalizeCode } from '@/lib/codes'
 import { ApiError } from '@/lib/apiError'
 import { isTransient } from '@/lib/errors'
 import { clearReadingAnchor } from '@/lib/readingAnchor'
@@ -38,13 +39,7 @@ function isUnknownCode(e: unknown): boolean {
 
 /** Compare codes the way the server does (case, dashes/spaces and look-alike letters ignored). */
 export function normalizeResumeCode(code: string): string {
-  return code
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]/g, '')
-    .replace(/[IL]/g, '1')
-    .replace(/O/g, '0')
-    .replace(/U/g, 'V')
+  return normalizeCode(code)
 }
 
 /** "k7qf2m9x" -> "K7QF-2M9X" for display/storage; anything unusual is kept as typed (uppercased). */

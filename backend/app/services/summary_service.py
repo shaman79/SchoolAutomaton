@@ -23,6 +23,7 @@ from ..models import (
     SkillMastery,
 )
 from ..schemas.profile import ParentSummary, TopicProgress
+from . import family_service
 
 # Below this many answers a perfect week counts as solid only if FSRS mastery agrees.
 _MIN_ANSWERS_FOR_ACCURACY = 3
@@ -59,6 +60,9 @@ async def build_summary(db: AsyncSession, profile: Profile, days: int = 7) -> Pa
         )
     ).all()
 
+    # The learner's own requests; a task a parent gave counts once the learner opens it (below) —
+    # the parent made it, so its creation is no activity of the child's.
+    own = family_service.own_request_filter(profile)
     lessons = (
         await db.execute(
             select(func.count(LearningRequest.id)).where(
@@ -66,9 +70,11 @@ async def build_summary(db: AsyncSession, profile: Profile, days: int = 7) -> Pa
                 LearningRequest.decision_type == "proceed",
                 LearningRequest.status == "ready",
                 LearningRequest.created_at >= since,
+                own,
             )
         )
     ).scalar_one()
+    tasks_opened, task_days = await family_service.assigned_engagement(db, profile, since)
     quizzes_completed = (
         await db.execute(
             select(func.count(QuizAttempt.id)).where(
@@ -105,10 +111,12 @@ async def build_summary(db: AsyncSession, profile: Profile, days: int = 7) -> Pa
                 LearningRequest.profile_id == profile.id,
                 LearningRequest.decision_type == "proceed",
                 LearningRequest.created_at >= since,
+                own,
             )
         )
     ).all():
         active.add(created_at.date())
+    active |= task_days
 
     topics: list[TopicProgress] = []
     if per_concept:
@@ -153,7 +161,7 @@ async def build_summary(db: AsyncSession, profile: Profile, days: int = 7) -> Pa
     return ParentSummary(
         days=days,
         active_days=len(active),
-        lessons=int(lessons or 0),
+        lessons=int(lessons or 0) + tasks_opened,
         quizzes_completed=int(quizzes_completed or 0),
         answers=len(answers),
         correct=sum(1 for a in answers if a[1]),

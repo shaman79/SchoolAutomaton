@@ -1,5 +1,6 @@
 """Anonymous profile endpoints — create (issues resume code once), resume, me, settings, gamification
-snapshot, knowledge tree."""
+snapshot, knowledge tree, the parent code (follow from a parent's own device) and the tasks a parent
+gave."""
 
 from __future__ import annotations
 
@@ -7,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Answer, LearningRequest, Lesson, Profile, Quiz, QuizAttempt
+from ....models import Answer, Assignment, LearningRequest, Lesson, Profile, Quiz, QuizAttempt
 from ....sanitization import ratelimit
+from ....schemas.family import AssignmentOut, ParentCodeOut
 from ....schemas.gamification import GamificationSnapshot, TreeResponse
 from ....schemas.profile import (
     CreateProfileIn,
@@ -21,6 +23,7 @@ from ....schemas.profile import (
     ResumeIn,
 )
 from ....services import (
+    family_service,
     profile_service,
     progress_service,
     recommendation_service,
@@ -118,25 +121,43 @@ async def list_my_requests(
     quiz_progress = await progress_service.quiz_progress_map(
         db, profile, {lr.quiz_id for lr, _, _ in rows if lr.quiz_id is not None}
     )
-    return [
-        LearningSessionSummary(
-            request_id=lr.request_id,
-            mode=lr.mode,
-            status=lr.status,
-            lesson_id=lr.lesson_id,
-            quiz_id=lr.quiz_id,
-            title=(lesson.topic if lesson else (quiz.title if quiz else None)),
-            subject=(lesson.subject if lesson else (quiz.subject if quiz else None)),
-            created_at=lr.created_at,
-            attempted=(lr.quiz_id is not None and lr.quiz_id in attempted_quiz_ids),
-            progress=(
-                lesson_progress.get(lr.lesson_id)
-                if lr.lesson_id is not None
-                else quiz_progress.get(lr.quiz_id)
-            ),
+    # Tasks a parent gave: marked as such; one taken back before it was opened isn't listed at all
+    # (the learner never asked for it).
+    tasks = dict(
+        (
+            await db.execute(
+                select(Assignment.request_id, Assignment.removed_at).where(
+                    Assignment.profile_id == profile.id,
+                    Assignment.request_id.in_([lr.request_id for lr, _, _ in rows]),
+                )
+            )
+        ).all()
+    )
+    out: list[LearningSessionSummary] = []
+    for lr, lesson, quiz in rows:
+        progress = (
+            lesson_progress.get(lr.lesson_id)
+            if lr.lesson_id is not None
+            else quiz_progress.get(lr.quiz_id)
         )
-        for lr, lesson, quiz in rows
-    ]
+        if lr.request_id in tasks and tasks[lr.request_id] is not None and progress is None:
+            continue
+        out.append(
+            LearningSessionSummary(
+                request_id=lr.request_id,
+                mode=lr.mode,
+                status=lr.status,
+                lesson_id=lr.lesson_id,
+                quiz_id=lr.quiz_id,
+                title=(lesson.topic if lesson else (quiz.title if quiz else None)),
+                subject=(lesson.subject if lesson else (quiz.subject if quiz else None)),
+                created_at=lr.created_at,
+                attempted=(lr.quiz_id is not None and lr.quiz_id in attempted_quiz_ids),
+                progress=progress,
+                assigned=lr.request_id in tasks,
+            )
+        )
+    return out
 
 
 @router.get("/me/continue", response_model=LearningSessionSummary | None)
@@ -200,3 +221,35 @@ async def get_summary(
     """Parent overview of the last ``days`` days: activity, practised topics judged in words, the
     wrong ideas met, and how many reviews are due."""
     return await summary_service.build_summary(db, profile, days)
+
+
+@router.get("/me/assignments", response_model=list[AssignmentOut])
+async def list_my_assignments(
+    profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+):
+    """Tasks a parent gave that aren't finished yet, in the order they were given (home screen)."""
+    return await family_service.list_assignments(db, profile, open_only=True)
+
+
+@router.get("/me/parent-code", response_model=ParentCodeOut | None)
+async def get_parent_code(
+    profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+):
+    """The learner's parent code (to show / share again), or null when there is none."""
+    return family_service.code_out(await family_service.get_link(db, profile))
+
+
+@router.post("/me/parent-code", response_model=ParentCodeOut)
+async def create_parent_code(
+    profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+):
+    """Make a parent code — a new one replaces the old, which stops working on parents' devices."""
+    return await family_service.new_code(db, profile)
+
+
+@router.delete("/me/parent-code", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_parent_code(
+    profile: Profile = Depends(get_profile), db: AsyncSession = Depends(get_db)
+):
+    """Stop sharing: the parent code stops working (tasks already given stay)."""
+    await family_service.remove_code(db, profile)

@@ -81,3 +81,8 @@ const ANSWER_ERROR_KEYS: Record<ErrorKind, string> = {
 export function answerErrorKey(e: unknown): string {
   return ANSWER_ERROR_KEYS[errorKind(e)]
 }
+
+/** The same failure kinds, worded for a parent (formal address) — the parent view's messages. */
+export function parentErrorKey(e: unknown): string {
+  return `parent.err.${errorKind(e)}`
+}

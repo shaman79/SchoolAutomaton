@@ -9,6 +9,7 @@ from .routes import (
     answers,
     assets,
     lessons,
+    parent,
     profiles,
     quizzes,
     requests,
@@ -23,4 +24,5 @@ api_router.include_router(quizzes.router)
 api_router.include_router(answers.router)
 api_router.include_router(review.router)
 api_router.include_router(assets.router)
+api_router.include_router(parent.router)
 api_router.include_router(admin.router)

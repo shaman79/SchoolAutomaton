@@ -103,6 +103,7 @@ function open(it: LearningSessionSummary) {
             <span class="sa-hist__name">{{ it.title || t('history.untitled') }}</span>
             <span class="sa-hist__meta">
               <span class="sa-hist__badge">{{ t(it.mode === 'test' ? 'history.mode_test' : 'history.mode_study') }}</span>
+              <span v-if="it.assigned" class="sa-hist__from">{{ t('history.assigned') }}</span>
               <span v-if="it.subject" class="sa-hist__sub">{{ subjectLabel(it.subject) }}</span>
               <span v-if="it.status === 'generating' || it.status === 'queued'" class="sa-hist__status sa-hist__status--gen">{{ t('history.in_progress') }}</span>
               <span v-else-if="it.status === 'error'" class="sa-hist__status sa-hist__status--err">{{ t('history.failed') }}</span>
@@ -260,6 +261,14 @@ function open(it: LearningSessionSummary) {
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
   color: var(--color-primary-strong);
+}
+/* A task a parent gave — words, not just a colour. */
+.sa-hist__from {
+  font-weight: 700;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-accent);
+  color: var(--color-ink);
 }
 .sa-hist__status {
   font-weight: 700;

@@ -108,3 +108,12 @@ it('an offline failure says so kindly instead of "code not found"', async () => 
   await flushPromises()
   expect(w.find('[role="alert"]').text()).toBe(i18n.global.t('resume.not_found'))
 })
+
+it('a parent code typed here points to the parent view instead of failing as "unknown"', async () => {
+  stored.code = null
+  const { w } = await openResume('?code=abcde-fghjk')
+  expect(mocked.resumeProfile).not.toHaveBeenCalled()
+  expect(w.text()).toContain(i18n.global.t('resume.parent_code_given'))
+  const link = w.findAll('a').find((a) => a.text().includes(i18n.global.t('resume.open_parent')))
+  expect(link?.attributes('href')).toBe('/parent?code=ABCDE-FGHJK')
+})

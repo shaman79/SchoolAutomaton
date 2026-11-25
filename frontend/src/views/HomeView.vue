@@ -10,9 +10,12 @@
  *   crisis   -> dedicated, non-dismissable CrisisCard (resources + AI disclosure)
  * A compact line shows the learner's class (set in Settings) — prompts needn't name the grade, the
  * backend applies the class whenever a prompt names no level.
+ * Tasks a parent gave (AssignedTasks) come first; they are re-read when the tab comes back, so a task
+ * given meanwhile shows up. A device that follows children as a parent gets a "For parents" link.
  * Mobile-first, WCAG 2.2 AA (>=44px targets, aria-live status, visible focus, never color-only).
  */
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { useDocumentVisibility } from '@vueuse/core'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -24,6 +27,7 @@ import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
+import AssignedTasks from '@/components/tasks/AssignedTasks.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
 import { friendlyErrorKey } from '@/lib/errors'
@@ -31,11 +35,12 @@ import { progressLabel } from '@/lib/format'
 import { MAX_PROMPT_CHARS } from '@/lib/limits'
 import { schoolYearLabel } from '@/lib/grades'
 import { useVoiceInput, voiceInputSupported } from '@/composables/useVoiceInput'
+import { useParentStore } from '@/stores/parent'
 import { usePrefsStore } from '@/stores/prefs'
 import { usePromptStore } from '@/stores/prompt'
 import { useSessionStore } from '@/stores/session'
 import { useUiStore } from '@/stores/ui'
-import type { Decision, LearningSessionSummary } from '@/types/session'
+import type { Assignment, Decision, LearningSessionSummary } from '@/types/session'
 
 const { t, tm } = useI18n()
 const router = useRouter()
@@ -43,6 +48,7 @@ const session = useSessionStore()
 const prompt = usePromptStore()
 const prefs = usePrefsStore()
 const ui = useUiStore()
+const parent = useParentStore()
 const { reduced } = useReducedMotion()
 
 const text = ref('')
@@ -53,6 +59,13 @@ const promptEl = ref<HTMLTextAreaElement | null>(null)
 const suggestions = ref<LearningSessionSummary[]>([])
 // The unfinished lesson/quiz the learner was last in. Opening it restores their exact position.
 const unfinished = ref<LearningSessionSummary | null>(null)
+// Tasks a parent gave, not finished yet. Each is listed once: a task's own card covers "Continue"
+// and its spot in the suggestions.
+const tasks = ref<Assignment[]>([])
+const taskIds = computed(() => new Set(tasks.value.map((a) => a.request_id)))
+const showUnfinished = computed(
+  () => !!unfinished.value?.progress && !taskIds.value.has(unfinished.value.request_id),
+)
 
 const unfinishedLabel = computed(() => (unfinished.value ? progressLabel(unfinished.value) : null))
 const unfinishedTarget = computed(() =>
@@ -63,22 +76,46 @@ const unfinishedTarget = computed(() =>
       }
     : null,
 )
-// Don't list the same session twice (it already has the card above).
+// Don't list the same session twice (it already has a card above).
 const otherSuggestions = computed(() =>
-  suggestions.value.filter((s) => s.request_id !== unfinished.value?.request_id),
+  suggestions.value.filter(
+    (s) => s.request_id !== unfinished.value?.request_id && !taskIds.value.has(s.request_id),
+  ),
 )
+
+// This device follows children as a parent → one tap to their overview (names only on this device).
+const followedNames = computed(() =>
+  parent.children.map((c, i) => c.name || t('parent.child_fallback', { n: i + 1 })).join(', '),
+)
+
+async function loadTasks(): Promise<Assignment[]> {
+  return api.getMyAssignments()
+}
 
 // Returning learners (a saved resume code) get their unfinished session to continue, plus a strip of
 // ready lessons/quizzes to explore — reuse over regenerating the same topic. Best-effort; silent on
 // failure.
 onMounted(async () => {
   if (!session.resumeCode) return
-  const [cont, recs] = await Promise.allSettled([
+  const [cont, recs, given] = await Promise.allSettled([
     api.getContinue(),
     api.getRecommendations({ limit: 4 }),
+    loadTasks(),
   ])
   if (cont.status === 'fulfilled') unfinished.value = cont.value
   if (recs.status === 'fulfilled') suggestions.value = recs.value
+  if (given.status === 'fulfilled') tasks.value = given.value
+})
+
+// A parent may give a task while this screen waits in the background (a tablet left on Home).
+const visibility = useDocumentVisibility()
+watch(visibility, async (v) => {
+  if (v !== 'visible' || !session.resumeCode) return
+  try {
+    tasks.value = await loadTasks()
+  } catch {
+    /* keep what is shown */
+  }
 })
 
 // Example prompts are localized (array). Fall back gracefully if a locale lacks them.
@@ -171,9 +208,22 @@ function applyRedirect(suggestion: string) {
     />
 
     <template v-else>
+      <!-- This device follows children as a parent: straight to their overview and tasks. -->
+      <RouterLink v-if="parent.children.length" :to="{ name: 'parent' }" class="sa-card sa-home__parent">
+        <span class="sa-home__progress-icon" aria-hidden="true"><SaIcon name="users" :size="20" /></span>
+        <span class="sa-home__parent-text">
+          <span class="sa-home__parent-title">{{ t('parent.home_link', { names: followedNames }) }}</span>
+          <span class="sa-home__parent-hint">{{ t('parent.home_link_hint') }}</span>
+        </span>
+        <SaIcon name="back" :size="16" class="sa-home__progress-chevron" aria-hidden="true" />
+      </RouterLink>
+
+      <!-- Tasks from a parent come first: what someone asked the learner to do. -->
+      <AssignedTasks :tasks="tasks" />
+
       <!-- Unfinished lesson/quiz: one tap back to the exact spot (restored when it opens). -->
       <section
-        v-if="unfinished?.progress && unfinishedTarget"
+        v-if="showUnfinished && unfinished?.progress && unfinishedTarget"
         class="sa-card sa-continue"
         aria-labelledby="sa-continue-title"
       >
@@ -567,6 +617,29 @@ function applyRedirect(suggestion: string) {
 .sa-home__progress-chevron {
   flex-shrink: 0;
   transform: rotate(180deg);
+  color: var(--color-ink-soft);
+}
+.sa-home__parent {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  min-height: var(--tap-min);
+  border: 2px solid var(--color-line);
+  color: var(--color-ink);
+}
+.sa-home__parent-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.sa-home__parent-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.sa-home__parent-hint {
+  font-size: 0.85rem;
   color: var(--color-ink-soft);
 }
 .sa-home__seeall {

@@ -1,7 +1,8 @@
 """FastAPI dependencies — two separate auth realms + request fingerprinting.
 
 Learner: ``X-Resume-Code`` header → Profile (we look up by sha256 hash; failed lookups are throttled
-per client IP against guessing). Admin: ``Authorization: Bearer <jwt>``. The client IP/device is
+per client IP against guessing). Parent: ``X-Parent-Code`` header → the learner it follows, read-only
+plus giving tasks (same hashing and the same guessing throttle). Admin: ``Authorization: Bearer <jwt>``. The client IP/device is
 hashed (salted) for rate-limiting and audit, never stored raw."""
 
 from __future__ import annotations
@@ -13,10 +14,10 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.security import decode_admin_token, hash_resume_code, salted_hash
+from ..core.security import decode_admin_token, hash_parent_code, hash_resume_code, salted_hash
 from ..core.throttle import resume_guard
 from ..db.session import get_db
-from ..models import AdminUser, Profile
+from ..models import AdminUser, ParentLink, Profile
 
 
 @dataclass
@@ -85,6 +86,43 @@ async def get_optional_profile(
     if not x_resume_code:
         return None
     return await lookup_profile_by_code(db, request, x_resume_code)
+
+
+# Longest parent code worth looking up (10 characters plus separators); anything longer is unknown.
+_MAX_PARENT_CODE = 32
+
+
+@dataclass
+class ParentAccess:
+    """A parent following one learner: the link (their parent code) and that learner's profile."""
+
+    link: ParentLink
+    child: Profile
+
+
+async def lookup_parent_link(db: AsyncSession, request: Request, code: str) -> ParentLink | None:
+    """Resolve a parent code, throttled exactly like resume codes — the same per-IP budget of
+    unknown codes covers both, so guessing can't switch to the other kind to get more tries."""
+    ip = client_ip_hash(request)
+    code_hash = hash_parent_code(code[:_MAX_PARENT_CODE])
+    resume_guard.before_lookup(ip, code_hash)
+    link = await db.scalar(select(ParentLink).where(ParentLink.code_hash == code_hash))
+    resume_guard.after_lookup(ip, code_hash, found=link is not None)
+    return link
+
+
+async def get_parent_access(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    x_parent_code: str | None = Header(default=None, alias="X-Parent-Code"),
+) -> ParentAccess:
+    if not x_parent_code:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Missing X-Parent-Code")
+    link = await lookup_parent_link(db, request, x_parent_code)
+    child = await db.get(Profile, link.profile_id) if link is not None else None
+    if link is None or child is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Unknown parent code")
+    return ParentAccess(link=link, child=child)
 
 
 def get_session_key(
