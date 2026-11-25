@@ -249,3 +249,18 @@ it('a period switched while the page loads is the one shown', async () => {
   expect(w.text()).toContain(t('parents.of_days', { n: 2, total: 30 }))
 })
 
+it("opened on the child's own device, it points to where the parent code is made", async () => {
+  localStorage.setItem('sa_resume_code', 'K7QF-2M9X')
+  const { setResumeCode } = await import('@/lib/api')
+  setResumeCode('K7QF-2M9X')
+  try {
+    const { w } = await mountAt()
+    expect(w.text()).toContain(t('parent.bridge_title'))
+    expect(w.find('a[href="/parents"]').exists()).toBe(true)
+    // The steps name what is on the screen: the gear, then the overview.
+    expect(w.text()).toContain(t('parent.add_step_1', { settings: t('a11y.settings'), overview: t('parents.link') }))
+  } finally {
+    setResumeCode(null)
+  }
+})
+

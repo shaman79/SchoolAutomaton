@@ -261,6 +261,24 @@ watch(
                 </template>
               </div>
 
+              <!-- For parents: the overview + parent code (on a learner's device), or follow a child
+                   from this phone. Reachable from every screen through ⚙. -->
+              <section class="sa-parents-entry" aria-labelledby="a11y-parents">
+                <h3 id="a11y-parents" class="flex items-center gap-2 font-semibold">
+                  <SaIcon name="users" :size="18" />
+                  {{ t('parent.settings_title') }}
+                </h3>
+                <template v-if="session.resumeCode">
+                  <SaButton variant="ghost" block icon="qr" :to="{ name: 'parents' }" @click="close">
+                    {{ t('parents.link') }}
+                  </SaButton>
+                  <p class="text-xs text-[var(--color-ink-soft)]">{{ t('parent.settings_overview_hint') }}</p>
+                </template>
+                <SaButton variant="subtle" block icon="users" :to="{ name: 'parent' }" @click="close">
+                  {{ t('parent.settings_follow') }}
+                </SaButton>
+              </section>
+
               <!-- Your code to continue (anonymous; no account) — last: set once, rarely changed. -->
               <ResumeCodeCard v-if="session.resumeCode" />
 
@@ -280,6 +298,11 @@ watch(
 </template>
 
 <style scoped>
+.sa-parents-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
 .sa-panel {
   position: absolute;
   inset: 0 0 0 auto;

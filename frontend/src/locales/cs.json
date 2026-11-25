@@ -654,7 +654,7 @@
     "title": "Pro rodiče",
     "subtitle": "Sledujte, jak se dítě učí, a zadávejte mu lekce a kvízy.",
     "add_title": "Přidat dítě",
-    "add_step_1": "Na zařízení dítěte otevřete „{progress}“ a pak „{overview}“.",
+    "add_step_1": "Na zařízení dítěte klepněte nahoře na ⚙ „{settings}“ a zvolte „{overview}“.",
     "add_step_2": "Klepněte na „{create}“.",
     "add_step_3": "QR kód naskenujte tímto telefonem, nebo kód opište sem.",
     "code_label": "Kód pro rodiče",
@@ -727,7 +727,12 @@
       "too_long": "Text je příliš dlouhý. Zkraťte ho prosím.",
       "not_found": "Tento úkol už neexistuje.",
       "generic": "Něco se pokazilo. Zkuste to prosím znovu."
-    }
+    },
+    "settings_title": "Pro rodiče",
+    "settings_overview_hint": "Jak se dítěti daří — a kód pro rodiče, se kterým ho můžete sledovat z vlastního telefonu.",
+    "settings_follow": "Sledovat dítě z tohoto telefonu",
+    "bridge_title": "Je tohle zařízení dítěte?",
+    "bridge_body": "Kód pro rodiče vytvoříte přímo tady: otevřete „{overview}“ a pak ho naskenujte svým telefonem."
   },
   "tasks": {
     "title": "Úkoly od rodičů",
