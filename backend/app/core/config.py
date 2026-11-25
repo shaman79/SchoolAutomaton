@@ -45,8 +45,9 @@ class Settings(BaseSettings):
     llm_request_timeout_s: float = Field(default=120.0, alias="SA_LLM_TIMEOUT_S")
     # Wall-clock budget (seconds) for the whole image phase; past it the lesson is served without
     # the remaining images (they degrade to alt text) rather than making the learner wait.
-    visual_phase_budget_s: float = Field(default=75.0, alias="SA_VISUAL_BUDGET_S")
-    per_visual_timeout_s: float = Field(default=45.0, alias="SA_PER_VISUAL_TIMEOUT_S")
+    # A section's pictures run side by side; a detailed Opus 5.5 diagram takes ~40-55 s.
+    visual_phase_budget_s: float = Field(default=150.0, alias="SA_VISUAL_BUDGET_S")
+    per_visual_timeout_s: float = Field(default=90.0, alias="SA_PER_VISUAL_TIMEOUT_S")
 
     # ---- Secrets / admin ----
     app_secret: str = Field(default=_DEV_SECRET, alias="APP_SECRET")

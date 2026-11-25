@@ -408,18 +408,23 @@ async def _queue_section_visuals(
 _visual_tasks: set[asyncio.Task] = set()
 
 
-async def realize_section_visuals(section_id: int) -> None:
-    """Generate the pending visuals for one section in the BACKGROUND (its own DB session), flipping
-    each ``SectionVisual`` ``pending → ready`` (with a hash) or ``failed`` as it finishes.
+# A section's pictures are drawn side by side, at most this many at once (a section asks for 0-2).
+_SECTION_VISUAL_CONCURRENCY = 3
 
+
+async def realize_section_visuals(section_id: int) -> None:
+    """Generate the pending visuals for one section in the BACKGROUND, flipping each ``SectionVisual``
+    ``pending → ready`` (with a hash) or ``failed`` as it finishes.
+
+    The pictures run side by side, each in its own DB session: one after another, two detailed
+    diagrams (~40-55 s each with Opus 5.5) overran the section's budget and the second was dropped.
     Per-asset commits make images appear incrementally and keep the SQLite write lock held only
     briefly (never across the provider network call — ``ensure_visual`` writes only after generating).
     Bounded by ``per_visual_timeout_s`` per image and an overall ``visual_phase_budget_s`` wall clock;
     anything still unfinished past the budget is marked ``failed`` so the reader stops polling it."""
     from ..db.session import SessionLocal  # lazy: avoid import-time engine coupling
-    from ..visuals import ensure_visual
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     deadline = loop.time() + settings.visual_phase_budget_s
     async with SessionLocal() as db:
         section = await db.get(LessonSection, section_id)
@@ -428,10 +433,7 @@ async def realize_section_visuals(section_id: int) -> None:
         lesson = await db.get(Lesson, section.lesson_id)
         language = lesson.detected_language if lesson else "en"
         grade_band = lesson.grade_band if lesson else "unknown"
-
-        # Capture the rows as plain tuples up front: a rollback in any iteration expires the loaded
-        # ORM objects, so touching them later would trigger a lazy load (illegal on an async session).
-        # Status transitions below are raw UPDATEs for the same reason.
+        # Plain tuples: the per-picture sessions below never touch this session's ORM objects.
         pending = [
             (sv.id, sv.ordinal, sv.spec_json)
             for sv in await db.scalars(
@@ -443,61 +445,90 @@ async def realize_section_visuals(section_id: int) -> None:
                 .order_by(SectionVisual.ordinal)
             )
         ]
-        for sv_id, ordinal, spec_json in pending:
-            if loop.time() >= deadline:
-                logger.warning(
-                    "Visual budget (%ss) reached; marking section %s visual %s failed",
-                    settings.visual_phase_budget_s, section_id, ordinal,
-                )
-                await db.execute(
-                    update(SectionVisual)
-                    .where(SectionVisual.id == sv_id, SectionVisual.status == "pending")
-                    .values(status="failed")
-                )
-                await db.commit()
-                continue
-            # Atomically claim the row so a duplicate/restart worker can't double-spend (the route's
-            # in-process lock does not cover this background task or a multi-worker deployment).
-            claimed = await db.execute(
+    if not pending:
+        return
+    gate = asyncio.Semaphore(_SECTION_VISUAL_CONCURRENCY)
+
+    async def realize(sv_id: int, ordinal: int, spec_json: dict) -> None:
+        async with gate:
+            await _realize_one_visual(
+                SessionLocal, section_id, sv_id, ordinal, spec_json,
+                language=language, grade_band=grade_band, deadline=deadline,
+            )
+
+    # return_exceptions: one picture's unexpected error must not cancel its siblings.
+    await asyncio.gather(*(realize(*row) for row in pending), return_exceptions=True)
+
+
+async def _realize_one_visual(
+    session_factory: Any,
+    section_id: int,
+    sv_id: int,
+    ordinal: int,
+    spec_json: dict,
+    *,
+    language: str,
+    grade_band: str,
+    deadline: float,
+) -> None:
+    """Claim, generate and store one section picture in its own session (see realize_section_visuals)."""
+    from ..visuals import ensure_visual
+
+    loop = asyncio.get_running_loop()
+    async with session_factory() as db:
+        remaining = deadline - loop.time()
+        if remaining <= 0:
+            logger.warning(
+                "Visual budget (%ss) reached; marking section %s visual %s failed",
+                settings.visual_phase_budget_s, section_id, ordinal,
+            )
+            await db.execute(
                 update(SectionVisual)
                 .where(SectionVisual.id == sv_id, SectionVisual.status == "pending")
-                .values(status="generating")
+                .values(status="failed")
             )
             await db.commit()
-            if not claimed.rowcount:
-                continue
-            spec = GenVisualSpec.model_validate(spec_json)
-            # Every model call that returned, staged by us (rebuilt from the list each time) so a
-            # rollback below — a timeout cancelling a diagram's retry — can't drop a billed call.
-            billed: list[Any] = []
-            try:
-                asset = await asyncio.wait_for(
-                    ensure_visual(
-                        db, spec, language=language, grade_band=grade_band, usage_sink=billed
-                    ),
-                    timeout=settings.per_visual_timeout_s,
-                )
-                db.add_all([usage_row(u, request_id=None) for u in billed])
-                # Persist the asset (from ensure_visual) AND the status flip atomically.
-                await db.execute(
-                    update(SectionVisual)
-                    .where(SectionVisual.id == sv_id)
-                    .values(status="ready", visual_asset_hash=asset.hash)
-                )
-                await db.commit()
-            except Exception:  # noqa: BLE001 — a visual must never strand the section; mark it failed
-                logger.warning(
-                    "Section visual generation failed (section=%s ordinal=%s)",
-                    section_id, ordinal, exc_info=True,
-                )
-                await db.rollback()
-                db.add_all([usage_row(u, request_id=None) for u in billed])
-                await db.execute(
-                    update(SectionVisual)
-                    .where(SectionVisual.id == sv_id)
-                    .values(status="failed")
-                )
-                await db.commit()
+            return
+        # Atomically claim the row so a duplicate/restart worker can't double-spend (the route's
+        # in-process lock does not cover this background task or a multi-worker deployment).
+        claimed = await db.execute(
+            update(SectionVisual)
+            .where(SectionVisual.id == sv_id, SectionVisual.status == "pending")
+            .values(status="generating")
+        )
+        await db.commit()
+        if not claimed.rowcount:
+            return
+        spec = GenVisualSpec.model_validate(spec_json)
+        # Every model call that returned, staged by us (rebuilt from the list each time) so a
+        # rollback below — a timeout cancelling a diagram's retry — can't drop a billed call.
+        billed: list[Any] = []
+        try:
+            asset = await asyncio.wait_for(
+                ensure_visual(db, spec, language=language, grade_band=grade_band, usage_sink=billed),
+                timeout=min(settings.per_visual_timeout_s, remaining),
+            )
+            db.add_all([usage_row(u, request_id=None) for u in billed])
+            # Persist the asset (from ensure_visual) AND the status flip atomically.
+            await db.execute(
+                update(SectionVisual)
+                .where(SectionVisual.id == sv_id)
+                .values(status="ready", visual_asset_hash=asset.hash)
+            )
+            await db.commit()
+        except Exception:  # noqa: BLE001 — a visual must never strand the section; mark it failed
+            logger.warning(
+                "Section visual generation failed (section=%s ordinal=%s)",
+                section_id, ordinal, exc_info=True,
+            )
+            await db.rollback()
+            db.add_all([usage_row(u, request_id=None) for u in billed])
+            await db.execute(
+                update(SectionVisual)
+                .where(SectionVisual.id == sv_id)
+                .values(status="failed")
+            )
+            await db.commit()
 
 
 def schedule_section_visuals(section_id: int) -> None:
