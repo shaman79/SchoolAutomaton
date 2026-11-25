@@ -651,7 +651,7 @@
     "title": "For parents",
     "subtitle": "Follow your child's learning and give them lessons and quizzes to do.",
     "add_title": "Add a child",
-    "add_step_1": "On your child's device, open “{progress}” and then “{overview}”.",
+    "add_step_1": "On your child's device, tap ⚙ “{settings}” at the top and choose “{overview}”.",
     "add_step_2": "Tap “{create}”.",
     "add_step_3": "Scan the QR code with this phone, or type the code below.",
     "code_label": "Parent code",
@@ -724,7 +724,12 @@
       "too_long": "That's too long. Please make it shorter.",
       "not_found": "This task no longer exists.",
       "generic": "Something went wrong. Please try again."
-    }
+    },
+    "settings_title": "For parents",
+    "settings_overview_hint": "How your child is doing — and the parent code for following from your own phone.",
+    "settings_follow": "Follow a child from this phone",
+    "bridge_title": "Is this your child's device?",
+    "bridge_body": "Make the parent code right here: open “{overview}”, then scan it with your own phone."
   },
   "tasks": {
     "title": "Tasks from your parents",

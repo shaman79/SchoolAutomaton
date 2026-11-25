@@ -5,7 +5,8 @@
  * overview for the last 7 or 30 days, and give them lessons/quizzes to do (tasks).
  *
  * Adding a child: open the link shared from the child's device (`/parent?code=…` — the code is taken
- * out of the address bar at once), scan its QR code, or type the code. The child's own resume code
+ * out of the address bar at once), scan its QR code, or type the code. Opened on a device that has
+ * its own learner (most likely the child's), it first points to where that code is made. The child's own resume code
  * is recognised and refused with what to do instead (it would let the parent learn AS the child).
  * A code that stops working (a new one was made, or sharing was stopped) says so and offers to add
  * the new one. While a task is being prepared its status is refreshed every few seconds.
@@ -32,6 +33,7 @@ import { parentErrorKey } from '@/lib/errors'
 import { schoolYearLabel } from '@/lib/grades'
 import { MAX_OPEN_TASKS } from '@/lib/limits'
 import { MAX_CHILD_NAME, useParentStore, type FollowedChild, type SummaryDays } from '@/stores/parent'
+import { useSessionStore } from '@/stores/session'
 import type { Assignment, Mode, ParentChildInfo, ParentSummary, TopicProgress } from '@/types/session'
 
 /** While a task is being prepared, its status is re-read this often, for at most TASK_POLL_FOR_MS. */
@@ -42,6 +44,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const parent = useParentStore()
+const session = useSessionStore()
 const { reduced } = useReducedMotion()
 
 const child = computed<FollowedChild | null>(() => parent.selected)
@@ -307,11 +310,22 @@ watch(() => parent.period, loadSummary)
       </SaChip>
     </nav>
 
+    <!-- Opened on the CHILD's device (it learns here): the parent code is made in the overview. -->
+    <section
+      v-if="session.resumeCode && !parent.children.length"
+      class="sa-card sa-pview__bridge"
+      aria-labelledby="sa-pview-bridge"
+    >
+      <h2 id="sa-pview-bridge" class="sa-pview__h2">{{ t('parent.bridge_title') }}</h2>
+      <p>{{ t('parent.bridge_body', { overview: t('parents.link') }) }}</p>
+      <SaButton variant="primary" icon="qr" :to="{ name: 'parents' }">{{ t('parents.link') }}</SaButton>
+    </section>
+
     <!-- Add a child (always shown while there is none) -->
     <section v-if="showAdd" class="sa-card sa-pview__add" aria-labelledby="sa-pview-add">
       <h2 id="sa-pview-add" class="sa-pview__h2">{{ t('parent.add_title') }}</h2>
       <ol class="sa-pview__steps">
-        <li>{{ t('parent.add_step_1', { progress: t('stats.title'), overview: t('parents.link') }) }}</li>
+        <li>{{ t('parent.add_step_1', { settings: t('a11y.settings'), overview: t('parents.link') }) }}</li>
         <li>{{ t('parent.add_step_2', { create: t('parent_code.create') }) }}</li>
         <li>{{ t('parent.add_step_3') }}</li>
       </ol>
@@ -482,6 +496,7 @@ watch(() => parent.period, loadSummary)
   justify-content: center;
   gap: 0.5rem;
 }
+.sa-pview__bridge,
 .sa-pview__add,
 .sa-pview__child,
 .sa-pview__revoked,
@@ -508,8 +523,13 @@ watch(() => parent.period, loadSummary)
   flex-direction: column;
   gap: 0.35rem;
   margin: 0;
-  padding-left: 1.3rem;
+  padding-left: 1.4rem;
   line-height: 1.45;
+  list-style: decimal; /* the base styles strip list markers; these steps are an order */
+}
+.sa-pview__steps li::marker {
+  font-weight: 800;
+  color: var(--color-primary);
 }
 .sa-pview__form {
   display: flex;
@@ -589,6 +609,16 @@ watch(() => parent.period, loadSummary)
 }
 .sa-pview__revoked {
   border: 2px solid var(--color-sun);
+}
+.sa-pview__bridge {
+  border: 2px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-line));
+}
+.sa-pview__bridge p {
+  margin: 0;
+  line-height: 1.45;
+}
+.sa-pview__bridge > :last-child {
+  align-self: flex-start;
 }
 .sa-pview__revoked p {
   margin: 0;
