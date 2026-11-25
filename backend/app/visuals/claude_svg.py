@@ -37,6 +37,10 @@ _SYSTEM_PROMPT = (
 # (eval 2026-10-28). Single-quoted attributes fixed it; one retry covers anything left — when there
 # is time for it (see generate_svg).
 _ATTEMPTS = 2
+# Room for adaptive thinking plus the markup: a detailed diagram (the Earth in four positions
+# around the Sun, a swing in three) took 4,000-5,700 output tokens with Opus 5.5, and the old
+# 4,000 cut-off turned about a third of them into placeholders. Only what is used is billed.
+_SVG_MAX_TOKENS = 12000
 
 
 class SvgGenerationOutput(StrictModel):
@@ -86,6 +90,7 @@ async def _call_structured(
             user=user,
             output_model=SvgGenerationOutput,
             effort="medium",
+            max_tokens=_SVG_MAX_TOKENS,
             usage_sink=usage_sink,
         )
         return _coerce_output(result)

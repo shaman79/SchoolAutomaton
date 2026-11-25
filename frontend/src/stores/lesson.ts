@@ -27,7 +27,8 @@ import type { GradeResult, Lesson, LessonProgress, LessonSection } from '@/types
 import { useSessionStore } from './session'
 
 const POLL_INTERVAL_MS = 2500
-const POLL_DEADLINE_MS = 90_000
+// A detailed diagram takes up to ~90 s on the server (SA_PER_VISUAL_TIMEOUT_S); keep watching a bit longer.
+const POLL_DEADLINE_MS = 180_000
 
 export const useLessonStore = defineStore('lesson', () => {
   const lesson = ref<Lesson | null>(null)

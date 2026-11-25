@@ -408,3 +408,23 @@ def test_replicate_prompt_built_from_template_only():
     assert "a smiling planet earth" in prompt
     assert "children's textbook style" in prompt  # template scaffold present
     assert "Do not include" in prompt              # negative clause present
+
+
+async def test_a_diagram_gets_room_to_think_and_draw(monkeypatch):
+    """Opus 5.5's adaptive thinking counts against max_tokens: at the old 4,000 a detailed diagram
+    (the Earth in four positions around the Sun) stopped before its SVG was complete and the learner
+    got a placeholder — about a third of the detailed production diagrams in November 2026."""
+    from app.llm import client as llm_client
+
+    seen: dict = {}
+
+    async def fake_generate_structured(*, output_model, usage_sink=None, **kw):
+        seen.update(kw)
+        usage = llm_client.Usage(input_tokens=1, cache_read_tokens=0, output_tokens=5000,
+                                 anthropic_request_id="r", model="claude-opus-5-5")
+        return output_model(svg=VALID_SVG, alt="the Earth around the Sun", caption=None), usage
+
+    monkeypatch.setattr(llm_client, "generate_structured", fake_generate_structured)
+    await claude_svg.generate_svg(svg_spec(), language="cs", grade_band="G6-8")
+    assert seen["max_tokens"] >= 12000
+    assert seen["effort"] == "medium"  # the eval-picked quality stays
