@@ -218,9 +218,11 @@ describe('lesson store', () => {
       answers: [{ item_id: 201, submitted_value: 'b', result: grade(false) }],
     })
     const store = useLessonStore()
-    await store.load(9)
+    await store.load(9, 'sess-9')
 
-    expect(mocked.syncLessonProgress).toHaveBeenCalledWith(9, 0) // opening never moves the boundary
+    // Opening never moves the boundary; every call carries the lesson's learning session.
+    expect(mocked.syncLessonProgress).toHaveBeenCalledWith(9, 0, 'sess-9')
+    expect(mocked.getLesson).toHaveBeenCalledWith(9, 'sess-9')
     expect(store.revealedUpTo).toBe(3)
     expect(store.feedbackByItem[201].is_correct).toBe(false)
     expect(store.submittedByItem[201]).toBe('b')
@@ -262,12 +264,21 @@ describe('lesson store', () => {
       answers: [],
     })
     const store = useLessonStore()
-    await store.load(9)
+    await store.load(9, 'sess-9')
     mocked.syncLessonProgress.mockClear()
 
     await store.revealNext()
     expect(store.revealedUpTo).toBe(2)
-    expect(mocked.syncLessonProgress).toHaveBeenCalledWith(9, 2)
+    expect(mocked.syncLessonProgress).toHaveBeenCalledWith(9, 2, 'sess-9')
+  })
+
+  it('builds the next part under the same learning session', async () => {
+    mocked.getLesson.mockResolvedValue(lesson(1)) // only part 0 generated so far
+    mocked.syncLessonProgress.mockResolvedValue({ lesson_id: 9, revealed_up_to: 0, completed: false, answers: [] })
+    const store = useLessonStore()
+    await store.load(9, 'sess-9')
+    await store.revealNext()
+    expect(mocked.generateSection).toHaveBeenCalledWith(9, 1, 'sess-9')
   })
 
   it('does not carry answers over from a previously opened lesson', async () => {

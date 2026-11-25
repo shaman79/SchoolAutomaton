@@ -7,12 +7,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ....models import Answer, Item, Profile, QuizAttempt, QuizQuestion
+from ....models import Answer, Item, LessonSection, Profile, QuizAttempt, QuizQuestion
 from ....sanitization import ratelimit
 from ....schemas.gamification import GradeResult
 from ....schemas.questions import AnswerIn
 from ....services import gamification
-from ...deps import client_ip_hash, get_db, get_profile
+from ....services.content_access import may_open_lesson
+from ...deps import client_ip_hash, get_db, get_profile, get_session_key
 
 router = APIRouter(tags=["answers"])
 
@@ -22,6 +23,7 @@ async def submit_answer(
     body: AnswerIn,
     request: Request,
     profile: Profile = Depends(get_profile),
+    key: str | None = Depends(get_session_key),
     db: AsyncSession = Depends(get_db),
 ):
     # Per-learner answer rate limit (429 + Retry-After); AI-graded free text has a tighter one below.
@@ -69,6 +71,11 @@ async def submit_answer(
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, "This item must be answered within a quiz attempt"
             )
+        # ... and only from a lesson this learner may open: grading reveals the answer and its
+        # explanation, so an item id alone (they are sequential) must not.
+        section = await db.get(LessonSection, item.lesson_section_id) if item.lesson_section_id else None
+        if section is None or not await may_open_lesson(db, section.lesson_id, profile, key):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
     if gamification.uses_llm_grader(item, body.submitted_value):
         ratelimit.check_llm_grading_rate(profile.id, client_ip_hash(request))
     try:

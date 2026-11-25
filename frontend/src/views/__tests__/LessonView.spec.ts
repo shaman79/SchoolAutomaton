@@ -71,8 +71,10 @@ describe('which lesson opens', () => {
     gen.lessonId = 1 // left over from generating lesson A
     const w = mountLesson('B')
     await flushPromises()
-    expect(mocked.getLesson).toHaveBeenCalledWith(2)
-    expect(mocked.getLesson).not.toHaveBeenCalledWith(1)
+    // … opened under the route's learning session, which is what lets the server open it.
+    expect(mocked.getLesson).toHaveBeenCalledWith(2, 'B')
+    expect(mocked.getLesson).not.toHaveBeenCalledWith(1, expect.anything())
+    expect(mocked.syncLessonProgress).toHaveBeenCalledWith(2, 0, 'B')
     expect(w.text()).toContain('Lesson 2')
   })
 
@@ -83,7 +85,7 @@ describe('which lesson opens', () => {
     mountLesson('B')
     await flushPromises()
     expect(mocked.getRequestStatus).not.toHaveBeenCalled()
-    expect(mocked.getLesson).toHaveBeenCalledWith(2)
+    expect(mocked.getLesson).toHaveBeenCalledWith(2, 'B')
   })
 
   it('never flashes the previously opened lesson while the new one loads', async () => {

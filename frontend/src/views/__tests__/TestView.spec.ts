@@ -66,8 +66,9 @@ describe('which quiz opens', () => {
     gen.quizId = 1
     const w = mountTest('B')
     await flushPromises()
-    expect(mocked.getQuiz).toHaveBeenCalledWith(2)
-    expect(mocked.getQuiz).not.toHaveBeenCalledWith(1)
+    expect(mocked.getQuiz).toHaveBeenCalledWith(2, 'B') // under the route's learning session
+    expect(mocked.getQuiz).not.toHaveBeenCalledWith(1, expect.anything())
+    expect(mocked.startAttempt).toHaveBeenCalledWith(2, 'B')
     expect(w.text()).toContain('Quiz 2')
   })
 

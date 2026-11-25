@@ -47,6 +47,9 @@ interface RequestOpts {
   body?: unknown
   bearer?: string
   signal?: AbortSignal
+  /** The learning session (request id) a lesson/quiz call belongs to: it is what opens the content
+   *  on the server — ids alone don't (they are sequential). Sent as `X-Learning-Session`. */
+  session?: string | null
 }
 
 async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
@@ -54,6 +57,7 @@ async function request<T>(path: string, opts: RequestOpts = {}): Promise<T> {
   if (opts.body !== undefined) headers['Content-Type'] = 'application/json'
   if (resumeCode) headers['X-Resume-Code'] = resumeCode
   if (opts.bearer) headers['Authorization'] = `Bearer ${opts.bearer}`
+  if (opts.session) headers['X-Learning-Session'] = opts.session
 
   let res: Response
   try {
@@ -150,29 +154,32 @@ export const api = {
   getRequestStatus: (requestId: string) => request<RequestStatus>(`/requests/${requestId}`),
 
   // ------------------------------------------------------------------------- content
-  getLesson: (id: number) => request<Lesson>(`/lessons/${id}`),
+  // Lesson and quiz calls carry the learning session (the route's request id) that opens them.
+  getLesson: (id: number, session?: string | null) => request<Lesson>(`/lessons/${id}`, { session }),
 
   /** Progressive generation: build (or fetch, if ready) one lesson section on demand. */
-  generateSection: (lessonId: number, ordinal: number) =>
+  generateSection: (lessonId: number, ordinal: number, session?: string | null) =>
     request<LessonSection>(`/lessons/${lessonId}/sections/${ordinal}/generate`, {
       method: 'POST',
       body: {},
+      session,
     }),
   /** Fetch one section (incl. current visual statuses) — used to poll pending image placeholders. */
-  getSection: (lessonId: number, ordinal: number) =>
-    request<LessonSection>(`/lessons/${lessonId}/sections/${ordinal}`),
+  getSection: (lessonId: number, ordinal: number, session?: string | null) =>
+    request<LessonSection>(`/lessons/${lessonId}/sections/${ordinal}`, { session }),
   /** Report the learner's reveal boundary and get back their saved position + already-graded answers.
    *  Forward-only server-side, so calling it with 0 on open restores without moving anything back. */
-  syncLessonProgress: (lessonId: number, revealedUpTo: number) =>
+  syncLessonProgress: (lessonId: number, revealedUpTo: number, session?: string | null) =>
     request<LessonProgress>(`/lessons/${lessonId}/progress`, {
       method: 'PUT',
       body: { revealed_up_to: revealedUpTo },
+      session,
     }),
-  getQuiz: (id: number) => request<Quiz>(`/quizzes/${id}`),
+  getQuiz: (id: number, session?: string | null) => request<Quiz>(`/quizzes/${id}`, { session }),
 
   /** Starts an attempt — or resumes the learner's open one, replaying their position + answers. */
-  startAttempt: (quizId: number) =>
-    request<AttemptStart>(`/quizzes/${quizId}/attempts`, { method: 'POST', body: {} }),
+  startAttempt: (quizId: number, session?: string | null) =>
+    request<AttemptStart>(`/quizzes/${quizId}/attempts`, { method: 'POST', body: {}, session }),
 
   /** Remember which question the learner moved to, so the attempt resumes there. */
   saveAttemptPosition: (attemptId: number, currentIndex: number) =>
@@ -181,9 +188,10 @@ export const api = {
       body: { current_index: currentIndex },
     }),
 
-  submitAnswer: (e: AnswerEvent & { attemptId?: number | null }) =>
+  submitAnswer: (e: AnswerEvent & { attemptId?: number | null; session?: string | null }) =>
     request<GradeResult>('/answers', {
       method: 'POST',
+      session: e.session,
       body: {
         item_id: e.questionId,
         attempt_id: e.attemptId ?? null,

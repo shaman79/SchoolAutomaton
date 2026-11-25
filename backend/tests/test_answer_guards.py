@@ -250,8 +250,9 @@ async def test_answers_are_rate_limited_per_learner(client, monkeypatch):
     assert int(r.headers["Retry-After"]) >= 1
     # /review shares the learner's budget...
     assert (await client.post(f"{API}/review/{item_id}", headers=headers, json={"rating": 3})).status_code == 429
-    # ...and a classmate on the same IP is unaffected.
-    assert (await client.post(f"{API}/answers", headers=other, json=body)).status_code == 200
+    # ...and a classmate on the same IP (in the same shared lesson) is unaffected.
+    in_lesson = {**other, "X-Learning-Session": "rl-answers"}
+    assert (await client.post(f"{API}/answers", headers=in_lesson, json=body)).status_code == 200
 
 
 async def test_ai_graded_answers_have_a_tighter_limit(client, monkeypatch):

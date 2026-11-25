@@ -173,7 +173,7 @@ async function onAnswer(e: AnswerEvent, target?: HTMLElement | null) {
   answering.add(e.questionId)
   try {
     // Lesson-embedded practice => no quiz attempt (attempt_id null, per design).
-    const res = await api.submitAnswer({ ...e, attemptId: null })
+    const res = await api.submitAnswer({ ...e, attemptId: null, session: props.sessionId })
     if (res.support) {
       // Not graded, not recorded: show the help block, no "wrong" verdict, question stays open.
       supportByItem[e.questionId] = res.support
@@ -280,7 +280,7 @@ async function openLesson() {
       failed.value = true
       return
     }
-    await lessonStore.load(id)
+    await lessonStore.load(id, props.sessionId)
     if (leaving) return
     await placeViewport()
     if (leaving || listening) return

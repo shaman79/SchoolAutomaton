@@ -17,7 +17,8 @@ from ....schemas.content import LessonPublic, LessonSectionPublic
 from ....schemas.intent import StructuredIntent
 from ....schemas.progress import LessonProgressIn, LessonProgressOut
 from ....services import progress_service
-from ...deps import get_db, get_profile
+from ....services.content_access import may_open_lesson
+from ...deps import get_db, get_optional_profile, get_profile, get_session_key
 from ..serializers import lesson_public, lesson_section_public
 
 router = APIRouter(prefix="/lessons", tags=["lessons"])
@@ -27,11 +28,25 @@ logger = logging.getLogger("schoolautomaton.generation")
 _section_locks: dict[int, asyncio.Lock] = {}
 
 
-@router.get("/{lesson_id}", response_model=LessonPublic)
-async def get_lesson(lesson_id: int, db: AsyncSession = Depends(get_db)):
+async def _openable_lesson(
+    db: AsyncSession, lesson_id: int, profile: Profile | None, key: str | None
+) -> Lesson:
+    """The lesson, if this caller may open it (services.content_access); else the same 404 as for
+    an id that doesn't exist, so ids can't be probed."""
     lesson = await db.get(Lesson, lesson_id)
-    if lesson is None:
+    if lesson is None or not await may_open_lesson(db, lesson_id, profile, key):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
+    return lesson
+
+
+@router.get("/{lesson_id}", response_model=LessonPublic)
+async def get_lesson(
+    lesson_id: int,
+    profile: Profile | None = Depends(get_optional_profile),
+    key: str | None = Depends(get_session_key),
+    db: AsyncSession = Depends(get_db),
+):
+    lesson = await _openable_lesson(db, lesson_id, profile, key)
     return await lesson_public(db, lesson)
 
 
@@ -40,22 +55,29 @@ async def save_progress(
     lesson_id: int,
     body: LessonProgressIn,
     profile: Profile = Depends(get_profile),
+    key: str | None = Depends(get_session_key),
     db: AsyncSession = Depends(get_db),
 ):
     """Report the learner's reveal boundary (and that they are active in the lesson now); returns
     the merged state: where they are + their already-graded answers. The reader calls this on open —
     with 0, which never moves the boundary back — to restore, and again each time the learner reveals
-    the next part."""
-    lesson = await db.get(Lesson, lesson_id)
-    if lesson is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
+    the next part. A saved position opens the lesson for this profile later, so saving one needs
+    the same right as opening it."""
+    lesson = await _openable_lesson(db, lesson_id, profile, key)
     return await progress_service.save_lesson_progress(db, profile, lesson, body.revealed_up_to)
 
 
 @router.get("/{lesson_id}/sections/{ordinal}", response_model=LessonSectionPublic)
-async def get_section(lesson_id: int, ordinal: int, db: AsyncSession = Depends(get_db)):
+async def get_section(
+    lesson_id: int,
+    ordinal: int,
+    profile: Profile | None = Depends(get_optional_profile),
+    key: str | None = Depends(get_session_key),
+    db: AsyncSession = Depends(get_db),
+):
     """Fetch one section (incl. current visual statuses). The reader polls this while a delivered
     section still has pending image placeholders, swapping them in as they finish generating."""
+    await _openable_lesson(db, lesson_id, profile, key)
     section = await db.scalar(
         select(LessonSection).where(
             LessonSection.lesson_id == lesson_id, LessonSection.ordinal == ordinal
@@ -74,15 +96,17 @@ async def get_section(lesson_id: int, ordinal: int, db: AsyncSession = Depends(g
     dependencies=[Depends(rate_limit_dependency)],
 )
 async def generate_section(
-    lesson_id: int, ordinal: int, db: AsyncSession = Depends(get_db)
+    lesson_id: int,
+    ordinal: int,
+    profile: Profile | None = Depends(get_optional_profile),
+    key: str | None = Depends(get_session_key),
+    db: AsyncSession = Depends(get_db),
 ):
     """Generate (or return, if already built) the lesson section at ``ordinal``.
 
     Progressive generation: the lesson is delivered with only its first section filled; the reader
     calls this as the learner advances. Idempotent — a ready section is returned as-is."""
-    lesson = await db.get(Lesson, lesson_id)
-    if lesson is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lesson not found")
+    lesson = await _openable_lesson(db, lesson_id, profile, key)
     section = await db.scalar(
         select(LessonSection).where(
             LessonSection.lesson_id == lesson_id, LessonSection.ordinal == ordinal

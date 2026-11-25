@@ -32,6 +32,9 @@ const POLL_DEADLINE_MS = 180_000
 
 export const useLessonStore = defineStore('lesson', () => {
   const lesson = ref<Lesson | null>(null)
+  // The learning session (request id) this lesson was opened under — sent with every call so the
+  // server lets this reader in (see api.ts `session`).
+  const learningSession = ref<string | null>(null)
   const loading = ref(false)
   const error = ref<string | null>(null)
   // The highest section ordinal the learner has chosen to reveal (section 0 is shown on load).
@@ -107,7 +110,7 @@ export const useLessonStore = defineStore('lesson', () => {
       const lessonId = lesson.value?.id
       if (lessonId == null) return
       try {
-        _spliceSection(await api.getSection(lessonId, ordinal))
+        _spliceSection(await api.getSection(lessonId, ordinal, learningSession.value))
       } catch {
         /* transient — retry until the deadline */
       }
@@ -134,7 +137,7 @@ export const useLessonStore = defineStore('lesson', () => {
     const lessonId = lesson.value?.id
     if (lessonId == null) return
     try {
-      _spliceSection(await api.getSection(lessonId, ordinal))
+      _spliceSection(await api.getSection(lessonId, ordinal, learningSession.value))
     } catch {
       /* transient — pollSectionAssets will keep trying */
     }
@@ -151,7 +154,7 @@ export const useLessonStore = defineStore('lesson', () => {
     const lessonId = lesson.value.id
     const epoch = loadEpoch
     const p: Promise<LessonSection> = api
-      .generateSection(lessonId, ordinal)
+      .generateSection(lessonId, ordinal, learningSession.value)
       .then((section) => {
         if (epoch === loadEpoch) _spliceSection(section) // ignore a result from a superseded load
         return section
@@ -206,7 +209,7 @@ export const useLessonStore = defineStore('lesson', () => {
     const session = useSessionStore()
     const learner = session.resumeCode
     void api
-      .syncLessonProgress(lessonId, revealedUpTo.value)
+      .syncLessonProgress(lessonId, revealedUpTo.value, learningSession.value)
       .then((progress) => {
         if (session.resumeCode !== learner) return
         session.applyStreak(progress?.streak)
@@ -215,8 +218,9 @@ export const useLessonStore = defineStore('lesson', () => {
       .catch(() => {})
   }
 
-  async function load(id: number): Promise<void> {
+  async function load(id: number, sessionId: string | null = null): Promise<void> {
     reset() // also clears a previously-open lesson, so it never flashes while this one loads
+    learningSession.value = sessionId
     loading.value = true
     const epoch = loadEpoch
     try {
@@ -224,8 +228,8 @@ export const useLessonStore = defineStore('lesson', () => {
       // boundary back). Restoring is best-effort: without a profile, or offline, the lesson still
       // opens from the top.
       const [loaded, progress] = await Promise.all([
-        api.getLesson(id),
-        api.syncLessonProgress(id, 0).catch(() => null),
+        api.getLesson(id, sessionId),
+        api.syncLessonProgress(id, 0, sessionId).catch(() => null),
       ])
       if (epoch !== loadEpoch) return // superseded by a newer load()/reset()
       lesson.value = loaded
@@ -288,6 +292,7 @@ export const useLessonStore = defineStore('lesson', () => {
     feedbackByItem.value = {}
     submittedByItem.value = {}
     resumed.value = false
+    learningSession.value = null
     loadEpoch += 1 // supersede any in-flight load/prefetch (same 12-section skeleton across lessons)
     inflight.clear()
     stopPolls()
