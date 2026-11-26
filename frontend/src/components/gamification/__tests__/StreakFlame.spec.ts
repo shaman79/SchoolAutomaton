@@ -93,7 +93,7 @@ describe('the progress screen with a streak of 0', () => {
     const blank = { template: '<div />' }
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: ['home', 'daily', 'parents', 'history', 'stats'].map((name) => ({
+      routes: ['home', 'daily', 'parent', 'history', 'stats'].map((name) => ({
         path: name === 'home' ? '/' : `/${name}`,
         name,
         component: blank,

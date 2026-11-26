@@ -1,6 +1,6 @@
 /**
- * Settings (⚙, on every screen) is the way in for parents: on a device that learns, the overview
- * with the parent code; on any device, following a child from this phone. Each link closes the panel.
+ * Settings (⚙, on every screen) is the way in for parents: one "For parents" link (the overview +
+ * parent code on a device that learns; following a child elsewhere), which closes the panel.
  */
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -27,27 +27,25 @@ async function render() {
   await flushPromises()
   return w
 }
-const link = (w: Awaited<ReturnType<typeof render>>, text: string) =>
-  w.findAll('a').find((a) => a.text().includes(text))
 
 beforeEach(() => {
   stubDom()
   setActivePinia(createPinia())
 })
 
-it("on the child's device it leads to the overview with the parent code", async () => {
+it("one way in for parents, worded for this device", async () => {
   stored.code = 'K7QF-2M9X'
   const w = await render()
-  expect(w.text()).toContain(t('parent.settings_title'))
-  expect(link(w, t('parents.link'))?.attributes('href')).toBe('/parents')
-  expect(link(w, t('parent.settings_follow'))?.attributes('href')).toBe('/parent')
-  await link(w, t('parents.link'))!.trigger('click')
+  const links = w.findAll('a').filter((a) => a.text().includes(t('parent.title')))
+  expect(links.map((a) => a.attributes('href'))).toEqual(['/parent'])
+  expect(w.text()).toContain(t('parent.settings_hint_device'))
+  await links[0].trigger('click')
   expect(w.emitted('close')).toBeTruthy()
 })
 
-it('on a device without a learner it offers following a child', async () => {
+it('on a device without a learner the same link says it follows a child', async () => {
   stored.code = null
   const w = await render()
-  expect(link(w, t('parents.link'))).toBeUndefined()
-  expect(link(w, t('parent.settings_follow'))?.attributes('href')).toBe('/parent')
+  expect(w.findAll('a').filter((a) => a.attributes('href') === '/parent')).toHaveLength(1)
+  expect(w.text()).toContain(t('parent.settings_hint_other'))
 })

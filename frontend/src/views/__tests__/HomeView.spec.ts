@@ -113,11 +113,13 @@ it('an unreachable server keeps the code, creates no profile, and shows one "can
   expect(banner.text()).toBe('')
 })
 
-it('tasks from a parent come first, and their session is not offered twice', async () => {
+it('what is waiting comes first, in one list, each session once', async () => {
   const progress = { position: 2, total: 5, completed: false, last_active_at: null }
   mocked.getMyAssignments.mockResolvedValue([
     { id: 1, request_id: 'task-1', mode: 'test', title: 'Násobilka 7', subject: 'math', created_at: null,
       status: 'started', progress, result: null },
+    { id: 2, request_id: 'task-2', mode: 'study', title: 'Zlomky', subject: 'math', created_at: null,
+      status: 'ready', progress: null, result: null },
   ])
   mocked.getContinue.mockResolvedValue({
     request_id: 'task-1', mode: 'test', status: 'ready', lesson_id: null, quiz_id: 3, title: 'Násobilka 7',
@@ -126,13 +128,13 @@ it('tasks from a parent come first, and their session is not offered twice', asy
   const w = mountHome()
   await vi.runAllTimersAsync()
   await flushPromises()
-  const tasks = w.find('.sa-tasks')
-  expect(tasks.text()).toContain('Násobilka 7')
-  expect(tasks.find('a').attributes('href')).toBe('/test/task-1')
-  expect(w.find('#sa-continue-title').exists()).toBe(false) // the task's own card covers it
-  // First on the screen: before the prompt box.
+  const rows = w.find('.sa-wait').findAll('a')
+  expect(rows.map((a) => a.attributes('href'))).toEqual(['/test/task-1', '/lesson/task-2'])
+  // Above the hero question, which sits right on its input (no second visible label).
   const html = w.html()
-  expect(html.indexOf('sa-tasks')).toBeLessThan(html.indexOf('sa-prompt'))
+  expect(html.indexOf('sa-wait')).toBeLessThan(html.indexOf('sa-home-title'))
+  expect(html.indexOf('sa-home-title')).toBeLessThan(html.indexOf('sa-prompt'))
+  expect(w.find('label[for="prompt"]').classes()).toContain('sr-only')
 })
 
 it('a device that follows children as a parent links to their overview', async () => {

@@ -26,8 +26,7 @@
     ],
     "grade_for": "Pro: {grade}",
     "grade_change": "Změnit třídu",
-    "grade_set": "Nastav si svou třídu",
-    "resume_title": "Pokračuj tam, kde to minule skončilo"
+    "grade_set": "Nastav si svou třídu"
   },
   "loading": {
     "thinking": "Připravuji tvou lekci…",
@@ -586,10 +585,6 @@
     "listening": "Poslouchám… (klepni pro konec)"
   },
   "parents": {
-    "link": "Přehled pro rodiče",
-    "title": "Přehled pro rodiče",
-    "subtitle": "Posledních {n} dní",
-    "load_error": "Přehled se nepodařilo načíst.",
     "empty": "Za posledních {n} dní tu zatím nic není. Jakmile se začne učit, uvidíte tady, co zvládá a co procvičit.",
     "active_days": "Dny s učením",
     "of_days": "{n} ze {total}",
@@ -615,11 +610,8 @@
       "Deset minut denně je víc než hodina jednou za týden.",
       "Chyba je informace, ne selhání: zeptejte se dítěte, co by příště zkusilo jinak."
     ],
-    "reviews_none": "Teď nic nečeká na zopakování. Aplikace sama pohlídá, kdy je vhodné se k látce vrátit.",
     "period_label": "Období",
-    "period_days": "{n} dní",
-    "no_profile_parent": "Sledujete dítě z tohoto telefonu?",
-    "open_parent": "Otevřít přehled pro rodiče"
+    "period_days": "{n} dní"
   },
   "parent_code": {
     "title": "Sledujte z vlastního telefonu",
@@ -662,7 +654,6 @@
     "add_cancel": "Zrušit",
     "not_found": "Tento kód nefunguje. Zkontrolujte ho, nebo na zařízení dítěte vytvořte nový.",
     "resume_code_given": "Tohle je vlastní kód dítěte pro učení — s ním byste se učili místo něj. Použijte kód pro rodiče: na zařízení dítěte otevřete „{overview}“.",
-    "added": "Dítě přidáno.",
     "already": "Toto dítě už sledujete.",
     "child_fallback": "Dítě {n}",
     "children_label": "Děti",
@@ -712,7 +703,6 @@
     "remove_confirm": "Odebrat tento úkol? Zmizí dítěti z úvodní obrazovky.",
     "remove_done": "Odebrat ze seznamu",
     "removed": "Úkol odebrán.",
-    "assign_topic": "Zadat jako úkol",
     "load_error": "Přehled se nepodařilo načíst.",
     "today": "dnes",
     "yesterday": "včera",
@@ -728,19 +718,25 @@
       "not_found": "Tento úkol už neexistuje.",
       "generic": "Něco se pokazilo. Zkuste to prosím znovu."
     },
-    "settings_title": "Pro rodiče",
-    "settings_overview_hint": "Jak se dítěti daří — a kód pro rodiče, se kterým ho můžete sledovat z vlastního telefonu.",
-    "settings_follow": "Sledovat dítě z tohoto telefonu",
-    "bridge_title": "Je tohle zařízení dítěte?",
-    "bridge_body": "Kód pro rodiče vytvoříte přímo tady: otevřete „{overview}“ a pak ho naskenujte svým telefonem."
+    "device_tab": "Toto zařízení",
+    "device_sub": "Učení na tomto zařízení — a kód, se kterým ho můžete sledovat z vlastního telefonu.",
+    "follow_other": "Sledovat dítě z jiného zařízení",
+    "more_for": "Další možnosti: {name}",
+    "overview": "Přehled",
+    "done_group": "Splněné ({n})",
+    "assign_again": "Zadat znovu",
+    "practise": "Procvičit",
+    "add_new_code": "Přidat nový kód",
+    "settings_hint_device": "Učení na tomto zařízení a kód, se kterým ho můžete sledovat z vlastního telefonu.",
+    "settings_hint_other": "Sledujte dítě z tohoto telefonu a zadávejte mu lekce a kvízy."
   },
   "tasks": {
-    "title": "Úkoly od rodičů",
-    "start": "Začít",
     "preparing": "Připravuje se…",
     "failed_hint": "Ještě není připravený — klepni a zkusíme to znovu",
-    "show_all": "Ukázat všechny ({n})",
-    "show_less": "Ukázat méně"
+    "waiting_title": "Na tebe čeká",
+    "more": "Další ({n})",
+    "less": "Ukázat méně",
+    "start": "Začít"
   },
   "progress": {
     "part": "Část {current} z {total}",

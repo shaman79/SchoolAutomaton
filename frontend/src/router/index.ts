@@ -37,9 +37,10 @@ const routes: RouteRecordRaw[] = [
   { path: '/history', name: 'history', component: () => import('@/views/HistoryView.vue') },
   { path: '/daily', name: 'daily', component: () => import('@/views/DailyReviewView.vue') },
   { path: '/stats', name: 'stats', component: () => import('@/views/StatsView.vue') },
-  { path: '/parents', name: 'parents', component: () => import('@/views/ParentsView.vue') },
-  // A parent's own phone: follow children by their parent codes (`?code=` from a shared link).
+  // The one place for parents: this device's overview + parent code, and children followed from this
+  // phone by their parent codes (`?code=` from a shared link). /parents was the old overview page.
   { path: '/parent', name: 'parent', component: () => import('@/views/ParentView.vue') },
+  { path: '/parents', redirect: { name: 'parent' } },
   { path: '/resume', name: 'resume', component: () => import('@/views/ResumeView.vue') },
   { path: '/admin/login', name: 'admin-login', component: () => import('@/views/admin/AdminLoginView.vue') },
   {

@@ -107,8 +107,8 @@ onMounted(async () => {
         <SaButton variant="primary" size="lg" block icon="sparkle" to="/">
           {{ t('lesson.learn_more') }}
         </SaButton>
-        <SaButton variant="ghost" block :to="{ name: 'parents' }">
-          {{ t('parents.link') }}
+        <SaButton variant="ghost" block icon="users" :to="{ name: 'parent' }">
+          {{ t('parent.title') }}
         </SaButton>
       </div>
     </template>
