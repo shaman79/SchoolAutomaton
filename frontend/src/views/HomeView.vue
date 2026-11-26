@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * HomeView — the playful entry point. A dominant prompt hero (single textarea + big CTA),
- * example chips, and a link to /resume. A returning learner with an unfinished lesson/quiz gets a
- * "Continue where you left off" card first. On submit we lazily ensure an anonymous profile, then
+ * example chips, and a link to /resume. What is waiting for the learner — the lesson/quiz they were
+ * last in and tasks a parent gave — comes first, as one compact list (WaitingCard); the hero question
+ * then sits right on its input. On submit we lazily ensure an anonymous profile, then
  * route on the sanitizer Decision:
  *   proceed  -> /loading/:request_id (generation)
  *   clarify  -> inline clarifying question + suggestion chips that REFINE the prompt
@@ -10,8 +11,8 @@
  *   crisis   -> dedicated, non-dismissable CrisisCard (resources + AI disclosure)
  * A compact line shows the learner's class (set in Settings) — prompts needn't name the grade, the
  * backend applies the class whenever a prompt names no level.
- * Tasks a parent gave (AssignedTasks) come first; they are re-read when the tab comes back, so a task
- * given meanwhile shows up. A device that follows children as a parent gets a "For parents" link.
+ * Tasks are re-read when the tab comes back, so one given meanwhile shows up. A device that follows
+ * children as a parent gets a "For parents" link.
  * Mobile-first, WCAG 2.2 AA (>=44px targets, aria-live status, visible focus, never color-only).
  */
 import { useDocumentVisibility } from '@vueuse/core'
@@ -21,17 +22,15 @@ import { useRouter } from 'vue-router'
 
 import CrisisCard from '@/components/CrisisCard.vue'
 import DailyReviewCard from '@/components/common/DailyReviewCard.vue'
-import ProgressBar from '@/components/common/ProgressBar.vue'
 import ResumeCodeCard from '@/components/common/ResumeCodeCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
-import AssignedTasks from '@/components/tasks/AssignedTasks.vue'
+import WaitingCard from '@/components/tasks/WaitingCard.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
 import { friendlyErrorKey } from '@/lib/errors'
-import { progressLabel } from '@/lib/format'
 import { MAX_PROMPT_CHARS } from '@/lib/limits'
 import { schoolYearLabel } from '@/lib/grades'
 import { useVoiceInput, voiceInputSupported } from '@/composables/useVoiceInput'
@@ -59,24 +58,11 @@ const promptEl = ref<HTMLTextAreaElement | null>(null)
 const suggestions = ref<LearningSessionSummary[]>([])
 // The unfinished lesson/quiz the learner was last in. Opening it restores their exact position.
 const unfinished = ref<LearningSessionSummary | null>(null)
-// Tasks a parent gave, not finished yet. Each is listed once: a task's own card covers "Continue"
-// and its spot in the suggestions.
+// Tasks a parent gave, not finished yet. Each session is listed once (WaitingCard merges a task with
+// "continue"; the suggestions leave out what it shows).
 const tasks = ref<Assignment[]>([])
 const taskIds = computed(() => new Set(tasks.value.map((a) => a.request_id)))
-const showUnfinished = computed(
-  () => !!unfinished.value?.progress && !taskIds.value.has(unfinished.value.request_id),
-)
-
-const unfinishedLabel = computed(() => (unfinished.value ? progressLabel(unfinished.value) : null))
-const unfinishedTarget = computed(() =>
-  unfinished.value
-    ? {
-        name: unfinished.value.mode === 'test' ? 'test' : 'lesson',
-        params: { sessionId: unfinished.value.request_id },
-      }
-    : null,
-)
-// Don't list the same session twice (it already has a card above).
+// Don't list the same session twice (it already has a row above).
 const otherSuggestions = computed(() =>
   suggestions.value.filter(
     (s) => s.request_id !== unfinished.value?.request_id && !taskIds.value.has(s.request_id),
@@ -190,12 +176,28 @@ function applyRedirect(suggestion: string) {
 
 <template>
   <section class="flex flex-col gap-6 py-8 sm:py-10">
-    <!-- Hero -->
+    <!-- What is waiting comes first (not while the crisis card takes over: nothing else is actionable). -->
+    <template v-if="!isCrisis">
+      <!-- This device follows children as a parent: straight to their overview and tasks. -->
+      <RouterLink v-if="parent.children.length" :to="{ name: 'parent' }" class="sa-card sa-home__parent">
+        <span class="sa-home__progress-icon" aria-hidden="true"><SaIcon name="users" :size="20" /></span>
+        <span class="sa-home__parent-text">
+          <span class="sa-home__parent-title">{{ t('parent.home_link', { names: followedNames }) }}</span>
+          <span class="sa-home__parent-hint">{{ t('parent.home_link_hint') }}</span>
+        </span>
+        <SaIcon name="back" :size="16" class="sa-home__progress-chevron" aria-hidden="true" />
+      </RouterLink>
+
+      <!-- The lesson/quiz they were last in + tasks from a parent: one list, one tap each. -->
+      <WaitingCard :tasks="tasks" :unfinished="unfinished" />
+    </template>
+
+    <!-- Hero: the question, right above its input -->
     <header class="text-center">
       <p class="sa-hero__eyebrow">
         <span aria-hidden="true">✦</span> {{ t('app.tagline') }}
       </p>
-      <h1 class="sa-hero__title">{{ t('home.hero_title') }}</h1>
+      <h1 id="sa-home-title" class="sa-hero__title">{{ t('home.hero_title') }}</h1>
       <p class="mt-2 text-[var(--color-ink-soft)]">{{ t('home.hero_subtitle') }}</p>
     </header>
 
@@ -208,48 +210,10 @@ function applyRedirect(suggestion: string) {
     />
 
     <template v-else>
-      <!-- This device follows children as a parent: straight to their overview and tasks. -->
-      <RouterLink v-if="parent.children.length" :to="{ name: 'parent' }" class="sa-card sa-home__parent">
-        <span class="sa-home__progress-icon" aria-hidden="true"><SaIcon name="users" :size="20" /></span>
-        <span class="sa-home__parent-text">
-          <span class="sa-home__parent-title">{{ t('parent.home_link', { names: followedNames }) }}</span>
-          <span class="sa-home__parent-hint">{{ t('parent.home_link_hint') }}</span>
-        </span>
-        <SaIcon name="back" :size="16" class="sa-home__progress-chevron" aria-hidden="true" />
-      </RouterLink>
-
-      <!-- Tasks from a parent come first: what someone asked the learner to do. -->
-      <AssignedTasks :tasks="tasks" />
-
-      <!-- Unfinished lesson/quiz: one tap back to the exact spot (restored when it opens). -->
-      <section
-        v-if="showUnfinished && unfinished?.progress && unfinishedTarget"
-        class="sa-card sa-continue"
-        aria-labelledby="sa-continue-title"
-      >
-        <h2 id="sa-continue-title" class="sa-continue__eyebrow">{{ t('home.resume_title') }}</h2>
-        <p class="sa-continue__name">{{ unfinished.title || t('history.untitled') }}</p>
-        <ProgressBar
-          :value="unfinished.progress.position"
-          :max="unfinished.progress.total"
-          size="sm"
-          :label="unfinished.title || t('history.untitled')"
-          :value-text="unfinishedLabel ?? undefined"
-        />
-        <p class="sa-continue__meta">
-          <span class="sa-continue__badge">{{
-            t(unfinished.mode === 'test' ? 'history.mode_test' : 'history.mode_study')
-          }}</span>
-          <span>{{ unfinishedLabel }}</span>
-        </p>
-        <SaButton variant="primary" block icon="sparkle" icon-right :to="unfinishedTarget">
-          {{ t('common.continue') }}
-        </SaButton>
-      </section>
-
       <!-- Prompt hero card -->
       <form class="sa-card sa-prompt" :class="{ 'sa-prompt--anim': !reduced }" @submit.prevent="go">
-        <label for="prompt" class="sa-prompt__label">{{ t('home.prompt_label') }}</label>
+        <!-- The hero question above is the visible label; this one is for screen readers. -->
+        <label for="prompt" class="sr-only">{{ t('home.prompt_label') }}</label>
         <textarea
           id="prompt"
           ref="promptEl"
@@ -422,48 +386,6 @@ function applyRedirect(suggestion: string) {
   background-clip: text;
   color: transparent;
 }
-.sa-continue {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 1.1rem;
-  border: 2px solid var(--color-primary);
-}
-.sa-continue__eyebrow {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-primary);
-}
-.sa-continue__name {
-  margin: 0;
-  font-size: 1.15rem;
-  font-weight: 800;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-.sa-continue__meta {
-  margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--color-ink-soft);
-}
-.sa-continue__badge {
-  font-size: 0.76rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding: 0.05rem 0.4rem;
-  border-radius: var(--radius-pill);
-  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
-  color: var(--color-primary-strong);
-}
 .sa-prompt {
   display: flex;
   flex-direction: column;
@@ -472,10 +394,6 @@ function applyRedirect(suggestion: string) {
 }
 .sa-prompt--anim {
   animation: sa-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.sa-prompt__label {
-  font-size: 1.05rem;
-  font-weight: 700;
 }
 .sa-prompt__input {
   width: 100%;

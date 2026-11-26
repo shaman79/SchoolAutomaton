@@ -137,7 +137,7 @@ async function share() {
       <SaButton
         variant="ghost"
         size="sm"
-        :icon="open ? 'x' : 'qr'"
+        :icon="open ? undefined : 'qr'"
         class="sa-pcode__toggle"
         :aria-expanded="open"
         aria-controls="sa-pcode-body"

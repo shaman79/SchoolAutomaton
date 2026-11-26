@@ -25,8 +25,7 @@
     ],
     "grade_for": "For: {grade}",
     "grade_change": "Change grade",
-    "grade_set": "Set your grade",
-    "resume_title": "Continue where you left off"
+    "grade_set": "Set your grade"
   },
   "loading": {
     "thinking": "Putting your lesson together…",
@@ -583,10 +582,6 @@
     "listening": "Listening… (tap to stop)"
   },
   "parents": {
-    "link": "Overview for parents",
-    "title": "Overview for parents",
-    "subtitle": "The last {n} days",
-    "load_error": "The overview couldn't be loaded.",
     "empty": "Nothing here from the last {n} days yet. Once learning starts, you'll see what's going well and what to practise.",
     "active_days": "Days with learning",
     "of_days": "{n} of {total}",
@@ -612,11 +607,8 @@
       "Ten minutes a day beats an hour once a week.",
       "A mistake is information, not failure: ask what they'd try differently next time."
     ],
-    "reviews_none": "Nothing is waiting for review right now. The app keeps track of when it is time to come back to a topic.",
     "period_label": "Period",
-    "period_days": "{n} days",
-    "no_profile_parent": "Following a child from this phone?",
-    "open_parent": "Open the parent view"
+    "period_days": "{n} days"
   },
   "parent_code": {
     "title": "Follow from your own phone",
@@ -659,7 +651,6 @@
     "add_cancel": "Cancel",
     "not_found": "This code doesn't work. Check it, or make a new one on your child's device.",
     "resume_code_given": "That's your child's own code for learning — with it you would learn as them. Use the parent code instead: on your child's device open “{overview}”.",
-    "added": "Child added.",
     "already": "You already follow this child.",
     "child_fallback": "Child {n}",
     "children_label": "Children",
@@ -709,7 +700,6 @@
     "remove_confirm": "Remove this task? It disappears from your child's home screen.",
     "remove_done": "Remove from the list",
     "removed": "Task removed.",
-    "assign_topic": "Give as a task",
     "load_error": "The overview couldn't be loaded.",
     "today": "today",
     "yesterday": "yesterday",
@@ -725,19 +715,25 @@
       "not_found": "This task no longer exists.",
       "generic": "Something went wrong. Please try again."
     },
-    "settings_title": "For parents",
-    "settings_overview_hint": "How your child is doing — and the parent code for following from your own phone.",
-    "settings_follow": "Follow a child from this phone",
-    "bridge_title": "Is this your child's device?",
-    "bridge_body": "Make the parent code right here: open “{overview}”, then scan it with your own phone."
+    "device_tab": "This device",
+    "device_sub": "Learning on this device — and the code for following it from your own phone.",
+    "follow_other": "Follow a child from another device",
+    "more_for": "More options: {name}",
+    "overview": "Overview",
+    "done_group": "Done ({n})",
+    "assign_again": "Give again",
+    "practise": "Practise",
+    "add_new_code": "Add the new code",
+    "settings_hint_device": "Learning on this device, and the code for following it from your own phone.",
+    "settings_hint_other": "Follow a child from this phone and give them lessons and quizzes."
   },
   "tasks": {
-    "title": "Tasks from your parents",
-    "start": "Start",
     "preparing": "Getting ready…",
-    "failed_hint": "Not ready yet — tap and we'll try again",
-    "show_all": "Show all ({n})",
-    "show_less": "Show fewer"
+    "failed_hint": "Not ready yet — tap to try again",
+    "waiting_title": "Waiting for you",
+    "more": "{n} more",
+    "less": "Show fewer",
+    "start": "Start"
   },
   "progress": {
     "part": "Part {current} of {total}",

@@ -1,7 +1,9 @@
 /**
- * A parent's own phone (/parent): add a child from the shared link (the code leaves the address bar),
- * refuse the child's own learning code, give a task and follow it until it's ready, turn a weak topic
- * into a quiz task, switch the period, and say plainly when a code stopped working.
+ * "For parents" (/parent), the one place for parents: add a child from the shared link (the code
+ * leaves the address bar), refuse the child's own learning code, give a task and follow it until
+ * it's ready, turn a weak topic into a quiz task, switch the period, fold finished tasks away, keep
+ * rarer actions behind "⋯", say plainly when a code stopped working — and on the child's own device,
+ * show its overview with the parent code.
  */
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia, type Pinia } from 'pinia'
@@ -18,12 +20,14 @@ vi.mock('@/lib/api', async (importOriginal) => {
       parentAssign: vi.fn(),
       parentRetryAssignment: vi.fn(),
       parentRemoveAssignment: vi.fn(),
+      getSummary: vi.fn(),
+      getParentCode: vi.fn(),
     },
   }
 })
 
 import { i18n } from '@/i18n'
-import { ApiError, api } from '@/lib/api'
+import { ApiError, api, setResumeCode } from '@/lib/api'
 import { useParentStore } from '@/stores/parent'
 import type { Assignment, ParentSummary } from '@/types/session'
 import ParentView from '@/views/ParentView.vue'
@@ -38,7 +42,10 @@ const mounted: { unmount: () => void }[] = []
 function summary(days = 7): ParentSummary {
   return {
     days, active_days: 2, lessons: 1, quizzes_completed: 1, answers: 5, correct: 3, due_reviews: 2,
-    topics: [{ concept_id: 1, title: 'Zlomky', subject: 'math', answers: 3, correct: 1, status: 'practice' }],
+    topics: [
+      { concept_id: 1, title: 'Zlomky', subject: 'math', answers: 3, correct: 1, status: 'practice' },
+      { concept_id: 2, title: 'Sčítání', subject: 'math', answers: 4, correct: 4, status: 'confident' },
+    ],
     misconceptions: [],
   }
 }
@@ -79,6 +86,13 @@ function button(w: ReturnType<typeof mount>, text: string) {
   if (!b) throw new Error(`no button "${text}"`)
   return b
 }
+/** Open a "⋯" menu (by its accessible name) and pick an item. */
+async function pick(w: ReturnType<typeof mount>, menuLabel: string, item: string) {
+  await w.find(`button[aria-label="${menuLabel}"]`).trigger('click')
+  await flushPromises()
+  await button(w, item).trigger('click')
+  await flushPromises()
+}
 
 beforeEach(() => {
   stubDom()
@@ -88,12 +102,16 @@ beforeEach(() => {
   setActivePinia(pinia)
   vi.clearAllMocks()
   clearToasts()
+  setResumeCode(null)
   mocked.parentChild.mockResolvedValue({ school_year: 3, education_locale: 'en-US' })
   mocked.parentSummary.mockImplementation(async (_code: string, days: number) => summary(days))
   mocked.parentAssignments.mockResolvedValue([])
+  mocked.getSummary.mockImplementation(async (days: number) => summary(days))
+  mocked.getParentCode.mockResolvedValue(null)
 })
 afterEach(() => {
   while (mounted.length) mounted.pop()!.unmount()
+  setResumeCode(null)
   vi.useRealTimers()
 })
 
@@ -102,10 +120,10 @@ it('adds a child from the shared link, takes the code out of the address bar, an
   expect(router.currentRoute.value.query).toEqual({})
   expect(mocked.parentChild).toHaveBeenCalledWith('ABCDE-FGHJK')
   const name = w.find('#sa-child-name')
-  expect(name.exists()).toBe(true)
+  expect(document.activeElement).toBe(name.element)
   await name.setValue('Anička')
   await submitFormOf(w, '#sa-child-name')
-  expect(w.find('.sa-pview__name').text()).toBe('Anička')
+  expect(w.find('h1').text()).toBe('Anička')
   expect(useParentStore().children[0]).toMatchObject({ code: 'ABCDE-FGHJK', name: 'Anička' })
   // The child's class, the tasks and the overview load for them.
   expect(w.text()).toContain('Grade 3')
@@ -117,9 +135,7 @@ it("refuses the child's own learning code without asking the server", async () =
   await w.find('#sa-parent-code').setValue('K7QF-2M9X')
   await submitFormOf(w, '#sa-parent-code')
   expect(mocked.parentChild).not.toHaveBeenCalled()
-  expect(w.find('#sa-parent-code-err').text()).toBe(
-    t('parent.resume_code_given', { overview: t('parents.link') }),
-  )
+  expect(w.find('#sa-parent-code-err').text()).toBe(t('parent.resume_code_given', { overview: t('parent.title') }))
   expect(useParentStore().children).toHaveLength(0)
 })
 
@@ -156,15 +172,31 @@ it('gives a task and follows it until it is ready', async () => {
   expect(w.text()).toContain(t('parent.status.ready'))
 })
 
-it('a topic worth practising becomes a quiz task in one tap', async () => {
+it('"Practise" is offered only on a topic worth practising, and makes a quiz task', async () => {
   follow()
   const { w } = await mountAt()
-  await button(w, t('parent.assign_topic')).trigger('click')
+  const practise = w.findAll('button').filter((b) => b.text().trim() === t('parent.practise'))
+  expect(practise).toHaveLength(1) // Zlomky — not the confident topic
+  await practise[0].trigger('click')
   await flushPromises()
   expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('Zlomky')
   expect((w.find('input[type="radio"][value="test"]').element as HTMLInputElement).checked).toBe(true)
   // On the parent's phone the review is not started from here.
   expect(w.text()).not.toContain(t('daily.cta'))
+})
+
+it('finished tasks fold away, and one can be given again', async () => {
+  follow()
+  mocked.parentAssignments.mockResolvedValue([
+    task({ id: 1, status: 'ready' }),
+    task({ id: 2, title: 'Zlomky', status: 'done', result: { correct: 4, total: 5 } }),
+  ])
+  const { w } = await mountAt()
+  const folded = w.find('details.sa-alist__done')
+  expect(folded.find('summary').text()).toBe(t('parent.done_group', { n: 1 }))
+  expect(folded.attributes('open')).toBeUndefined()
+  await pick(w, t('parent.more_for', { name: 'Zlomky' }), t('parent.assign_again'))
+  expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('Zlomky')
 })
 
 it('a clarifying question offers suggestions that refine the text', async () => {
@@ -203,16 +235,28 @@ it('switches the overview to the last 30 days', async () => {
   await flushPromises()
   expect(mocked.parentSummary).toHaveBeenLastCalledWith('ABCDE-FGHJK', 30)
   expect(store.period).toBe(30)
-  expect(w.text()).toContain(t('parents.subtitle', { n: 30 }))
+  expect(w.text()).toContain(t('parents.of_days', { n: 2, total: 30 }))
 })
 
-it('says plainly when a code stopped working, and keeps the child until removed', async () => {
+it('a period switched while the page loads is the one shown', async () => {
+  follow()
+  let release: (s: ParentSummary) => void = () => {}
+  mocked.parentSummary.mockImplementationOnce(() => new Promise((r) => (release = r)))
+  const { w } = await mountAt()
+  useParentStore().setPeriod(30) // switched before the first answer came
+  release(summary(7))
+  await flushPromises()
+  expect(mocked.parentSummary).toHaveBeenLastCalledWith('ABCDE-FGHJK', 30)
+  expect(w.text()).toContain(t('parents.of_days', { n: 2, total: 30 }))
+})
+
+it('says plainly when a code stopped working; the child is removed from this phone via "⋯"', async () => {
   const store = follow()
   mocked.parentChild.mockRejectedValue(new ApiError(401, 'Unknown parent code'))
   const { w } = await mountAt()
   expect(w.text()).toContain(t('parent.revoked_title'))
   expect(store.children[0].revoked).toBe(true)
-  await button(w, t('parent.remove_child')).trigger('click')
+  await pick(w, t('parent.more_for', { name: 'Anička' }), t('parent.remove_child'))
   await button(w, t('parent.remove_yes')).trigger('click')
   await flushPromises()
   expect(store.children).toHaveLength(0)
@@ -224,43 +268,42 @@ it('takes a task back after asking', async () => {
   mocked.parentAssignments.mockResolvedValue([task({ status: 'ready' })])
   mocked.parentRemoveAssignment.mockResolvedValue(undefined)
   const { w } = await mountAt()
-  await button(w, t('parent.remove')).trigger('click')
+  await pick(w, t('parent.more_for', { name: 'Násobilka 7' }), t('parent.remove'))
+  expect(mocked.parentRemoveAssignment).not.toHaveBeenCalled()
   expect(w.text()).toContain(t('parent.remove_confirm'))
-  const confirm = w.find('.sa-alist__confirm')
-  await confirm.findAll('button')[0].trigger('click')
+  await w.find('.sa-alist__confirm').findAll('button')[0].trigger('click')
   await flushPromises()
   expect(mocked.parentRemoveAssignment).toHaveBeenCalledWith('ABCDE-FGHJK', 1)
   expect(w.text()).toContain(t('parent.tasks_empty'))
 })
 
-it('a period switched while the page loads is the one shown', async () => {
-  follow()
-  let release: (s: ParentSummary) => void = () => {}
-  mocked.parentSummary.mockImplementationOnce(() => new Promise((r) => (release = r)))
-  const router = makeRouter()
-  await router.push('/parent')
-  const w = mount(ParentView, { global: { plugins: [pinia, i18n, router] } })
-  mounted.push(w)
-  await flushPromises()
-  useParentStore().setPeriod(30) // switched before the first answer came
-  release(summary(7))
-  await flushPromises()
-  expect(mocked.parentSummary).toHaveBeenLastCalledWith('ABCDE-FGHJK', 30)
-  expect(w.text()).toContain(t('parents.of_days', { n: 2, total: 30 }))
-})
-
-it("opened on the child's own device, it points to where the parent code is made", async () => {
-  localStorage.setItem('sa_resume_code', 'K7QF-2M9X')
-  const { setResumeCode } = await import('@/lib/api')
+it("on the child's own device: its overview and the parent code, no tabs while that is all", async () => {
   setResumeCode('K7QF-2M9X')
-  try {
-    const { w } = await mountAt()
-    expect(w.text()).toContain(t('parent.bridge_title'))
-    expect(w.find('a[href="/parents"]').exists()).toBe(true)
-    // The steps name what is on the screen: the gear, then the overview.
-    expect(w.text()).toContain(t('parent.add_step_1', { settings: t('a11y.settings'), overview: t('parents.link') }))
-  } finally {
-    setResumeCode(null)
-  }
+  const { w } = await mountAt()
+  expect(w.find('nav').exists()).toBe(false)
+  expect(w.text()).toContain(t('parent_code.title'))
+  expect(mocked.getSummary).toHaveBeenCalledWith(7)
+  expect(mocked.parentSummary).not.toHaveBeenCalled()
+  // The review can be started right here (it is the child's own device).
+  expect(w.text()).toContain(t('daily.cta'))
+  // Following another child is one tap away, and the steps name what is on screen.
+  await button(w, t('parent.follow_other')).trigger('click')
+  await flushPromises()
+  expect(w.text()).toContain(t('parent.add_step_1', { settings: t('a11y.settings'), overview: t('parent.title') }))
+  await button(w, t('parent.add_cancel')).trigger('click')
+  await flushPromises()
+  expect(w.text()).toContain(t('parent_code.title'))
 })
 
+it('tabs appear once there is more than one: this device and each child', async () => {
+  setResumeCode('K7QF-2M9X')
+  const store = follow()
+  const { w } = await mountAt()
+  const tabs = w.find('nav').findAll('button').map((b) => b.text().trim())
+  expect(tabs).toEqual([t('parent.device_tab'), 'Anička', t('parent.add_another')])
+  expect(w.find('h1').text()).toBe('Anička') // the remembered choice
+  await button(w, t('parent.device_tab')).trigger('click')
+  await flushPromises()
+  expect(mocked.getSummary).toHaveBeenCalled()
+  expect(store.selectedId).toBe('device') // remembered for next time
+})

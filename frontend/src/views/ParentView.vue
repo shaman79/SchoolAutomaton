@@ -1,16 +1,18 @@
 <script setup lang="ts">
 /**
- * ParentView (/parent) — a parent's OWN phone: follow one or more children by their parent codes
- * (stores/parent — kept only on this device, with the names the parent gives them), see each child's
- * overview for the last 7 or 30 days, and give them lessons/quizzes to do (tasks).
+ * ParentView (/parent, "For parents") — the ONE place for parents, on any device:
  *
- * Adding a child: open the link shared from the child's device (`/parent?code=…` — the code is taken
- * out of the address bar at once), scan its QR code, or type the code. Opened on a device that has
- * its own learner (most likely the child's), it first points to where that code is made. The child's own resume code
- * is recognised and refused with what to do instead (it would let the parent learn AS the child).
- * A code that stops working (a new one was made, or sharing was stopped) says so and offers to add
- * the new one. While a task is being prepared its status is refreshed every few seconds.
- * Mobile-first, WCAG 2.2 AA, reduced-motion aware.
+ *  - "This device" (when this device has its own learner — most likely the child's): the overview
+ *    of its learning, and the parent code that lets a parent follow it from their own phone.
+ *  - Each child followed from this phone by their parent code (stores/parent — kept only here, with
+ *    the name the parent gives them): their tasks (give one, see where each is) and their overview.
+ *  - "+ Add a child": the steps and the code field. A shared link (`/parent?code=…`) adds the child
+ *    at once (the code leaves the address bar first); the child's own resume code is recognised and
+ *    refused with what to do instead (it would let the parent learn AS the child).
+ *
+ * Tabs show only when there is more than one of the above. A child's rarer actions (rename, remove
+ * from this phone, add another) sit behind the "⋯" by their name. While a task is being prepared its
+ * status refreshes every few seconds. Mobile-first, WCAG 2.2 AA, reduced-motion aware.
  */
 import { useDocumentVisibility } from '@vueuse/core'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -20,9 +22,11 @@ import { useRoute, useRouter } from 'vue-router'
 import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
+import SaMenu, { type MenuItem } from '@/components/common/SaMenu.vue'
 import { toast } from '@/components/common/useToasts'
 import AssignmentComposer from '@/components/parents/AssignmentComposer.vue'
 import AssignmentList from '@/components/parents/AssignmentList.vue'
+import ParentCodeCard from '@/components/parents/ParentCodeCard.vue'
 import ParentSummaryPanel from '@/components/parents/ParentSummaryPanel.vue'
 import PeriodSwitch from '@/components/parents/PeriodSwitch.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
@@ -39,6 +43,9 @@ import type { Assignment, Mode, ParentChildInfo, ParentSummary, TopicProgress } 
 /** While a task is being prepared, its status is re-read this often, for at most TASK_POLL_FOR_MS. */
 const TASK_POLL_MS = 5_000
 const TASK_POLL_FOR_MS = 4 * 60_000
+/** Tab ids besides the followed children's own ids. */
+const DEVICE = 'device'
+const ADD = 'add'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -47,10 +54,36 @@ const parent = useParentStore()
 const session = useSessionStore()
 const { reduced } = useReducedMotion()
 
-const child = computed<FollowedChild | null>(() => parent.selected)
+// ------------------------------------------------------------------ which tab
+const hasDevice = computed(() => !!session.resumeCode)
+
+function initialTab(): string {
+  if (route.query.code) return ADD
+  const sel = parent.selectedId
+  if (sel === DEVICE && hasDevice.value) return DEVICE
+  if (sel && parent.children.some((c) => c.id === sel)) return sel
+  if (hasDevice.value) return DEVICE
+  return parent.children[0]?.id ?? ADD
+}
+const tab = ref<string>(initialTab())
+/** Where "Cancel" in the add form goes back to. */
+let beforeAdd: string | null = null
+
+const child = computed<FollowedChild | null>(() => parent.children.find((c) => c.id === tab.value) ?? null)
+const isDevice = computed(() => tab.value === DEVICE && hasDevice.value)
+const isAdd = computed(() => tab.value === ADD || (!child.value && !isDevice.value))
+const showTabs = computed(() => (hasDevice.value ? 1 : 0) + parent.children.length >= 2)
+
 function displayName(c: FollowedChild): string {
   const i = parent.children.findIndex((x) => x.id === c.id)
   return c.name || t('parent.child_fallback', { n: i + 1 })
+}
+function choose(id: string): void {
+  if (id === ADD) {
+    void openAdd()
+    return
+  }
+  tab.value = id
 }
 const days = computed<SummaryDays>({
   get: () => parent.period,
@@ -58,18 +91,21 @@ const days = computed<SummaryDays>({
 })
 
 // ------------------------------------------------------------------ adding a child
-const adding = ref(false)
 const addCode = ref('')
 const addError = ref<string | null>(null)
 const addBusy = ref(false)
 const addInput = ref<HTMLInputElement | null>(null)
-const showAdd = computed(() => adding.value || parent.children.length === 0)
 
 async function openAdd(): Promise<void> {
-  adding.value = true
+  if (tab.value !== ADD) beforeAdd = tab.value
+  tab.value = ADD
   addError.value = null
   await nextTick()
   addInput.value?.focus()
+}
+function cancelAdd(): void {
+  addError.value = null
+  tab.value = beforeAdd ?? initialTab()
 }
 
 async function addChild(raw: string = addCode.value): Promise<void> {
@@ -79,7 +115,7 @@ async function addChild(raw: string = addCode.value): Promise<void> {
   const kind = codeKind(code)
   // Checked here, without asking the server: the child's own code must never be used to follow.
   if (kind === 'resume') {
-    addError.value = t('parent.resume_code_given', { overview: t('parents.link') })
+    addError.value = t('parent.resume_code_given', { overview: t('parent.title') })
     return
   }
   if (kind !== 'parent') {
@@ -90,9 +126,9 @@ async function addChild(raw: string = addCode.value): Promise<void> {
   try {
     const { child: added, existing } = await parent.add(code)
     addCode.value = ''
-    adding.value = false
-    toast.success(t(existing ? 'parent.already' : 'parent.added'))
-    if (!existing) void startNaming(added.id)
+    tab.value = added.id
+    if (existing) toast.info(t('parent.already'))
+    else void startNaming(added.id) // asking for the name is the confirmation
   } catch (e) {
     addError.value =
       e instanceof ApiError && e.status === 401 ? t('parent.not_found') : t(parentErrorKey(e))
@@ -108,7 +144,6 @@ onMounted(() => {
   if (!incoming) return
   void router.replace({ query: {} })
   addCode.value = formatParentCode(incoming)
-  adding.value = true
   void addChild(incoming)
 })
 
@@ -128,14 +163,16 @@ function saveName(): void {
   namingId.value = null
 }
 
-// ------------------------------------------------------------------ the selected child
+// ------------------------------------------------------------------ the selected tab's data
 const info = ref<ParentChildInfo | null>(null)
 const summary = ref<ParentSummary | null>(null)
 const tasks = ref<Assignment[]>([])
 const state = ref<'loading' | 'ready' | 'failed'>('loading')
 const summaryLoading = ref(false)
-// Bumped on every child switch: answers for a child no longer on screen are dropped.
-let childSeq = 0
+const composerOpen = ref(false)
+const confirmRemoveChild = ref(false)
+// Bumped on every tab switch: answers for a tab no longer on screen are dropped.
+let tabSeq = 0
 let summarySeq = 0
 
 const gradeLabel = computed(() =>
@@ -150,56 +187,70 @@ function markRevoked(): void {
   composerOpen.value = false
   stopPoll()
 }
+/** The overview for the current tab: this device's own (resume code), or a followed child's. */
+function fetchSummary(d: number): Promise<ParentSummary> | null {
+  if (isDevice.value) return api.getSummary(d)
+  if (child.value && !child.value.revoked) return api.parentSummary(child.value.code, d)
+  return null
+}
 
-async function loadChild(): Promise<void> {
-  const c = child.value
-  const mine = ++childSeq
+async function loadTab(): Promise<void> {
+  const mine = ++tabSeq
   stopPoll()
   composerOpen.value = false
+  confirmRemoveChild.value = false
   info.value = null
   summary.value = null
   tasks.value = []
-  if (!c || c.revoked) return
+  if (isAdd.value) return
+  const c = child.value
+  if (c?.revoked) return
   state.value = 'loading'
   try {
-    const [i, s, a] = await Promise.all([
-      api.parentChild(c.code),
-      api.parentSummary(c.code, parent.period),
-      api.parentAssignments(c.code),
-    ])
-    if (mine !== childSeq) return
-    info.value = i
-    summary.value = s
-    tasks.value = a
+    if (isDevice.value) {
+      const s = await api.getSummary(parent.period)
+      if (mine !== tabSeq) return
+      summary.value = s
+    } else if (c) {
+      const [i, s, a] = await Promise.all([
+        api.parentChild(c.code),
+        api.parentSummary(c.code, parent.period),
+        api.parentAssignments(c.code),
+      ])
+      if (mine !== tabSeq) return
+      info.value = i
+      summary.value = s
+      tasks.value = a
+      schedulePoll(true)
+    }
     state.value = 'ready'
-    schedulePoll(true)
     // The period was switched while this was loading: show the one now chosen.
-    if (s.days !== parent.period) void loadSummary()
+    if (summary.value && summary.value.days !== parent.period) void loadSummary()
   } catch (e) {
-    if (mine !== childSeq) return
-    if (isRevoked(e)) markRevoked()
+    if (mine !== tabSeq) return
+    if (c && isRevoked(e)) markRevoked()
     else state.value = 'failed'
   }
 }
 
 async function loadSummary(): Promise<void> {
-  const c = child.value
-  if (!c || c.revoked || state.value !== 'ready') return
+  if (state.value !== 'ready') return
+  const request = fetchSummary(parent.period)
+  if (!request) return
   const mine = ++summarySeq
-  const forChild = childSeq
+  const forTab = tabSeq
   summaryLoading.value = true
   try {
-    const s = await api.parentSummary(c.code, parent.period)
-    if (mine === summarySeq && forChild === childSeq) summary.value = s
+    const s = await request
+    if (mine === summarySeq && forTab === tabSeq) summary.value = s
   } catch (e) {
-    if (forChild !== childSeq) return
-    if (isRevoked(e)) markRevoked()
+    if (forTab !== tabSeq) return
+    if (child.value && isRevoked(e)) markRevoked()
     else toast.error(t(parentErrorKey(e)))
   } finally {
     if (mine === summarySeq) summaryLoading.value = false
   }
 }
-
 
 // ------------------------------------------------------------------ tasks being prepared
 let pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -217,19 +268,19 @@ function schedulePoll(fresh = false): void {
 }
 async function refreshTasks(): Promise<void> {
   const c = child.value
-  const forChild = childSeq
+  const forTab = tabSeq
   if (!c || c.revoked) return
   try {
     const a = await api.parentAssignments(c.code)
-    if (forChild !== childSeq) return
+    if (forTab !== tabSeq) return
     tasks.value = a
   } catch (e) {
-    if (forChild === childSeq && isRevoked(e)) {
+    if (forTab === tabSeq && isRevoked(e)) {
       markRevoked()
       return
     }
   }
-  if (forChild === childSeq) schedulePoll()
+  if (forTab === tabSeq) schedulePoll()
 }
 onBeforeUnmount(stopPoll)
 
@@ -242,7 +293,6 @@ watch(visibility, (v) => {
 })
 
 // ------------------------------------------------------------------ giving a task
-const composerOpen = ref(false)
 const composer = ref<InstanceType<typeof AssignmentComposer> | null>(null)
 const tasksSection = ref<HTMLElement | null>(null)
 
@@ -262,6 +312,9 @@ function onGiven(task: Assignment): void {
 function onAssignTopic(topic: TopicProgress): void {
   void openComposer({ text: topic.title, mode: 'test' })
 }
+function onAgain(task: Assignment): void {
+  void openComposer({ text: task.title, mode: task.mode })
+}
 function onUpdated(task: Assignment): void {
   tasks.value = tasks.value.map((a) => (a.id === task.id ? task : a))
   schedulePoll(true)
@@ -270,96 +323,63 @@ function onRemoved(id: number): void {
   tasks.value = tasks.value.filter((a) => a.id !== id)
 }
 
-// ------------------------------------------------------------------ this phone
-const confirmRemoveChild = ref(false)
+// ------------------------------------------------------------------ this phone: rename / remove
 function removeChild(): void {
   if (child.value) parent.remove(child.value.id)
   confirmRemoveChild.value = false
+  tab.value = initialTab()
 }
+const childMenu = computed<MenuItem[]>(() => {
+  const c = child.value
+  if (!c) return []
+  const items: MenuItem[] = [{ label: t('parent.rename'), action: () => void startNaming(c.id) }]
+  if (!showTabs.value) items.push({ label: t('parent.add_another'), action: () => void openAdd() })
+  items.push({ label: t('parent.remove_child'), action: () => (confirmRemoveChild.value = true), danger: true })
+  return items
+})
 
 // Last, once everything they touch exists (the first load runs right away).
-watch(() => child.value?.id, () => {
-  confirmRemoveChild.value = false
-  namingId.value = null
+watch(tab, (id) => {
+  // Switching away ends a rename — but not the name prompt just opened for the child added now.
+  if (namingId.value !== id) namingId.value = null
+  if (id !== ADD) parent.selectedId = id // remembered for next time (incl. "this device")
 })
-watch(() => child.value?.id, loadChild, { immediate: true })
-watch(() => child.value?.revoked, (now, before) => {
-  if (before && !now) void loadChild() // the code works again (re-added) → load it
-})
+watch([tab, () => child.value?.revoked], loadTab, { immediate: true })
 watch(() => parent.period, loadSummary)
 </script>
 
 <template>
   <section class="sa-pview">
-    <header class="sa-pview__head">
-      <h1 class="sa-pview__title">{{ t('parent.title') }}</h1>
-      <p class="sa-pview__sub">{{ t('parent.subtitle') }}</p>
-    </header>
-
-    <!-- More than one child: pick whose overview to see -->
-    <nav v-if="parent.children.length > 1" class="sa-pview__kids" :aria-label="t('parent.children_label')">
+    <!-- More than one to choose from: this device, each followed child, add another -->
+    <nav v-if="showTabs" class="sa-pview__tabs" :aria-label="t('parent.children_label')">
+      <SaChip
+        v-if="hasDevice"
+        clickable
+        :selected="tab === DEVICE"
+        :tone="tab === DEVICE ? 'primary' : 'neutral'"
+        @click="choose(DEVICE)"
+      >
+        {{ t('parent.device_tab') }}
+      </SaChip>
       <SaChip
         v-for="c in parent.children"
         :key="c.id"
         clickable
-        :selected="c.id === child?.id"
-        :tone="c.id === child?.id ? 'primary' : 'neutral'"
-        @click="parent.select(c.id)"
+        :selected="c.id === tab"
+        :tone="c.id === tab ? 'primary' : 'neutral'"
+        @click="choose(c.id)"
       >
         {{ displayName(c) }}
       </SaChip>
+      <SaChip clickable icon="users" :selected="isAdd" :tone="isAdd ? 'primary' : 'neutral'" @click="choose(ADD)">
+        {{ t('parent.add_another') }}
+      </SaChip>
     </nav>
 
-    <!-- Opened on the CHILD's device (it learns here): the parent code is made in the overview. -->
-    <section
-      v-if="session.resumeCode && !parent.children.length"
-      class="sa-card sa-pview__bridge"
-      aria-labelledby="sa-pview-bridge"
-    >
-      <h2 id="sa-pview-bridge" class="sa-pview__h2">{{ t('parent.bridge_title') }}</h2>
-      <p>{{ t('parent.bridge_body', { overview: t('parents.link') }) }}</p>
-      <SaButton variant="primary" icon="qr" :to="{ name: 'parents' }">{{ t('parents.link') }}</SaButton>
-    </section>
-
-    <!-- Add a child (always shown while there is none) -->
-    <section v-if="showAdd" class="sa-card sa-pview__add" aria-labelledby="sa-pview-add">
-      <h2 id="sa-pview-add" class="sa-pview__h2">{{ t('parent.add_title') }}</h2>
-      <ol class="sa-pview__steps">
-        <li>{{ t('parent.add_step_1', { settings: t('a11y.settings'), overview: t('parents.link') }) }}</li>
-        <li>{{ t('parent.add_step_2', { create: t('parent_code.create') }) }}</li>
-        <li>{{ t('parent.add_step_3') }}</li>
-      </ol>
-      <form class="sa-pview__form" @submit.prevent="addChild()">
-        <label for="sa-parent-code" class="sa-pview__label">{{ t('parent.code_label') }}</label>
-        <input
-          id="sa-parent-code"
-          ref="addInput"
-          v-model="addCode"
-          class="sa-pview__input sa-pview__input--code"
-          autocomplete="off"
-          autocapitalize="characters"
-          spellcheck="false"
-          inputmode="text"
-          placeholder="ABCDE-FGHJK"
-          :aria-invalid="addError ? 'true' : undefined"
-          :aria-describedby="addError ? 'sa-parent-code-err' : undefined"
-        />
-        <p v-if="addError" id="sa-parent-code-err" class="sa-pview__error" role="alert">{{ addError }}</p>
-        <div class="sa-pview__row">
-          <SaButton type="submit" variant="primary" icon="users" :loading="addBusy" :disabled="!addCode.trim()">
-            {{ t('parent.add_submit') }}
-          </SaButton>
-          <SaButton v-if="parent.children.length" variant="ghost" :disabled="addBusy" @click="adding = false">
-            {{ t('parent.add_cancel') }}
-          </SaButton>
-        </div>
-      </form>
-    </section>
-
-    <template v-if="child">
-      <!-- Whose overview this is (the name lives only on this phone) -->
-      <section class="sa-card sa-pview__child">
-        <form v-if="namingId === child.id" class="sa-pview__form" @submit.prevent="saveName">
+    <!-- ============================================================ a followed child -->
+    <template v-if="child && !isAdd">
+      <header class="sa-pview__head">
+        <form v-if="namingId === child.id" class="sa-card sa-pview__form" @submit.prevent="saveName">
           <label for="sa-child-name" class="sa-pview__label">{{ t('parent.name_prompt') }}</label>
           <input
             id="sa-child-name"
@@ -376,22 +396,29 @@ watch(() => parent.period, loadSummary)
           </div>
         </form>
         <div v-else class="sa-pview__who">
-          <span class="sa-pview__avatar" aria-hidden="true"><SaIcon name="users" :size="22" /></span>
-          <span class="sa-pview__who-text">
-            <h2 class="sa-pview__name">{{ displayName(child) }}</h2>
-            <span v-if="!child.revoked && state === 'ready'" class="sa-pview__class">
+          <div class="sa-pview__who-text">
+            <p class="sa-pview__eyebrow">{{ t('parent.title') }}</p>
+            <h1 class="sa-pview__name">{{ displayName(child) }}</h1>
+            <p v-if="!child.revoked && state === 'ready'" class="sa-pview__class">
               {{ gradeLabel || t('parent.class_unknown') }}
-            </span>
-          </span>
-          <SaButton variant="subtle" size="sm" @click="startNaming(child.id)">{{ t('parent.rename') }}</SaButton>
+            </p>
+          </div>
+          <SaMenu :items="childMenu" :label="t('parent.more_for', { name: displayName(child) })" />
         </div>
-      </section>
+        <div v-if="confirmRemoveChild" class="sa-card sa-pview__confirm" role="group" aria-labelledby="sa-pview-rm">
+          <p id="sa-pview-rm">{{ t('parent.remove_child_confirm') }}</p>
+          <div class="sa-pview__row">
+            <SaButton variant="primary" size="sm" @click="removeChild">{{ t('parent.remove_yes') }}</SaButton>
+            <SaButton variant="ghost" size="sm" @click="confirmRemoveChild = false">{{ t('parent.keep') }}</SaButton>
+          </div>
+        </div>
+      </header>
 
       <!-- The code stopped working -->
       <section v-if="child.revoked" class="sa-card sa-pview__revoked" role="alert">
         <h2 class="sa-pview__h2"><SaIcon name="lock" :size="20" /> {{ t('parent.revoked_title') }}</h2>
         <p>{{ t('parent.revoked_body') }}</p>
-        <SaButton v-if="!showAdd" variant="primary" icon="users" @click="openAdd">{{ t('parent.add_another') }}</SaButton>
+        <SaButton variant="primary" icon="users" @click="openAdd">{{ t('parent.add_new_code') }}</SaButton>
       </section>
 
       <template v-else>
@@ -399,7 +426,7 @@ watch(() => parent.period, loadSummary)
 
         <div v-else-if="state === 'failed'" class="sa-card sa-pview__note" role="alert">
           <p>{{ t('parent.load_error') }}</p>
-          <SaButton variant="ghost" @click="loadChild">{{ t('common.retry') }}</SaButton>
+          <SaButton variant="ghost" @click="loadTab">{{ t('common.retry') }}</SaButton>
         </div>
 
         <template v-else>
@@ -427,45 +454,103 @@ watch(() => parent.period, loadSummary)
               :tasks="tasks"
               @removed="onRemoved"
               @updated="onUpdated"
+              @again="onAgain"
               @revoked="markRevoked"
             />
             <p v-else-if="!composerOpen" class="sa-pview__muted">{{ t('parent.tasks_empty') }}</p>
           </section>
 
           <!-- The overview, for the period chosen right here -->
-          <div class="sa-pview__bar sa-pview__bar--overview">
-            <h2 class="sa-pview__h2">{{ t('parents.subtitle', { n: days }) }}</h2>
-            <PeriodSwitch v-model="days" />
-          </div>
-          <ParentSummaryPanel
-            v-if="summary"
-            :summary="summary"
-            remote
-            can-assign
-            :class="{ 'sa-pview__stale': summaryLoading }"
-            :aria-busy="summaryLoading"
-            @assign="onAssignTopic"
-          />
+          <section class="sa-pview__overview" aria-labelledby="sa-pview-overview">
+            <div class="sa-pview__bar">
+              <h2 id="sa-pview-overview" class="sa-pview__h2">{{ t('parent.overview') }}</h2>
+              <PeriodSwitch v-model="days" />
+            </div>
+            <ParentSummaryPanel
+              v-if="summary"
+              :summary="summary"
+              remote
+              can-assign
+              :class="{ 'sa-pview__stale': summaryLoading }"
+              :aria-busy="summaryLoading"
+              @assign="onAssignTopic"
+            />
+          </section>
         </template>
       </template>
+    </template>
 
-      <!-- This phone: another child, or stop following this one -->
-      <section class="sa-pview__manage">
-        <div v-if="confirmRemoveChild" class="sa-card sa-pview__confirm" role="alertdialog" aria-labelledby="sa-pview-rm">
-          <p id="sa-pview-rm">{{ t('parent.remove_child_confirm') }}</p>
-          <div class="sa-pview__row">
-            <SaButton variant="primary" size="sm" @click="removeChild">{{ t('parent.remove_yes') }}</SaButton>
-            <SaButton variant="ghost" size="sm" @click="confirmRemoveChild = false">{{ t('parent.keep') }}</SaButton>
-          </div>
+    <!-- ============================================================ this device's own learner -->
+    <template v-else-if="isDevice">
+      <header class="sa-pview__head sa-pview__head--center">
+        <h1 class="sa-pview__title">{{ t('parent.title') }}</h1>
+        <p class="sa-pview__sub">{{ t('parent.device_sub') }}</p>
+      </header>
+
+      <ParentCodeCard />
+
+      <p v-if="state === 'loading'" class="sa-pview__muted" role="status">{{ t('common.loading') }}</p>
+      <div v-else-if="state === 'failed'" class="sa-card sa-pview__note" role="alert">
+        <p>{{ t('parent.load_error') }}</p>
+        <SaButton variant="ghost" @click="loadTab">{{ t('common.retry') }}</SaButton>
+      </div>
+      <section v-else class="sa-pview__overview" aria-labelledby="sa-pview-overview">
+        <div class="sa-pview__bar">
+          <h2 id="sa-pview-overview" class="sa-pview__h2">{{ t('parent.overview') }}</h2>
+          <PeriodSwitch v-model="days" />
         </div>
-        <template v-else>
-          <SaButton v-if="!showAdd" variant="ghost" block icon="users" @click="openAdd">
-            {{ t('parent.add_another') }}
-          </SaButton>
-          <SaButton variant="subtle" size="sm" @click="confirmRemoveChild = true">
-            {{ t('parent.remove_child') }}
-          </SaButton>
-        </template>
+        <ParentSummaryPanel
+          v-if="summary"
+          :summary="summary"
+          :class="{ 'sa-pview__stale': summaryLoading }"
+          :aria-busy="summaryLoading"
+        />
+      </section>
+
+      <SaButton v-if="!showTabs" variant="subtle" size="sm" icon="users" class="sa-pview__other" @click="openAdd">
+        {{ t('parent.follow_other') }}
+      </SaButton>
+    </template>
+
+    <!-- ============================================================ add a child -->
+    <template v-else>
+      <header class="sa-pview__head sa-pview__head--center">
+        <h1 class="sa-pview__title">{{ t('parent.title') }}</h1>
+        <p class="sa-pview__sub">{{ t('parent.subtitle') }}</p>
+      </header>
+
+      <section class="sa-card sa-pview__add" aria-labelledby="sa-pview-add">
+        <h2 id="sa-pview-add" class="sa-pview__h2">{{ t('parent.add_title') }}</h2>
+        <ol class="sa-pview__steps">
+          <li>{{ t('parent.add_step_1', { settings: t('a11y.settings'), overview: t('parent.title') }) }}</li>
+          <li>{{ t('parent.add_step_2', { create: t('parent_code.create') }) }}</li>
+          <li>{{ t('parent.add_step_3') }}</li>
+        </ol>
+        <form class="sa-pview__form" @submit.prevent="addChild()">
+          <label for="sa-parent-code" class="sa-pview__label">{{ t('parent.code_label') }}</label>
+          <input
+            id="sa-parent-code"
+            ref="addInput"
+            v-model="addCode"
+            class="sa-pview__input sa-pview__input--code"
+            autocomplete="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            inputmode="text"
+            placeholder="ABCDE-FGHJK"
+            :aria-invalid="addError ? 'true' : undefined"
+            :aria-describedby="addError ? 'sa-parent-code-err' : undefined"
+          />
+          <p v-if="addError" id="sa-parent-code-err" class="sa-pview__error" role="alert">{{ addError }}</p>
+          <div class="sa-pview__row">
+            <SaButton type="submit" variant="primary" icon="users" :loading="addBusy" :disabled="!addCode.trim()">
+              {{ t('parent.add_submit') }}
+            </SaButton>
+            <SaButton v-if="parent.children.length || hasDevice" variant="ghost" :disabled="addBusy" @click="cancelAdd">
+              {{ t('parent.add_cancel') }}
+            </SaButton>
+          </div>
+        </form>
       </section>
     </template>
   </section>
@@ -476,29 +561,62 @@ watch(() => parent.period, loadSummary)
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
-  padding: 1.5rem 0 2rem;
+  padding: 1.25rem 0 2rem;
+}
+.sa-pview__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 .sa-pview__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.sa-pview__head--center {
   text-align: center;
+  padding-top: 0.25rem;
 }
 .sa-pview__title {
   font-size: 1.5rem;
   font-weight: 800;
 }
 .sa-pview__sub {
-  margin: 0.25rem auto 0;
+  margin: 0 auto;
   max-width: 32rem;
   color: var(--color-ink-soft);
 }
-.sa-pview__kids {
+.sa-pview__who {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  align-items: flex-start;
   gap: 0.5rem;
 }
-.sa-pview__bridge,
+.sa-pview__who-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.sa-pview__eyebrow {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+.sa-pview__name {
+  margin: 0.1rem 0 0;
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.15;
+  overflow-wrap: break-word; /* a long name wraps between words, never "Anič|ka" */
+}
+.sa-pview__class {
+  margin: 0.15rem 0 0;
+  color: var(--color-ink-soft);
+}
 .sa-pview__add,
-.sa-pview__child,
 .sa-pview__revoked,
 .sa-pview__tasks {
   display: flex;
@@ -506,17 +624,31 @@ watch(() => parent.period, loadSummary)
   gap: 0.75rem;
   padding: 1.1rem;
 }
-/* The section a "Give as a task" scrolls to must not hide under the sticky header. */
+/* The section a "Practise" / "Give again" scrolls to must not hide under the sticky header. */
 .sa-pview__tasks {
   scroll-margin-top: calc(var(--sa-header-h, 4rem) + 0.75rem);
+}
+.sa-pview__overview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.35rem;
 }
 .sa-pview__h2 {
   display: flex;
   align-items: center;
   gap: 0.4rem;
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   font-weight: 800;
+}
+/* Heading + its action (or the period switch) on one line when they fit; the control wraps below. */
+.sa-pview__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem 1rem;
 }
 .sa-pview__steps {
   display: flex;
@@ -535,6 +667,9 @@ watch(() => parent.period, loadSummary)
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+.sa-pview__head .sa-pview__form {
+  padding: 1rem;
 }
 .sa-pview__label {
   font-weight: 700;
@@ -573,67 +708,15 @@ watch(() => parent.period, loadSummary)
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-/* Avatar + name, and "Rename" beside them — or below, on a narrow phone (never squeezing the name). */
-.sa-pview__who {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-}
-.sa-pview__avatar {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: var(--radius-pill);
-  background: var(--color-surface-2);
-  color: var(--color-primary);
-}
-.sa-pview__who-text {
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 9rem;
-  min-width: 0;
-}
-.sa-pview__name {
-  margin: 0;
-  font-size: 1.3rem;
-  font-weight: 800;
-  line-height: 1.2;
-  overflow-wrap: break-word; /* a long name wraps between words, never "Anič|ka" */
-}
-.sa-pview__class {
-  font-size: 0.9rem;
-  color: var(--color-ink-soft);
-}
 .sa-pview__revoked {
   border: 2px solid var(--color-sun);
-}
-.sa-pview__bridge {
-  border: 2px solid color-mix(in srgb, var(--color-primary) 35%, var(--color-line));
-}
-.sa-pview__bridge p {
-  margin: 0;
-  line-height: 1.45;
-}
-.sa-pview__bridge > :last-child {
-  align-self: flex-start;
 }
 .sa-pview__revoked p {
   margin: 0;
   line-height: 1.45;
 }
-/* Heading + action (or period switch) on one line when they fit; the control wraps below. */
-.sa-pview__bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem 1rem;
-}
-.sa-pview__bar--overview {
-  margin-top: 0.4rem;
+.sa-pview__revoked > :last-child {
+  align-self: flex-start;
 }
 .sa-pview__muted {
   margin: 0;
@@ -656,18 +739,10 @@ watch(() => parent.period, loadSummary)
   opacity: 0.6;
   transition: opacity 0.15s;
 }
-.sa-pview__manage {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-  margin-top: 0.5rem;
-}
 .sa-pview__confirm {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  width: 100%;
   padding: 0.9rem;
   border: 1px solid color-mix(in srgb, var(--color-sun) 45%, var(--color-line));
   background: color-mix(in srgb, var(--color-sun) 12%, var(--color-surface));
@@ -675,5 +750,8 @@ watch(() => parent.period, loadSummary)
 .sa-pview__confirm p {
   margin: 0;
   line-height: 1.45;
+}
+.sa-pview__other {
+  align-self: center;
 }
 </style>
