@@ -106,6 +106,7 @@ class GamificationSnapshot(AppModel):
     streak: StreakInfo
     daily_goal: str
     daily_progress_xp: int
+    daily_goal_xp: int = 60  # today's target for daily_goal (constants.DAILY_GOAL_XP)
     badges: list[BadgeInfo] = []
 
 

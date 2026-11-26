@@ -793,3 +793,18 @@ async def test_card_already_created_by_a_concurrent_answer_is_reused(db, monkeyp
         select(func.count()).select_from(ItemFsrsCard).where(ItemFsrsCard.item_id == item.id)
     )
     assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_the_snapshot_carries_the_daily_goal_target(db):
+    """The client shows the target the server names (it used to hard-code its own table)."""
+    from app.core.constants import DAILY_GOAL_XP
+    from app.services import profile_service
+
+    profile = await _make_profile(db)
+    snap = await profile_service.build_snapshot(db, profile)
+    assert snap.daily_goal == "regular" and snap.daily_goal_xp == DAILY_GOAL_XP["regular"] == 60
+    settings = await profile_service._get_settings(db, profile)
+    settings.daily_goal = "serious"
+    await db.flush()
+    assert (await profile_service.build_snapshot(db, profile)).daily_goal_xp == 120

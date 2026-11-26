@@ -8,10 +8,13 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
+import { toast } from '@/components/common/useToasts'
+import { i18n } from '@/i18n'
 import { api, getResumeCode, setResumeCode } from '@/lib/api'
 import { normalizeCode } from '@/lib/codes'
 import { ApiError } from '@/lib/apiError'
 import { isTransient } from '@/lib/errors'
+import { dailyGoal } from '@/lib/dailyGoal'
 import { clearReadingAnchor } from '@/lib/readingAnchor'
 import { withRetry } from '@/lib/retry'
 import type {
@@ -31,6 +34,26 @@ export const PROFILE_RETRY_DELAYS_MS = [600, 1800] as const
 
 /** A gamification snapshot older than this is re-read when the learner comes back to the tab. */
 export const SNAPSHOT_STALE_MS = 5 * 60_000
+
+/** The day (this device's date) the "daily goal reached" moment was last shown — once a day, even
+ *  across tabs. */
+const GOAL_DAY_KEY = 'sa_goal_day'
+
+function today(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
+/** Say so when an answer completes today's goal (once a day). */
+function announceGoalReached(): void {
+  try {
+    if (localStorage.getItem(GOAL_DAY_KEY) === today()) return
+    localStorage.setItem(GOAL_DAY_KEY, today())
+  } catch {
+    /* storage unavailable — still say it */
+  }
+  toast.success(i18n.global.t('gamification.daily_goal_reached'), { icon: 'star', timeout: 5000 })
+}
 
 /** The only answer that proves a stored code is gone for good. */
 function isUnknownCode(e: unknown): boolean {
@@ -221,6 +244,9 @@ export const useSessionStore = defineStore('session', () => {
     const applied = streaksApplied
     const fresh = await api.getGamification()
     if (epoch !== identityEpoch) return // another learner took over this device meanwhile
+    // Today's goal just completed by what the learner did (not merely found complete on a reload).
+    const before = gamification.value ? dailyGoal(gamification.value) : null
+    if (before && !before.complete && dailyGoal(fresh).complete) announceGoalReached()
     snapshotReadAt = Date.now()
     // A streak an answer settled while this was in flight is newer than what the server read.
     const current = gamification.value

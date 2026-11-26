@@ -9,7 +9,7 @@
     "go": "Let's go!",
     "go_busy": "Sending…",
     "enter_hint": "Press Enter to begin, or Shift+Enter for a new line.",
-    "examples": "Try one of these",
+    "examples": "Ideas",
     "hero_title": "What do you want to learn today?",
     "hero_subtitle": "Type anything — a lesson with pictures or a playful quiz, made just for you.",
     "generic_error": "Something went wrong. Please try again.",
@@ -21,11 +21,19 @@
       "Quiz me on the French Revolution",
       "Explain fractions with pictures",
       "Help me understand photosynthesis",
-      "Test me on Spanish food vocabulary"
+      "Test me on Spanish food vocabulary",
+      "How does the solar system work?",
+      "Parts of speech — quiz",
+      "The Stone Age",
+      "Converting units of length",
+      "European capitals — quiz",
+      "Times tables 6 and 7 — practise with me",
+      "What are volcanoes made of?"
     ],
     "grade_for": "For: {grade}",
     "grade_change": "Change grade",
-    "grade_set": "Set your grade"
+    "grade_set": "Set your grade",
+    "more_ideas": "Other ideas"
   },
   "loading": {
     "thinking": "Putting your lesson together…",
@@ -165,7 +173,14 @@
     "streak_protected_a11y": "Streak protected at {count} day | Streak protected at {count} days",
     "streak_start": "Start a streak!",
     "xp_max": "Max level reached",
-    "xp_to_next": "{n} XP to next level"
+    "xp_to_next": "{n} XP to next level",
+    "goals_title": "Within reach",
+    "goal_left": "{n} to go | {n} to go",
+    "goals_all_done": "Every badge earned — impressive!",
+    "shelf_empty": "No badge yet — the first one is within reach above.",
+    "all_badges": "All badges ({n}) and how to earn them",
+    "badge_progress": "Progress",
+    "daily_goal_reached": "Today's goal reached — great work!"
   },
   "tree": {
     "detail_for": "Details for {title}",

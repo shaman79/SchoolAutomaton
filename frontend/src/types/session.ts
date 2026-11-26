@@ -98,6 +98,8 @@ export interface GamificationSnapshot {
   streak: StreakInfo
   daily_goal: string
   daily_progress_xp: number
+  /** Today's target for daily_goal (server-defined; absent from an older server). */
+  daily_goal_xp?: number
   badges: BadgeInfo[]
 }
 

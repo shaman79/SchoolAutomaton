@@ -4,6 +4,7 @@
  * from POST /attempts/{id}/complete (score, accuracy, XP, best combo, new badges, mastery changes)
  * and the live gamification snapshot (streak, level). Growth-mindset framed, reduced-motion aware.
  *
+ * "Within reach" closes the game loop: today's goal and the next badge, with how to earn it.
  * It also closes the loop: a primary CTA into the full progress screen, and a "more like this" strip
  * of existing lessons/quizzes to reuse next — surfaced more insistently when the score was sub-par.
  * Tolerant of a missing summary (e.g. a hard refresh resets the store): it still shows progress + picks.
@@ -14,6 +15,8 @@ import { useI18n } from 'vue-i18n'
 import SaButton from '@/components/common/SaButton.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
+import DailyGoalRing from '@/components/gamification/DailyGoalRing.vue'
+import NextGoals from '@/components/gamification/NextGoals.vue'
 import StreakFlame from '@/components/gamification/StreakFlame.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
@@ -142,6 +145,15 @@ onMounted(async () => {
       </ul>
     </div>
 
+    <!-- Within reach: today's goal and the next badge -->
+    <section v-if="session.gamification" class="sa-card sa-results__next" aria-labelledby="sa-results-next">
+      <h2 id="sa-results-next" class="sa-results__h2">{{ t('gamification.goals_title') }}</h2>
+      <div class="sa-results__next-row">
+        <DailyGoalRing :snapshot="session.gamification" :size="64" />
+        <NextGoals :badges="session.gamification.badges" :limit="1" class="sa-results__next-goal" />
+      </div>
+    </section>
+
     <!-- More like this (reuse) -->
     <SuggestionsStrip
       :items="suggestions"
@@ -171,6 +183,21 @@ onMounted(async () => {
   flex-direction: column;
   gap: 1rem;
   padding: 1.5rem 0 2rem;
+}
+.sa-results__next {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+}
+.sa-results__next-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.sa-results__next-goal {
+  flex: 1;
+  min-width: 0;
 }
 .sa-results__header {
   display: flex;

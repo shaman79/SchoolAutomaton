@@ -36,7 +36,8 @@ const { t, locale } = useI18n()
 const unlocked = computed(() => props.badge.unlocked_at != null)
 const denom = computed(() => Math.max(1, props.badge.progress_denominator || 1))
 const numer = computed(() => Math.min(props.badge.progress_numerator || 0, denom.value))
-const showProgress = computed(() => !unlocked.value && props.badge.progress_denominator > 0)
+// A counter only where there is one to count ("7 / 10"); a yes/no badge's "0 / 1" says nothing.
+const showProgress = computed(() => !unlocked.value && props.badge.progress_denominator > 1)
 
 const statusText = computed(() =>
   unlocked.value ? t('gamification.badge_unlocked') : t('gamification.badge_locked'),
@@ -121,7 +122,7 @@ function onKey(e: KeyboardEvent) {
         :max="denom"
         tone="accent"
         size="sm"
-        :label="t('gamification.badges')"
+        :label="t('gamification.badge_progress')"
         :value-text="`${numer} / ${denom}`"
         show-value
       />

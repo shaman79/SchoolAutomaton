@@ -85,6 +85,9 @@ const STATE_META: Record<NodeState, { glyph: string; tone: string }> = {
   needs_review: { glyph: '💧', tone: 'var(--color-sun)' },
 }
 
+const LEGEND_ORDER: NodeState[] = ['mastered', 'learning', 'needs_review', 'available', 'locked']
+const legendStates = computed(() => LEGEND_ORDER.filter((s) => counts.value[s] > 0))
+
 function stateLabel(s: NodeState): string {
   return t(`tree.state.${s}`)
 }
@@ -122,10 +125,10 @@ function masteryPct(n: TreeNode) {
     />
 
     <template v-else>
-      <!-- Legend (icon + text, never color-only). -->
+      <!-- Legend (icon + text, never color-only) — the states the garden has now, not five zeros. -->
       <ul class="mb-4 flex flex-wrap gap-2 p-0" :aria-label="t('tree.legend')">
         <li
-          v-for="s in (['mastered', 'learning', 'needs_review', 'available', 'locked'] as NodeState[])"
+          v-for="s in legendStates"
           :key="s"
           class="sa-chip text-[var(--color-ink)]"
         >

@@ -150,3 +150,17 @@ it('a device that follows children as a parent links to their overview', async (
   expect(link.text()).toContain(i18n.global.t('parent.home_link', { names: 'Anička, ' + i18n.global.t('parent.child_fallback', { n: 2 }) }))
 })
 
+it('shows a few ideas at a time; "Other ideas" moves on, and an idea fills the box', async () => {
+  const w = mountHome()
+  await flushPromises()
+  const chips = () => w.find('.sa-ideas__chips').findAll('button').map((b) => b.text())
+  const first = chips()
+  expect(first).toHaveLength(3)
+  await w.find('.sa-ideas__more').trigger('click')
+  const next = chips()
+  expect(next).toHaveLength(3)
+  expect(next).not.toEqual(first)
+  await w.find('.sa-ideas__chips').findAll('button')[0].trigger('click')
+  expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe(next[0])
+})
+

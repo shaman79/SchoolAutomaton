@@ -3,17 +3,23 @@
  * StatsView — "My progress": the learner's overall gamification + mastery picture, reachable from the
  * header cluster and as the primary CTA after finishing a quiz/lesson. Reads the live gamification
  * snapshot (level, XP, streak, daily goal, badges) and the knowledge tree (GET /profiles/me/tree).
- * Self-referential progress only (SDT) — never a comparison. Mobile-first, reduced-motion aware.
+ *
+ * In reading order: the level, today (streak + daily goal), what is within reach next (the closest
+ * badges and how to earn them), the badges earned so far (the full list folded away — a wall of
+ * locked ones reads as "what you don't have"), and the knowledge garden. Self-referential progress
+ * only (SDT) — never a comparison. Mobile-first, reduced-motion aware.
  */
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import DailyReviewCard from '@/components/common/DailyReviewCard.vue'
 import SaButton from '@/components/common/SaButton.vue'
+import SaIcon from '@/components/common/SaIcon.vue'
 import BadgeGrid from '@/components/gamification/BadgeGrid.vue'
 import DailyGoalRing from '@/components/gamification/DailyGoalRing.vue'
 import KnowledgeTree from '@/components/gamification/KnowledgeTree.vue'
 import LevelBadge from '@/components/gamification/LevelBadge.vue'
+import NextGoals from '@/components/gamification/NextGoals.vue'
 import StreakFlame from '@/components/gamification/StreakFlame.vue'
 import XpBar from '@/components/gamification/XpBar.vue'
 import { api } from '@/lib/api'
@@ -26,6 +32,12 @@ const session = useSessionStore()
 const hasProfile = computed(() => !!session.resumeCode)
 const gami = computed(() => session.gamification)
 const badges = computed(() => gami.value?.badges ?? [])
+// Earned ones, the newest first — the shelf.
+const earned = computed(() =>
+  badges.value
+    .filter((b) => b.unlocked_at)
+    .sort((a, b) => String(b.unlocked_at).localeCompare(String(a.unlocked_at))),
+)
 
 const tree = ref<KnowledgeTreeData | null>(null)
 const treeLoading = ref(false)
@@ -67,9 +79,9 @@ onMounted(async () => {
         </div>
       </div>
 
-      <!-- Streak + daily goal as two balanced tiles, under a section heading for consistent rhythm. -->
-      <section v-if="gami">
-        <h2 class="sa-stats__h2">{{ t('stats.today_title') }}</h2>
+      <!-- Today: streak + daily goal. -->
+      <section v-if="gami" aria-labelledby="sa-stats-today">
+        <h2 id="sa-stats-today" class="sa-stats__h2">{{ t('stats.today_title') }}</h2>
         <div class="sa-stats__tiles">
           <div class="sa-card sa-stats__tile">
             <StreakFlame :streak="gami.streak" size="lg" :show-label="false" />
@@ -91,15 +103,34 @@ onMounted(async () => {
         <DailyReviewCard class="mt-3" />
       </section>
 
-      <!-- Badges -->
-      <section class="sa-card sa-stats__section">
-        <h2 class="sa-stats__h2">{{ t('stats.badges_title') }}</h2>
-        <BadgeGrid :badges="badges" />
+      <!-- What can be earned next, and how. -->
+      <section v-if="gami" class="sa-card sa-stats__section" aria-labelledby="sa-stats-next">
+        <h2 id="sa-stats-next" class="sa-stats__h2">{{ t('gamification.goals_title') }}</h2>
+        <NextGoals :badges="badges" />
       </section>
 
-      <!-- Knowledge tree -->
-      <section class="sa-card sa-stats__section">
-        <h2 class="sa-stats__h2">{{ t('stats.tree_title') }}</h2>
+      <!-- Badges earned (a shelf); every badge, with how to earn it, folded away. -->
+      <section v-if="gami" class="sa-card sa-stats__section" aria-labelledby="sa-stats-badges">
+        <h2 id="sa-stats-badges" class="sa-stats__h2">
+          {{ t('stats.badges_title') }}
+          <span class="sa-stats__count">{{ t('gamification.badges_progress', { unlocked: earned.length, total: badges.length }) }}</span>
+        </h2>
+        <ul v-if="earned.length" class="sa-stats__shelf">
+          <li v-for="b in earned" :key="b.code" class="sa-stats__medal">
+            <span class="sa-stats__medal-icon" aria-hidden="true"><SaIcon name="trophy" :size="18" /></span>
+            {{ b.title }}
+          </li>
+        </ul>
+        <p v-else class="sa-stats__muted">{{ t('gamification.shelf_empty') }}</p>
+        <details v-if="badges.length" class="sa-stats__all">
+          <summary class="sa-stats__summary">{{ t('gamification.all_badges', { n: badges.length }) }}</summary>
+          <BadgeGrid :badges="badges" :compact="false" :show-count="false" />
+        </details>
+      </section>
+
+      <!-- Knowledge garden -->
+      <section class="sa-card sa-stats__section" aria-labelledby="sa-stats-tree">
+        <h2 id="sa-stats-tree" class="sa-stats__h2">{{ t('stats.tree_title') }}</h2>
         <KnowledgeTree :data="tree" :loading="treeLoading" />
       </section>
 
@@ -119,7 +150,7 @@ onMounted(async () => {
 .sa-stats {
   display: flex;
   flex-direction: column;
-  gap: 1.35rem;
+  gap: 1.25rem;
   padding: 1.5rem 0 2rem;
 }
 .sa-stats__title {
@@ -140,7 +171,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 1.4rem;
+  padding: 1.25rem;
 }
 .sa-stats__hero-main {
   display: flex;
@@ -165,7 +196,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
-  padding: 1.15rem 0.75rem;
+  padding: 1rem 0.75rem;
   text-align: center;
 }
 .sa-stats__tile-label {
@@ -178,17 +209,98 @@ onMounted(async () => {
   color: var(--color-ink-soft);
 }
 .sa-stats__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   padding: 1.1rem;
 }
 .sa-stats__h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
   font-size: 1.15rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+.sa-stats__count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+.sa-stats__muted {
+  margin: 0;
+  color: var(--color-ink-soft);
+  line-height: 1.45;
+}
+/* Earned badges: a shelf of filled medals with their names. */
+.sa-stats__shelf {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sa-stats__medal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.8rem 0.3rem 0.3rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-sun) 16%, var(--color-surface));
   font-weight: 700;
-  margin: 0 0 0.75rem;
+}
+.sa-stats__medal-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-pill);
+  color: var(--color-on-primary);
+  background: radial-gradient(120% 120% at 30% 20%, var(--color-sun), var(--color-accent) 70%, var(--color-primary));
+}
+.sa-stats__all {
+  border-top: 1px solid var(--color-line);
+}
+.sa-stats__all[open] > :last-child {
+  margin-top: 0.5rem;
+}
+.sa-stats__summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  font-weight: 700;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+  list-style: none;
+}
+.sa-stats__summary::-webkit-details-marker {
+  display: none;
+}
+.sa-stats__summary::after {
+  content: '';
+  margin-left: auto;
+  margin-right: 0.5rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+.sa-stats__all[open] .sa-stats__summary::after {
+  transform: rotate(-135deg);
+}
+.sa-stats__summary:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .sa-stats__actions {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
 }
 </style>

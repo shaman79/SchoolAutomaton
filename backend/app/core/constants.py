@@ -116,8 +116,10 @@ STREAK_REPAIR_WINDOW_HOURS = 48
 REST_DAYS_PER_WEEK_DEFAULT = 0
 REST_DAYS_PER_WEEK_YOUNG = 1         # early_primary / under-13
 
-# Daily-goal presets -> target XP.
-DAILY_GOAL_XP = {"casual": 50, "regular": 100, "serious": 150, "intense": 200}
+# Daily-goal presets -> target XP. The snapshot sends the target (GamificationSnapshot.daily_goal_xp),
+# so the header ring, the progress page and the "goal reached" moment all use these. They are the
+# values learners have seen since launch (the client used to hard-code them; this table was unused).
+DAILY_GOAL_XP = {"casual": 30, "regular": 60, "serious": 120, "intense": 200}
 
 # ---------------------------------------------------------------------------
 # Visual pipeline (SPEC visual_pipeline). Model ids are config-overridable; these are the defaults.
