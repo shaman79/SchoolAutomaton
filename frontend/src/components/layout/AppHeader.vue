@@ -5,20 +5,32 @@
  * Publishes its height as --sa-header-h so toasts can sit just below it instead of over its buttons.
  */
 import { useResizeObserver } from '@vueuse/core'
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import AppLogo from '@/components/common/AppLogo.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
+import DailyGoalRing from '@/components/gamification/DailyGoalRing.vue'
 import LevelBadge from '@/components/gamification/LevelBadge.vue'
 import StreakFlame from '@/components/gamification/StreakFlame.vue'
 import XpBar from '@/components/gamification/XpBar.vue'
+import { dailyGoal } from '@/lib/dailyGoal'
 import { useSessionStore } from '@/stores/session'
 
 const { t } = useI18n()
 const session = useSessionStore()
 
 const emit = defineEmits<{ (e: 'open-settings'): void }>()
+
+// The pill's name says where it goes and how today's goal stands (the ring itself is visual only).
+const goal = computed(() => dailyGoal(session.gamification))
+const pillLabel = computed(() =>
+  `${t('stats.title')} — ${
+    goal.value.complete
+      ? t('gamification.daily_goal_done')
+      : t('gamification.daily_goal_a11y', { earned: goal.value.earned, goal: goal.value.goal })
+  }`,
+)
 
 const headerEl = ref<HTMLElement | null>(null)
 useResizeObserver(headerEl, () => {
@@ -34,7 +46,7 @@ onBeforeUnmount(() => document.documentElement.style.removeProperty('--sa-header
     class="sticky top-0 z-40 border-b border-[var(--color-line)] backdrop-blur safe-top"
     style="background: color-mix(in srgb, var(--color-surface) 86%, transparent)"
   >
-    <div class="mx-auto flex w-full max-w-screen-sm items-center gap-3 px-4 py-2 lg:max-w-2xl">
+    <div class="mx-auto flex w-full max-w-screen-sm items-center gap-3 px-4 py-2 md:max-w-2xl lg:max-w-3xl">
       <RouterLink
         to="/"
         class="sa-logo sa-tap flex items-center gap-2 font-extrabold tracking-tight"
@@ -51,12 +63,14 @@ onBeforeUnmount(() => document.documentElement.style.removeProperty('--sa-header
         v-if="session.gamification"
         :to="{ name: 'stats' }"
         class="ml-auto flex min-w-0 items-center gap-1.5 rounded-[var(--radius-pill)] px-1.5 py-1 hover:bg-[var(--color-surface-2)] sm:gap-2.5"
-        :aria-label="t('stats.title')"
+        :aria-label="pillLabel"
       >
         <LevelBadge :level="session.level" size="sm" />
         <!-- Icon + count only here (the textual "N-day streak" label is the width hog on phones and
              just repeats the count); the full label lives on the /stats screen. -->
         <StreakFlame :streak="session.gamification.streak" size="sm" :show-label="false" />
+        <!-- Today's goal at a glance: fills up as they learn, a check once it's reached. -->
+        <DailyGoalRing :snapshot="session.gamification" :size="26" mini aria-hidden="true" />
         <XpBar
           class="hidden w-24 sm:block lg:w-40"
           :snapshot="session.gamification"

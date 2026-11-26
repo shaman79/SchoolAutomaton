@@ -21,8 +21,10 @@ const props = withDefaults(
     compact?: boolean
     /** Sort unlocked first, then by closeness to unlocking. */
     sort?: boolean
+    /** The "N of M badges" line (off where the heading already says it). */
+    showCount?: boolean
   }>(),
-  { compact: true, sort: true },
+  { compact: true, sort: true, showCount: true },
 )
 
 const { t, locale } = useI18n()
@@ -65,13 +67,14 @@ const detailDate = computed(() => {
 
 <template>
   <div>
-    <p v-if="badges.length" class="mb-3 text-sm font-semibold text-[var(--color-ink-soft)]">
+    <p v-if="badges.length && showCount" class="mb-3 text-sm font-semibold text-[var(--color-ink-soft)]">
       {{ t('gamification.badges_progress', { unlocked: unlockedCount, total: badges.length }) }}
     </p>
 
     <ul
       v-if="badges.length"
-      class="grid list-none grid-cols-2 gap-3 p-0 lg:grid-cols-3"
+      class="grid list-none gap-3 p-0"
+      :class="compact ? 'grid-cols-2 lg:grid-cols-3' : 'grid-cols-1 md:grid-cols-2'"
     >
       <li v-for="b in ordered" :key="b.code">
         <BadgeCard :badge="b" :compact="compact" interactive @select="open" />

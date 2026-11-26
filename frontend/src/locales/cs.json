@@ -9,7 +9,7 @@
     "go": "Jdeme na to!",
     "go_busy": "Odesílám…",
     "enter_hint": "Stiskni Enter pro start, nebo Shift+Enter pro nový řádek.",
-    "examples": "Zkus jeden z těchto",
+    "examples": "Nápady",
     "hero_title": "Co se chceš dnes naučit?",
     "hero_subtitle": "Napiš cokoliv — lekci s obrázky nebo hravý kvíz, připravené přímo pro tebe.",
     "generic_error": "Něco se pokazilo. Zkus to prosím znovu.",
@@ -22,11 +22,18 @@
       "Vyzkoušej mě z násobilky 6 a 7",
       "Anglická slovíčka: zvířata – kvíz",
       "Koloběh vody – přírodověda",
-      "Příprava na přijímačky z matematiky"
+      "Příprava na přijímačky z matematiky",
+      "Jak funguje sluneční soustava?",
+      "Slovní druhy – kvíz",
+      "Pravěk a doba kamenná",
+      "Převody jednotek délky",
+      "Hlavní města Evropy – kvíz",
+      "Z čeho jsou sopky a proč soptí?"
     ],
     "grade_for": "Pro: {grade}",
     "grade_change": "Změnit třídu",
-    "grade_set": "Nastav si svou třídu"
+    "grade_set": "Nastav si svou třídu",
+    "more_ideas": "Jiné nápady"
   },
   "loading": {
     "thinking": "Připravuji tvou lekci…",
@@ -168,7 +175,14 @@
     "streak_protected_a11y": "Série je chráněná na {count} dni | Série je chráněná na {count} dnech | Série je chráněná na {count} dnech",
     "streak_start": "Začni sérii!",
     "xp_max": "Dosažena nejvyšší úroveň",
-    "xp_to_next": "{n} XP do další úrovně"
+    "xp_to_next": "{n} XP do další úrovně",
+    "goals_title": "Na dosah",
+    "goal_left": "ještě {n} | ještě {n} | ještě {n}",
+    "goals_all_done": "Máš všechny odznaky — skvělé!",
+    "shelf_empty": "Zatím žádný odznak — ten první je na dosah, viz výše.",
+    "all_badges": "Všechny odznaky ({n}) a jak je získat",
+    "badge_progress": "Postup",
+    "daily_goal_reached": "Dnešní cíl splněn — skvělá práce!"
   },
   "tree": {
     "detail_for": "Podrobnosti k {title}",

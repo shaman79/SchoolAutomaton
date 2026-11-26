@@ -164,6 +164,7 @@ async def build_snapshot(
         streak=await gamification.streak_info_as_of(db, profile, streak, now),
         daily_goal=daily_goal.value,
         daily_progress_xp=await _daily_xp(db, profile),
+        daily_goal_xp=gamification.daily_goal_target_xp(daily_goal.value),
         badges=await build_badges(db, profile, settings.locale),
     )
 

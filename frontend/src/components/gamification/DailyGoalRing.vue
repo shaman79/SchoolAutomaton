@@ -5,7 +5,8 @@
  * progress; a centered "N / G XP" label + a checkmark on completion carry the meaning without relying
  * on color. Completing the goal can fire a small celebration (motion-gated) once.
  *
- * Goal→XP targets are a UI presentation choice (the backend caps new items, not XP); they live here.
+ * The target comes from the server (snapshot.daily_goal_xp — lib/dailyGoal). `mini` is the header's
+ * version: just the ring (a check once complete), no numbers or caption.
  */
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -14,15 +15,8 @@ import type { GamificationSnapshot } from './types'
 import SaIcon from '@/components/common/SaIcon.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { useReducedMotion } from '@/composables/useReducedMotion'
+import { dailyGoal } from '@/lib/dailyGoal'
 import { useSessionStore } from '@/stores/session'
-
-/** XP targets per daily-goal tier (presentation-only). */
-const GOAL_XP: Record<string, number> = {
-  casual: 30,
-  regular: 60,
-  serious: 120,
-  intense: 200,
-}
 
 const props = withDefaults(
   defineProps<{
@@ -30,8 +24,10 @@ const props = withDefaults(
     size?: number
     /** Celebrate the first time the goal is reached while mounted. */
     celebrateOnComplete?: boolean
+    /** Just the ring (header): no numbers, no caption — the label stays for screen readers. */
+    mini?: boolean
   }>(),
-  { snapshot: null, size: 88, celebrateOnComplete: false },
+  { snapshot: null, size: 88, celebrateOnComplete: false, mini: false },
 )
 
 const { t } = useI18n()
@@ -40,10 +36,11 @@ const { celebrateBadge } = useCelebration()
 const session = useSessionStore()
 
 const snap = computed<GamificationSnapshot | null>(() => props.snapshot ?? session.gamification)
-const earned = computed(() => Math.max(0, snap.value?.daily_progress_xp ?? 0))
-const goal = computed(() => GOAL_XP[snap.value?.daily_goal ?? 'regular'] ?? GOAL_XP.regular)
+const state = computed(() => dailyGoal(snap.value))
+const earned = computed(() => state.value.earned)
+const goal = computed(() => state.value.goal)
 const pct = computed(() => Math.min(100, Math.round((earned.value / goal.value) * 100)))
-const complete = computed(() => earned.value >= goal.value)
+const complete = computed(() => state.value.complete)
 
 // Ring geometry.
 const stroke = computed(() => Math.max(6, Math.round(props.size * 0.1)))
@@ -115,7 +112,7 @@ watch(complete, (now) => {
           :size="Math.round(size * 0.34)"
           class="text-[var(--color-mint)]"
         />
-        <template v-else>
+        <template v-else-if="!mini">
           <span class="font-extrabold tabular-nums" :style="{ fontSize: size * 0.24 + 'px' }">
             {{ earned }}
           </span>
@@ -125,7 +122,7 @@ watch(complete, (now) => {
         </template>
       </span>
     </div>
-    <span class="text-xs font-semibold text-[var(--color-ink-soft)]">
+    <span v-if="!mini" class="text-xs font-semibold text-[var(--color-ink-soft)]">
       {{ complete ? t('gamification.daily_goal_done') : t('gamification.daily_goal') }}
     </span>
   </div>

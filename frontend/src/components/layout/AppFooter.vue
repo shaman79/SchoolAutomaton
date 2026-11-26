@@ -16,7 +16,7 @@ const year = new Date().getFullYear()
     role="contentinfo"
   >
     <div
-      class="mx-auto flex w-full max-w-screen-sm flex-col items-center gap-2 px-4 py-5 text-center text-xs text-[var(--color-ink-soft)] lg:max-w-2xl sm:flex-row sm:justify-between sm:text-left"
+      class="mx-auto flex w-full max-w-screen-sm flex-col items-center gap-2 px-4 py-5 text-center text-xs text-[var(--color-ink-soft)] md:max-w-2xl lg:max-w-3xl sm:flex-row sm:justify-between sm:text-left"
     >
       <p>© {{ year }} {{ t('app.name') }} · {{ t('footer.ai_disclosure') }}</p>
       <nav class="flex flex-wrap items-center justify-center gap-x-2 sm:shrink-0 sm:flex-nowrap" :aria-label="t('footer.nav_label')">

@@ -61,7 +61,7 @@ function onShown() {
 
     <!-- Fixed padding, not safe-area: the sticky header above already clears the top inset, and
          padding that follows the (changing) insets moved every element on the page at once. -->
-    <main id="sa-main" class="mx-auto w-full max-w-screen-sm flex-1 px-4 pb-3 pt-2 lg:max-w-2xl">
+    <main id="sa-main" class="mx-auto w-full max-w-screen-sm flex-1 px-4 pb-3 pt-2 md:max-w-2xl lg:max-w-3xl">
       <ConnectionBanner />
       <!-- Keyed by the path: opening another lesson/quiz (same route, new :sessionId) builds a fresh
            view instead of reusing the previous one with its state. (Path, not fullPath: no screen

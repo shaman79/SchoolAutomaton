@@ -109,6 +109,18 @@ const examples = computed<string[]>(() => {
   const raw = tm('home.example_list') as unknown
   return Array.isArray(raw) ? (raw as string[]) : []
 })
+// A few ideas at a time (a different few each visit; "Other ideas" moves on) rather than the whole
+// list, one per line, below the box.
+const IDEAS_SHOWN = 3
+const ideaStart = ref(Math.floor(Math.random() * 1000))
+const ideas = computed(() => {
+  const list = examples.value
+  if (list.length <= IDEAS_SHOWN) return list
+  return Array.from({ length: IDEAS_SHOWN }, (_, i) => list[(ideaStart.value + i) % list.length])
+})
+function moreIdeas() {
+  ideaStart.value += IDEAS_SHOWN
+}
 
 const canSubmit = computed(() => text.value.trim().length > 0 && !busy.value)
 
@@ -320,23 +332,20 @@ function applyRedirect(suggestion: string) {
       <!-- Today's spaced-repetition round (renders only when something is due). -->
       <DailyReviewCard />
 
-      <!-- Example prompts -->
-      <div v-if="examples.length" class="flex flex-col gap-2">
-        <p class="text-sm font-semibold text-[var(--color-ink-soft)]">
-          {{ t('home.examples') }}
-        </p>
-        <div class="flex flex-wrap gap-2">
-          <SaChip
-            v-for="ex in examples"
-            :key="ex"
-            icon="sparkle"
-            clickable
-            @click="useExample(ex)"
-          >
+      <!-- Ideas: a few at a time; tapping one puts it in the box to edit or send -->
+      <section v-if="ideas.length" class="sa-ideas" aria-labelledby="sa-ideas-title">
+        <div class="sa-ideas__head">
+          <h2 id="sa-ideas-title" class="sa-ideas__title">{{ t('home.examples') }}</h2>
+          <button v-if="examples.length > IDEAS_SHOWN" type="button" class="sa-ideas__more" @click="moreIdeas">
+            <span aria-hidden="true">🎲</span> {{ t('home.more_ideas') }}
+          </button>
+        </div>
+        <div class="sa-ideas__chips" aria-live="polite">
+          <SaChip v-for="ex in ideas" :key="ex" icon="sparkle" clickable @click="useExample(ex)">
             {{ ex }}
           </SaChip>
         </div>
-      </div>
+      </section>
 
       <!-- Ready lessons/quizzes to explore (returning learners), with a path to the full list. -->
       <template v-if="otherSuggestions.length">
@@ -416,6 +425,56 @@ function applyRedirect(suggestion: string) {
   margin: 0;
   font-size: 0.78rem;
   color: var(--color-ink-soft);
+}
+/* "Press Enter…" means nothing on a touch screen's keyboard. */
+@media (hover: none), (pointer: coarse) {
+  .sa-prompt__hint {
+    display: none;
+  }
+}
+.sa-ideas {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.sa-ideas__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sa-ideas__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+.sa-ideas__more {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: var(--tap-min);
+  padding: 0 0.6rem;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+.sa-ideas__more:hover {
+  background: var(--color-surface-2);
+}
+.sa-ideas__more:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.sa-ideas__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 .sa-prompt__mic {
   align-self: flex-start;
