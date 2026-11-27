@@ -149,7 +149,8 @@
     "switch_keep": "Nechat si svůj kód",
     "already_using": "S tímhle kódem se na tomto zařízení už učíš.",
     "parent_code_given": "Tohle je kód pro rodiče. Neslouží k učení, ale otevírá přehled pro rodiče (sledování dítěte).",
-    "open_parent": "Otevřít přehled pro rodiče"
+    "open_parent": "Otevřít přehled pro rodiče",
+    "use_other": "Máš jiný kód? Pokračuj s ním"
   },
   "gamification": {
     "level": "Úroveň",
@@ -205,7 +206,6 @@
   "footer": {
     "ai_disclosure": "Lekce a kvízy generuje AI — důležité informace si ověř.",
     "nav_label": "Patička",
-    "admin": "Administrace",
     "parents": "Pro rodiče"
   },
   "crisis": {
@@ -243,7 +243,6 @@
   "lesson": {
     "gated_hint": "Tahle část se odemkne, až dokončíš tu předchozí.",
     "minutes": "{n} min",
-    "objectives_title": "Co se naučíš",
     "review_title": "Vrátíme se k tomu, ať ti to zůstane",
     "review_body": "Ty nejzapeklitější myšlenky ti ve správnou chvíli vrátíme ke krátkému opakování, aby ti zůstaly natrvalo.",
     "closing": "Dotáhnout lekci až do konce se vyplácí — přesně takhle roste učení. Máš za sebou kus poctivé práce!",
@@ -337,6 +336,10 @@
         "sanitizer_model_id": {
           "label": "AI model pro kontrolu zadání",
           "help": "Jako první čte, co žák napíše: ověří, že je to v pořádku, a zjistí téma."
+        },
+        "key_check_model_id": {
+          "label": "AI model pro kontrolu odpovědí",
+          "help": "Každou novou otázku si sám vyřeší, aniž vidí správnou odpověď; otázku, kterou vyřeší jinak nebo najde chybnou, žák neuvidí. Nastavuje se v .env (SA_KEY_CHECK_MODEL_ID)."
         },
         "daily_budget_usd": {
           "label": "Denní rozpočet na AI",
@@ -477,12 +480,13 @@
   },
   "feedback": {
     "partial": "Skoro to je — pokračuj!",
-    "misconception": "Tahle odpověď svádí, když si člověk myslí:"
+    "misconception": "Tahle odpověď svádí, když si člověk myslí:",
+    "xp": "+{n} XP",
+    "combo": "· kombo ×{mult}"
   },
   "test": {
     "progress_label": "Průběh kvízu",
     "progress_value": "Otázka {current} z {total}",
-    "points": "{n} b.",
     "finish": "Dokončit",
     "level_up": "Postup! Teď jsi na úrovni {level} 🎉",
     "badge_unlocked": "Odemčen odznak: {title}!",
@@ -747,10 +751,13 @@
   "tasks": {
     "preparing": "Připravuje se…",
     "failed_hint": "Ještě není připravený — klepni a zkusíme to znovu",
-    "waiting_title": "Na tebe čeká",
+    "waiting_title": "Úkoly od rodičů",
     "more": "Další ({n})",
     "less": "Ukázat méně",
-    "start": "Začít"
+    "start": "Začít",
+    "continue_label": "Rozpracované",
+    "hide_continue": "Skrýt z úvodní stránky: {title}",
+    "hidden_note": "Skryto. Najdeš to v seznamu"
   },
   "progress": {
     "part": "Část {current} z {total}",

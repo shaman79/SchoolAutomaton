@@ -10,7 +10,7 @@ import { useRouter } from 'vue-router'
 
 import SaIcon from '@/components/common/SaIcon.vue'
 import { api } from '@/lib/api'
-import { progressLabel, subjectLabel } from '@/lib/format'
+import { displayTitle, progressLabel, subjectLabel } from '@/lib/format'
 import { useSessionStore } from '@/stores/session'
 import type { LearningSessionSummary } from '@/types/session'
 
@@ -100,7 +100,7 @@ function open(it: LearningSessionSummary) {
             <SaIcon :name="it.mode === 'test' ? 'trophy' : 'star'" :size="22" />
           </span>
           <span class="sa-hist__body">
-            <span class="sa-hist__name">{{ it.title || t('history.untitled') }}</span>
+            <span class="sa-hist__name">{{ displayTitle(it.title) || t('history.untitled') }}</span>
             <span class="sa-hist__meta">
               <span class="sa-hist__badge">{{ t(it.mode === 'test' ? 'history.mode_test' : 'history.mode_study') }}</span>
               <span v-if="it.assigned" class="sa-hist__from">{{ t('history.assigned') }}</span>

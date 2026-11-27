@@ -11,7 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import SaIcon from '@/components/common/SaIcon.vue'
-import { subjectLabel } from '@/lib/format'
+import { displayTitle, subjectLabel } from '@/lib/format'
 import type { LearningSessionSummary } from '@/types/session'
 
 withDefaults(
@@ -60,7 +60,7 @@ function open(it: LearningSessionSummary) {
             <SaIcon :name="it.mode === 'test' ? 'trophy' : 'star'" :size="20" />
           </span>
           <span class="sa-sugg__body">
-            <span class="sa-sugg__name">{{ it.title || t('history.untitled') }}</span>
+            <span class="sa-sugg__name">{{ displayTitle(it.title) || t('history.untitled') }}</span>
             <span class="sa-sugg__meta">
               <span class="sa-sugg__badge">{{
                 t(it.mode === 'test' ? 'history.mode_test' : 'history.mode_study')

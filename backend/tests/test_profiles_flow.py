@@ -162,6 +162,72 @@ async def test_recommendations_seeded_and_home(client):
 
 
 @pytest.mark.asyncio
+async def test_home_suggestions_leave_out_what_the_learner_finished(client):
+    """Home's "More to explore" is something to try next: a quiz the learner took to the end, a
+    lesson they read through — or someone else's copy of that same topic — is not offered. "More
+    like this" after a session is not affected."""
+    from datetime import UTC, datetime
+
+    from app.db.session import SessionLocal
+    from app.models import LearningRequest, Lesson, LessonProgress, Quiz, QuizAttempt
+
+    code = (await client.post("/api/v1/profiles", json={})).json()["resume_code"]
+    headers = {"X-Resume-Code": code}
+    pid = (await client.get("/api/v1/profiles/me", headers=headers)).json()["profile"]["id"]
+    now = datetime.now(UTC)
+
+    async with SessionLocal() as db:
+        def lesson(topic):
+            return Lesson(
+                request_id="x", topic=topic, detected_language="en", grade_band="G3-5",
+                subject="science", target_fkgl=6.0, objectives_json=[], model_id="m",
+                prompt_version="v",
+            )
+
+        def quiz(title):
+            return Quiz(request_id="x", title=title, language="en", grade_band="G3-5",
+                        subject="science", model_id="m", prompt_version="v")
+
+        read, unread = lesson("Water cycle"), lesson("Volcanoes")
+        taken, copy, open_quiz = quiz("Planets quiz"), quiz("Planets quiz"), quiz("Magnets quiz")
+        db.add_all([read, unread, taken, copy, open_quiz])
+        await db.flush()
+
+        def req(rid, owner, *, lesson_id=None, quiz_id=None):
+            return LearningRequest(
+                request_id=rid, profile_id=owner, decision_type="proceed",
+                mode="study" if lesson_id else "test", status="ready", lesson_id=lesson_id,
+                quiz_id=quiz_id, structured_intent_json={}, detected_language="en",
+                grade_band="G3-5", prompt_version="v", model_id="m",
+            )
+
+        db.add_all([
+            req("h-read", pid, lesson_id=read.id),
+            req("h-unread", pid, lesson_id=unread.id),
+            req("h-taken", pid, quiz_id=taken.id),
+            req("h-copy", None, quiz_id=copy.id),  # another learner's quiz on the same topic
+            req("h-open", pid, quiz_id=open_quiz.id),
+        ])
+        db.add(LessonProgress(profile_id=pid, lesson_id=read.id, revealed_up_to=11,
+                              created_at=now, last_active_at=now, completed_at=now))
+        db.add(QuizAttempt(profile_id=pid, quiz_id=taken.id, started_at=now, completed_at=now))
+        db.add(QuizAttempt(profile_id=pid, quiz_id=open_quiz.id, started_at=now))  # not finished
+        await db.commit()
+
+    home = (await client.get("/api/v1/profiles/me/recommendations", headers=headers)).json()
+    ids = {it["request_id"] for it in home}
+    assert ids == {"h-unread", "h-open"}
+
+    # "More like this" after the unread lesson still offers the finished ones (same subject).
+    seeded = (
+        await client.get(
+            "/api/v1/profiles/me/recommendations?request_id=h-unread", headers=headers
+        )
+    ).json()
+    assert "h-read" in {it["request_id"] for it in seeded}
+
+
+@pytest.mark.asyncio
 async def test_quiz_review_reveals_answers(client):
     from datetime import UTC, datetime
 

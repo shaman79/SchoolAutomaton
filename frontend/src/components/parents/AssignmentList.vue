@@ -16,7 +16,7 @@ import { toast } from '@/components/common/useToasts'
 import { api } from '@/lib/api'
 import { ApiError } from '@/lib/apiError'
 import { parentErrorKey } from '@/lib/errors'
-import { dayLabel, progressLabel } from '@/lib/format'
+import { dayLabel, displayTitle, progressLabel } from '@/lib/format'
 import type { Assignment, AssignmentStatus } from '@/types/session'
 
 const props = defineProps<{ code: string; tasks: Assignment[] }>()
@@ -116,7 +116,7 @@ async function remove(a: Assignment): Promise<void> {
         <div class="sa-alist__line">
           <div class="sa-alist__main">
             <p class="sa-alist__name">
-              {{ a.title || t('history.untitled') }}
+              {{ displayTitle(a.title) || t('history.untitled') }}
               <span class="sa-alist__badge">{{ t(a.mode === 'test' ? 'parent.mode_test' : 'parent.mode_study') }}</span>
             </p>
             <p class="sa-alist__status">
@@ -124,7 +124,7 @@ async function remove(a: Assignment): Promise<void> {
               <span>{{ statusText(a) }}</span>
             </p>
           </div>
-          <SaMenu :items="menu(a)" :label="t('parent.more_for', { name: a.title })" />
+          <SaMenu :items="menu(a)" :label="t('parent.more_for', { name: displayTitle(a.title) })" />
         </div>
         <SaButton
           v-if="a.status === 'failed' && confirmId !== a.id"
@@ -159,7 +159,7 @@ async function remove(a: Assignment): Promise<void> {
           <div class="sa-alist__line">
             <div class="sa-alist__main">
               <p class="sa-alist__name">
-                {{ a.title || t('history.untitled') }}
+                {{ displayTitle(a.title) || t('history.untitled') }}
                 <span class="sa-alist__badge">{{ t(a.mode === 'test' ? 'parent.mode_test' : 'parent.mode_study') }}</span>
               </p>
               <p class="sa-alist__status">
@@ -167,7 +167,7 @@ async function remove(a: Assignment): Promise<void> {
                 <span>{{ statusText(a) }}</span>
               </p>
             </div>
-            <SaMenu :items="menu(a)" :label="t('parent.more_for', { name: a.title })" />
+            <SaMenu :items="menu(a)" :label="t('parent.more_for', { name: displayTitle(a.title) })" />
           </div>
         </li>
       </ul>

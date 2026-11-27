@@ -48,7 +48,7 @@ from app.db.bootstrap import bootstrap  # noqa: E402
 from app.db.session import SessionLocal, init_db  # noqa: E402
 from app.llm import client as llm_client  # noqa: E402
 from app.llm import grader as grader_mod  # noqa: E402
-from app.llm import lesson_generator, quiz_generator  # noqa: E402
+from app.llm import key_check, lesson_generator, quiz_generator  # noqa: E402
 from app.models import Item, LearningRequest, LessonSection, QuizQuestion  # noqa: E402
 from app.sanitization import ratelimit, sanitize_request  # noqa: E402
 from app.schemas.enums import VisualKind  # noqa: E402
@@ -62,6 +62,7 @@ OUT_ROOT = REPO / ".claude" / "hillclimb"
 EFFORT_KEYS = {  # --efforts key -> the structured output model of that call site
     "plan": "LessonPlan", "section": "GenSection", "quiz": "GenQuiz",
     "grader": "GraderOutput", "svg": "SvgGenerationOutput", "classifier": "StructuredIntent",
+    "check": "KeyCheckOutput",
 }
 CEILING_S = {"classifier": 90, "grader": 120, "generation": 900, "svg": 240}
 
@@ -107,6 +108,7 @@ def _instrument(efforts: dict[str, str]) -> None:
     llm_client.generate_structured = recorded
     lesson_generator.generate_structured = recorded
     quiz_generator.generate_structured = recorded
+    key_check.generate_structured = recorded
     grader_mod.generate_structured = recorded
 
 

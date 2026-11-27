@@ -8,7 +8,9 @@ has. Used two ways, with DIFFERENT rules:
     quiz must never be offered as related to a language lesson. Better to show fewer (or none) than
     to surface an unrelated subject.
   - **On the home screen** (no seed) → "explore": popular ready content *across* subjects at the
-    learner's usual level — varied, similar-level, frequently-used — so the strip stays useful.
+    learner's usual level — varied, similar-level, frequently-used — so the strip stays useful. What
+    the learner has already finished (a quiz taken to the end, a lesson read through — or another
+    copy of the same topic) is not "something to try next" and is left out.
 
 Privacy: topics are the *academic* topic (e.g. "Photosynthesis"), never the raw student prompt (which
 is discarded/hashed per the one-way-flow invariant), so cross-profile reuse is safe.
@@ -22,7 +24,7 @@ from collections import Counter
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models import LearningRequest, Lesson, Profile, Quiz
+from ..models import LearningRequest, Lesson, LessonProgress, Profile, Quiz, QuizAttempt
 from ..schemas.profile import LearningSessionSummary
 
 # Tiny tokenizer for topic-overlap scoring: lowercase word-ish tokens, drop very short ones so
@@ -109,6 +111,35 @@ async def suggest(
 
     has_seed = bool(seed_subject or seed_topic)
 
+    # Home: what this learner already finished — by id, and by (title, mode) so another learner's
+    # copy of the same topic isn't offered either.
+    done_lessons: set[int] = set()
+    done_quizzes: set[int] = set()
+    done_keys: set[tuple[str, str]] = set()
+    if not has_seed:
+        for lid, topic in (
+            await db.execute(
+                select(Lesson.id, Lesson.topic)
+                .join(LessonProgress, LessonProgress.lesson_id == Lesson.id)
+                .where(
+                    LessonProgress.profile_id == profile.id,
+                    LessonProgress.completed_at.is_not(None),
+                )
+            )
+        ).all():
+            done_lessons.add(lid)
+            done_keys.add(((topic or "").strip().lower(), "study"))
+        for qid, title in (
+            await db.execute(
+                select(Quiz.id, Quiz.title)
+                .join(QuizAttempt, QuizAttempt.quiz_id == Quiz.id)
+                .where(QuizAttempt.profile_id == profile.id, QuizAttempt.completed_at.is_not(None))
+                .distinct()
+            )
+        ).all():
+            done_quizzes.add(qid)
+            done_keys.add(((title or "").strip().lower(), "test"))
+
     # The learner's usual level (for the no-seed home ranking): their most recent ready level.
     learner_level: str | None = None
     if not has_seed:
@@ -164,6 +195,12 @@ async def suggest(
         dedupe_key = ((c_title or "").strip().lower(), lr.mode)
         if dedupe_key in seen:
             continue
+        if (
+            (lr.lesson_id is not None and lr.lesson_id in done_lessons)
+            or (lr.quiz_id is not None and lr.quiz_id in done_quizzes)
+            or dedupe_key in done_keys
+        ):
+            continue  # home only (the sets are empty with a seed): already done
 
         if has_seed:
             # "More like this": same subject is REQUIRED — for OWN content too (the previous bug

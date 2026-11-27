@@ -2,8 +2,9 @@
 /**
  * TestView — the TestRunner. Resolves the quiz id (generation store, else request status), loads
  * the quiz and starts an attempt (test store). Presents ONE question at a time via QuestionRenderer
- * with a progress bar; on answer it grades through the store, shows immediate feedback inline (the
- * renderer renders AnswerFeedback off the GradeResult), and pops a combo/XP toast + celebration.
+ * with a progress bar (the questions done — answered or passed — so it starts empty); on answer it
+ * grades through the store and shows immediate feedback inline (the renderer renders AnswerFeedback
+ * off the GradeResult, XP earned included — no pop-up over the question) + a celebration.
  * "Next" advances; after the final question it calls test.complete() and routes to /results.
  * RESUME: the store reloads the attempt from the server, so a refresh / break / other device lands on
  * the same question with earlier answers (and their feedback) back in place.
@@ -30,6 +31,7 @@ import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
 import { answerErrorKey } from '@/lib/errors'
+import { displayTitle } from '@/lib/format'
 import { useGenerationStore } from '@/stores/generation'
 import { usePrefsStore } from '@/stores/prefs'
 import { useTestStore } from '@/stores/test'
@@ -71,6 +73,8 @@ const currentFeedback = computed(() => {
 })
 
 const answeredCurrent = computed(() => currentFeedback.value != null)
+// How far through the quiz: the questions behind the learner, plus this one once it is answered.
+const doneCount = computed(() => test.currentIndex + (answeredCurrent.value ? 1 : 0))
 const isLast = computed(() => test.currentIndex >= total.value - 1)
 
 // Single morphing CTA: the footer button is "Check" (drives the question's submit) until graded,
@@ -99,15 +103,9 @@ async function onAnswer(e: AnswerEvent) {
       return
     }
 
-    // Combo / XP feedback as a toast (in addition to the inline AnswerFeedback).
-    if (res.is_correct) {
-      void celebrateCorrect(null)
-      const combo = res.combo_multiplier > 1 ? ` ·  ×${res.combo_multiplier.toFixed(1)}` : ''
-      // A "+0 XP" toast reads as a penalty (XP shrinks as mastery grows) — only show real gains.
-      if (res.xp_awarded > 0) {
-        toast.success(`+${res.xp_awarded} ${t('gamification.xp')}${combo}`, { icon: 'star' })
-      }
-    }
+    // The XP earned shows inside the answer's feedback card (AnswerFeedback); a toast here would
+    // cover the quiz title and the question counter on a phone.
+    if (res.is_correct) void celebrateCorrect(null)
     if (res.level_up) {
       toast.success(t('test.level_up', { level: res.level_up.to_level }), { icon: 'trophy' })
     }
@@ -180,13 +178,13 @@ onMounted(openQuiz)
     <!-- Sticky-ish progress header -->
     <header class="sa-test__header">
       <div class="sa-test__meta">
-        <h1 class="sa-test__title">{{ quiz.title }}</h1>
+        <h1 class="sa-test__title">{{ displayTitle(quiz.title) }}</h1>
         <span class="sa-test__count" aria-hidden="true">
           {{ indexHuman }} / {{ total }}
         </span>
       </div>
       <ProgressBar
-        :value="indexHuman"
+        :value="doneCount"
         :max="total"
         tone="primary"
         size="md"
@@ -196,12 +194,9 @@ onMounted(openQuiz)
     </header>
 
     <!-- One question at a time (the QuestionRenderer's own root is the card; this wrapper only holds
-         the points label above it — no nested card). -->
+         the read-aloud button above it — no nested card). -->
     <div v-if="current" :key="current.item.id" class="sa-test__question">
       <div class="sa-test__qhead">
-        <p class="sa-test__points">
-          {{ t('test.points', { n: current.points }) }}
-        </p>
         <ReadAloudButton :target="questionEl" :lang="readLang" :foreign="readForeign" />
       </div>
       <div ref="questionEl">
@@ -277,9 +272,10 @@ onMounted(openQuiz)
 <style scoped>
 .sa-test__qhead {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+  justify-content: flex-end;
+}
+.sa-test__qhead:not(:empty) {
+  margin-bottom: 0.4rem;
 }
 .sa-test {
   display: flex;
@@ -311,14 +307,6 @@ onMounted(openQuiz)
   font-weight: 700;
   color: var(--color-ink-soft);
   font-variant-numeric: tabular-nums;
-}
-.sa-test__points {
-  margin: 0 0 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-primary);
 }
 .sa-test__footer {
   margin-top: auto;

@@ -2,7 +2,7 @@
 /**
  * LessonView — the LessonReader. Resolves the lesson id (generation store, else request status),
  * loads it, and renders the fixed 12-section skeleton mobile-first, single column:
- *   - learning objectives up top,
+ *   - (the learning goals are the lesson's own second part, "What you'll learn" — not repeated above),
  *   - each section by ordinal: title, SafeContent(body_markdown), LessonAsset(s) in a dual-coding
  *     layout, and QuestionRenderer for the interactive kinds (pretest / practice /
  *     interleaved_review / misconception_check),
@@ -38,7 +38,7 @@ import QuestionRenderer from '@/components/questions/QuestionRenderer.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
 import { answerErrorKey } from '@/lib/errors'
-import { subjectLabel } from '@/lib/format'
+import { displayTitle, subjectLabel } from '@/lib/format'
 import { levelLabel } from '@/lib/grades'
 import { loadReadingAnchor, saveReadingAnchor } from '@/lib/readingAnchor'
 import { useGenerationStore } from '@/stores/generation'
@@ -142,8 +142,6 @@ function isLocked(s: LessonSection): boolean {
   const prev = sortedSections.value.find((x) => x.ordinal === prevOrd)
   return !!prev && !sectionAttempted(prev)
 }
-
-const objectives = computed(() => lesson.value?.objectives ?? [])
 
 // Read-aloud: each section's rendered text, in the lesson's language.
 const sectionEls = ref<Record<number, HTMLElement | null>>({})
@@ -325,19 +323,8 @@ onUnmounted(() => lessonStore.stopPolls())
     <!-- Header -->
     <header class="sa-lesson__header">
       <p class="sa-lesson__crumbs">{{ crumbs }}</p>
-      <h1 class="sa-lesson__title">{{ lesson.topic }}</h1>
+      <h1 class="sa-lesson__title">{{ displayTitle(lesson.topic) }}</h1>
     </header>
-
-    <!-- Objectives -->
-    <section v-if="objectives.length" class="sa-card sa-lesson__objectives">
-      <h2 class="sa-lesson__h2">{{ t('lesson.objectives_title') }}</h2>
-      <ul class="sa-lesson__obj-list">
-        <li v-for="(o, i) in objectives" :key="i" class="sa-lesson__obj">
-          <span class="sa-lesson__obj-tick" aria-hidden="true">★</span>
-          <span>{{ o.text }}</span>
-        </li>
-      </ul>
-    </section>
 
     <!-- Sections in order (only the parts the learner has revealed; the next is prefetched ahead) -->
     <section
@@ -512,7 +499,6 @@ onUnmounted(() => lessonStore.stopPolls())
   font-weight: 700;
   margin: 0 0 0.6rem;
 }
-.sa-lesson__objectives,
 .sa-lesson__section,
 .sa-lesson__review {
   padding: 1.1rem;
@@ -520,24 +506,6 @@ onUnmounted(() => lessonStore.stopPolls())
 .sa-lesson__section {
   /* Resuming scrolls a part into view; keep its title clear of the sticky header. */
   scroll-margin-top: 4.5rem;
-}
-.sa-lesson__obj-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-.sa-lesson__obj {
-  display: flex;
-  gap: 0.55rem;
-  align-items: flex-start;
-}
-.sa-lesson__obj-tick {
-  color: var(--color-sun);
-  flex: none;
-  line-height: 1.5;
 }
 .sa-lesson__body--dual {
   display: flex;

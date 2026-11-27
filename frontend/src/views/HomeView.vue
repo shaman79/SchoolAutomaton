@@ -1,9 +1,11 @@
 <script setup lang="ts">
 /**
  * HomeView — the playful entry point. A dominant prompt hero (single textarea + big CTA),
- * example chips, and a link to /resume. What is waiting for the learner — the lesson/quiz they were
- * last in and tasks a parent gave — comes first, as one compact list (WaitingCard); the hero question
- * then sits right on its input. On submit we lazily ensure an anonymous profile, then
+ * example chips, and a link to /resume. Tasks a parent gave come first, as one compact list
+ * (WaitingCard) — they are what is genuinely waiting; the hero question then sits right on its input.
+ * The learner's own unfinished lesson/quiz is a quiet row below the box (ContinueRow): offered while
+ * it is recent, hideable on this device. The code to continue elsewhere is one line at the bottom
+ * (the full card, with the QR, is in Settings). On submit we lazily ensure an anonymous profile, then
  * route on the sanitizer Decision:
  *   proceed  -> /loading/:request_id (generation)
  *   clarify  -> inline clarifying question + suggestion chips that REFINE the prompt
@@ -27,10 +29,12 @@ import SaButton from '@/components/common/SaButton.vue'
 import SaChip from '@/components/common/SaChip.vue'
 import SaIcon from '@/components/common/SaIcon.vue'
 import SuggestionsStrip from '@/components/common/SuggestionsStrip.vue'
+import ContinueRow from '@/components/tasks/ContinueRow.vue'
 import WaitingCard from '@/components/tasks/WaitingCard.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import { api } from '@/lib/api'
 import { friendlyErrorKey } from '@/lib/errors'
+import { isContinueHidden } from '@/lib/hiddenContinue'
 import { MAX_PROMPT_CHARS } from '@/lib/limits'
 import { schoolYearLabel } from '@/lib/grades'
 import { useVoiceInput, voiceInputSupported } from '@/composables/useVoiceInput'
@@ -58,10 +62,16 @@ const promptEl = ref<HTMLTextAreaElement | null>(null)
 const suggestions = ref<LearningSessionSummary[]>([])
 // The unfinished lesson/quiz the learner was last in. Opening it restores their exact position.
 const unfinished = ref<LearningSessionSummary | null>(null)
-// Tasks a parent gave, not finished yet. Each session is listed once (WaitingCard merges a task with
-// "continue"; the suggestions leave out what it shows).
+// Tasks a parent gave, not finished yet. Each session is listed once: a started task stays in the
+// task card (not in the continue row), and the suggestions leave out what either shows.
 const tasks = ref<Assignment[]>([])
 const taskIds = computed(() => new Set(tasks.value.map((a) => a.request_id)))
+// The continue row: the unfinished session, unless it is a task (listed above) or hidden here.
+const continueRow = computed(() => {
+  const u = unfinished.value
+  if (!u?.progress || taskIds.value.has(u.request_id) || isContinueHidden(u)) return null
+  return u
+})
 // Don't list the same session twice (it already has a row above).
 const otherSuggestions = computed(() =>
   suggestions.value.filter(
@@ -200,8 +210,8 @@ function applyRedirect(suggestion: string) {
         <SaIcon name="back" :size="16" class="sa-home__progress-chevron" aria-hidden="true" />
       </RouterLink>
 
-      <!-- The lesson/quiz they were last in + tasks from a parent: one list, one tap each. -->
-      <WaitingCard :tasks="tasks" :unfinished="unfinished" />
+      <!-- Tasks from a parent: one list, one tap each (renders nothing without any). -->
+      <WaitingCard :tasks="tasks" />
     </template>
 
     <!-- Hero: the question, right above its input -->
@@ -329,6 +339,9 @@ function applyRedirect(suggestion: string) {
         </div>
       </div>
 
+      <!-- The lesson/quiz they were last in (recent, not a task, not hidden on this device). -->
+      <ContinueRow v-if="continueRow" :key="continueRow.request_id" :session="continueRow" />
+
       <!-- Today's spaced-repetition round (renders only when something is due). -->
       <DailyReviewCard />
 
@@ -368,8 +381,9 @@ function applyRedirect(suggestion: string) {
         <SaIcon name="back" :size="16" class="sa-home__progress-chevron" aria-hidden="true" />
       </RouterLink>
 
-      <!-- Once a profile exists, show the learner THEIR code to save; otherwise offer to enter one. -->
-      <ResumeCodeCard v-if="session.resumeCode" />
+      <!-- Once a profile exists, show the learner THEIR code to save (one line; the full card with
+           the QR is in Settings); otherwise offer to enter one. -->
+      <ResumeCodeCard v-if="session.resumeCode" line />
       <RouterLink v-else to="/resume" class="sa-home__resume">
         {{ t('home.have_code') }}
       </RouterLink>

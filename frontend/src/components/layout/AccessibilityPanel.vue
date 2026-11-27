@@ -272,8 +272,12 @@ watch(
                 </p>
               </section>
 
-              <!-- Your code to continue (anonymous; no account) — last: set once, rarely changed. -->
+              <!-- Your code to continue (anonymous; no account) — last: set once, rarely changed. And
+                   the way to carry on with another code here (a shared tablet, an older code). -->
               <ResumeCodeCard v-if="session.resumeCode" />
+              <RouterLink to="/resume" class="sa-other-code" @click="close">
+                {{ session.resumeCode ? t('resume.use_other') : t('home.have_code') }}
+              </RouterLink>
 
               <p class="text-xs text-[var(--color-ink-soft)]">{{ t('a11y.synced_hint') }}</p>
             </div>
@@ -291,6 +295,17 @@ watch(
 </template>
 
 <style scoped>
+.sa-other-code {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-min);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 .sa-parents-entry {
   display: flex;
   flex-direction: column;

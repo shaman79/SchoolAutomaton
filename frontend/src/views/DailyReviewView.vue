@@ -109,10 +109,8 @@ async function onAnswer(e: AnswerEvent) {
     }
     results.value = { ...results.value, [e.questionId]: res }
     session.applyStreak(res.streak) // the header flame, without waiting for the end of the round
-    if (res.is_correct) {
-      void celebrateCorrect(null)
-      if (res.xp_awarded) toast.success(`+${res.xp_awarded} ${t('gamification.xp')}`, { icon: 'star' })
-    }
+    // The XP earned shows inside the feedback card (AnswerFeedback), not as a pop-up over the round.
+    if (res.is_correct) void celebrateCorrect(null)
     if (res.level_up) {
       toast.success(t('test.level_up', { level: res.level_up.to_level }), { icon: 'trophy' })
     }
@@ -258,7 +256,7 @@ onMounted(() => {
           ⏱ {{ t('daily.sprint_left', { n: sprintLeft }) }}
         </p>
         <ProgressBar
-          :value="index + 1"
+          :value="index + (answered ? 1 : 0)"
           :max="total"
           tone="primary"
           size="md"

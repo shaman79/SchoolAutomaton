@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { setLocale } from '@/i18n'
-import { formatNumber, humanizeSubject, parseNumericAnswer, subjectLabel } from '@/lib/format'
+import {
+  displayTitle,
+  formatNumber,
+  humanizeSubject,
+  parseNumericAnswer,
+  subjectLabel,
+  topicLabel,
+} from '@/lib/format'
 
 describe('humanizeSubject', () => {
   it('title-cases snake_case keys', () => {
@@ -86,5 +93,57 @@ describe('dayLabel', () => {
     expect(dayLabel(new Date(2026, 10, 25, 12).toISOString(), now)).toBe('dnes')
     expect(dayLabel(null, now)).toBe('')
     expect(dayLabel('garbage', now)).toBe('')
+  })
+})
+
+describe('displayTitle', () => {
+  it('drops a bracketed note that only restates the title, and capitalizes it', () => {
+    expect(displayTitle('zlomky na obrázcích (vysvětlení zlomků pomocí obrázků)')).toBe(
+      'Zlomky na obrázcích',
+    )
+  })
+
+  it('drops a gloss in another language', () => {
+    expect(displayTitle('Vyjmenovaná slova po B (Czech spelling: words after B)')).toBe(
+      'Vyjmenovaná slova po B',
+    )
+  })
+
+  it('keeps a note that adds something', () => {
+    expect(displayTitle('Shakespeare (Romeo a Julie)')).toBe('Shakespeare (Romeo a Julie)')
+    expect(displayTitle('násobilka (6 a 7)')).toBe('Násobilka (6 a 7)')
+    expect(displayTitle('zlomky (sčítání a odčítání)')).toBe('Zlomky (sčítání a odčítání)')
+    expect(displayTitle('rovnice (zápis: 2x + 3 = 7)')).toBe('Rovnice (zápis: 2x + 3 = 7)')
+  })
+
+  it('leaves words that are not plain lowercase as they are', () => {
+    expect(displayTitle('pH roztoků')).toBe('pH roztoků')
+    expect(displayTitle('iPhone a baterie')).toBe('iPhone a baterie')
+    expect(displayTitle('x na druhou')).toBe('x na druhou')
+    expect(displayTitle('Vyjmenovaná slova po B: kvíz')).toBe('Vyjmenovaná slova po B: kvíz')
+  })
+
+  it('capitalizes a hyphenated first word and tidies spaces', () => {
+    expect(displayTitle('  e-mail  a   dopis ')).toBe('E-mail a dopis')
+  })
+
+  it('is empty for nothing', () => {
+    expect(displayTitle(null)).toBe('')
+    expect(displayTitle('')).toBe('')
+  })
+})
+
+describe('topicLabel', () => {
+  it('shows an identifier left as a name as words', () => {
+    expect(topicLabel('deleni-v-oboru-nasobilky')).toBe('Deleni v oboru nasobilky')
+    expect(topicLabel('bydlit')).toBe('Bydlit')
+  })
+
+  it('keeps real names (and sentences) as written', () => {
+    expect(topicLabel('Dělení v oboru násobilky')).toBe('Dělení v oboru násobilky')
+    expect(topicLabel('Umím zapsat zlomek z obrázku.')).toBe('Umím zapsat zlomek z obrázku.')
+    expect(topicLabel('Vyjmenovaná slova po B (Czech spelling: words after B)')).toBe(
+      'Vyjmenovaná slova po B',
+    )
   })
 })

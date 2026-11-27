@@ -11,7 +11,7 @@ only re-reveals what the grading endpoint already revealed to this same learner 
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -328,13 +328,22 @@ async def quiz_progress_map(
     return out
 
 
-async def continue_candidate(db: AsyncSession, profile: Profile) -> LearningSessionSummary | None:
+# "Continue where you left off" offers only what the learner was in lately: a lesson left half-read
+# weeks ago is not unfinished business any more (it stays in their list, with its position).
+CONTINUE_WINDOW = timedelta(days=14)
+
+
+async def continue_candidate(
+    db: AsyncSession, profile: Profile, now: datetime | None = None
+) -> LearningSessionSummary | None:
     """The unfinished lesson/quiz this learner was most recently active in — the home screen's
-    "Continue where you left off". None when nothing is in progress.
+    "Continue where you left off". None when nothing is in progress, or nothing was touched within
+    ``CONTINUE_WINDOW``.
 
     Built from the learner's own progress rows (not their request history), so it also covers a
     lesson/quiz they opened from the shared catalog; the route id is the content's originating
     request."""
+    now = now or datetime.now(UTC)
     candidates: list[tuple[datetime, LearningSessionSummary]] = []
 
     lesson_row = (
@@ -400,6 +409,7 @@ async def continue_candidate(db: AsyncSession, profile: Profile) -> LearningSess
                 )
             )
 
-    if not candidates:
+    recent = [c for c in candidates if c[0] is not None and c[0] >= now - CONTINUE_WINDOW]
+    if not recent:
         return None
-    return max(candidates, key=lambda c: c[0])[1]
+    return max(recent, key=lambda c: c[0])[1]

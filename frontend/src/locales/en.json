@@ -147,7 +147,8 @@
     "switch_keep": "Keep my current code",
     "already_using": "You're already learning with this code on this device.",
     "parent_code_given": "This is a parent code. It opens the parent view (following a child), not learning.",
-    "open_parent": "Open the parent view"
+    "open_parent": "Open the parent view",
+    "use_other": "Have a different code? Continue with it"
   },
   "gamification": {
     "level": "Level",
@@ -203,7 +204,6 @@
   "footer": {
     "ai_disclosure": "Lessons & quizzes are AI-generated — double-check anything important.",
     "nav_label": "Footer",
-    "admin": "Admin",
     "parents": "For parents"
   },
   "crisis": {
@@ -241,7 +241,6 @@
   "lesson": {
     "gated_hint": "Finish the section above to unlock this one.",
     "minutes": "{n} min",
-    "objectives_title": "What you'll learn",
     "review_title": "Coming back to remember it",
     "review_body": "We'll bring the trickiest ideas back for a quick review at just the right time, so they stick for good.",
     "closing": "You showed up and gave it a go — that's how learning grows. Proud of you!",
@@ -335,6 +334,10 @@
         "sanitizer_model_id": {
           "label": "Input-check AI model",
           "help": "Reads what a learner types first: checks it is safe and works out the topic."
+        },
+        "key_check_model_id": {
+          "label": "Answer-check AI model",
+          "help": "Solves every new question without seeing its answer key; a question it answers differently, or finds flawed, never reaches a learner. Set in .env (SA_KEY_CHECK_MODEL_ID)."
         },
         "daily_budget_usd": {
           "label": "Daily AI budget",
@@ -475,12 +478,13 @@
   },
   "feedback": {
     "partial": "Partly there — keep going!",
-    "misconception": "This answer is tempting if you think:"
+    "misconception": "This answer is tempting if you think:",
+    "xp": "+{n} XP",
+    "combo": "· combo ×{mult}"
   },
   "test": {
     "progress_label": "Quiz progress",
     "progress_value": "Question {current} of {total}",
-    "points": "{n} pts",
     "finish": "Finish",
     "level_up": "Level up! You're now level {level} 🎉",
     "badge_unlocked": "Badge unlocked: {title}!",
@@ -745,10 +749,13 @@
   "tasks": {
     "preparing": "Getting ready…",
     "failed_hint": "Not ready yet — tap to try again",
-    "waiting_title": "Waiting for you",
+    "waiting_title": "From your parents",
     "more": "{n} more",
     "less": "Show fewer",
-    "start": "Start"
+    "start": "Start",
+    "continue_label": "Where you left off",
+    "hide_continue": "Hide from the home page: {title}",
+    "hidden_note": "Hidden. You can still find it in"
   },
   "progress": {
     "part": "Part {current} of {total}",

@@ -1,14 +1,15 @@
 /**
- * Home: what is waiting, in one list — the lesson/quiz the learner was last in and tasks from a
- * parent. Each row is one tap: a ready task opens the lesson/quiz, a started one continues, one being
- * prepared (or that failed) goes through the loading screen. Started first; three rows, then fold.
+ * Home: tasks from a parent, in one list at the top. Each row is one tap: a ready task opens the
+ * lesson/quiz, a started one continues, one being prepared (or that failed) goes through the loading
+ * screen. Started first; three rows, then fold. The learner's own unfinished session is not here
+ * (ContinueRow).
  */
 import { mount } from '@vue/test-utils'
 import { expect, it } from 'vitest'
 
 import WaitingCard from '@/components/tasks/WaitingCard.vue'
 import { i18n } from '@/i18n'
-import type { Assignment, LearningSessionSummary } from '@/types/session'
+import type { Assignment } from '@/types/session'
 import { makeRouter } from '@/views/__tests__/fixtures'
 
 const t = i18n.global.t
@@ -20,38 +21,32 @@ function task(id: number, over: Partial<Assignment> = {}): Assignment {
     status: 'ready', progress: null, result: null, ...over,
   }
 }
-function render(tasks: Assignment[], unfinished: LearningSessionSummary | null = null) {
-  return mount(WaitingCard, { props: { tasks, unfinished }, global: { plugins: [i18n, makeRouter()] } })
+function render(tasks: Assignment[]) {
+  return mount(WaitingCard, { props: { tasks }, global: { plugins: [i18n, makeRouter()] } })
 }
 
 it('one tap each, the right way for where it is; started ones first', () => {
-  const w = render(
-    [
-      task(1, { status: 'preparing' }),
-      task(2, { mode: 'study', status: 'started', progress: progress(3, 8) }),
-      task(3),
-    ],
-    {
-      request_id: 'own', mode: 'test', status: 'ready', lesson_id: null, quiz_id: 9, title: 'My quiz',
-      subject: 'science', created_at: null, progress: progress(2, 5),
-    },
-  )
+  const w = render([
+    task(1, { status: 'preparing' }),
+    task(2, { mode: 'study', status: 'started', progress: progress(3, 8) }),
+    task(3),
+    task(4),
+  ])
+  expect(w.find('h2').text()).toBe(t('tasks.waiting_title'))
   const links = w.findAll('a')
-  expect(links.map((a) => a.attributes('href'))).toEqual(['/test/own', '/lesson/r2', '/loading/r1'])
+  expect(links.map((a) => a.attributes('href'))).toEqual(['/lesson/r2', '/loading/r1', '/test/r3'])
   expect(links[0].text()).toContain(t('common.continue'))
-  expect(links[1].text()).toContain(t('progress.part', { current: 3, total: 8 }))
-  expect(links[1].text()).toContain(t('history.assigned'))
-  expect(links[2].text()).toContain(t('tasks.preparing'))
-  // The fourth (a ready task) is folded away.
+  expect(links[0].text()).toContain(t('progress.part', { current: 3, total: 8 }))
+  expect(links[1].text()).toContain(t('tasks.preparing'))
+  expect(links[2].text()).toContain(t('tasks.start'))
+  // The fourth is folded away.
   expect(w.text()).toContain(t('tasks.more', { n: 1 }))
 })
 
-it('a task that is also "continue" is listed once', () => {
-  const w = render([task(1, { status: 'started', progress: progress(2, 5) })], {
-    request_id: 'r1', mode: 'test', status: 'ready', lesson_id: null, quiz_id: 9, title: 'Task 1',
-    subject: 'math', created_at: null, progress: progress(2, 5),
-  })
-  expect(w.findAll('a')).toHaveLength(1)
+it('shows a tidy title', () => {
+  const w = render([task(1, { title: 'zlomky na obrázcích (vysvětlení zlomků pomocí obrázků)' })])
+  expect(w.find('a').text()).toContain('Zlomky na obrázcích')
+  expect(w.find('a').text()).not.toContain('vysvětlení')
 })
 
 it('a task that could not be prepared is retried from the loading screen', () => {

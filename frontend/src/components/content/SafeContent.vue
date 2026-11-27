@@ -91,8 +91,22 @@ const isSvg = computed(() => props.svg != null)
   margin: 0 0 0.85em;
   padding-inline-start: 1.4em;
 }
+/* The base styles strip list markers; in generated text a list is a list (and steps are numbered). */
+.sa-safe-md :deep(ul) {
+  list-style: disc;
+}
+.sa-safe-md :deep(ul ul) {
+  list-style: circle;
+}
+.sa-safe-md :deep(ol) {
+  list-style: decimal;
+}
 .sa-safe-md :deep(li) {
   margin: 0.2em 0;
+}
+.sa-safe-md :deep(li::marker) {
+  color: var(--color-primary);
+  font-weight: 700;
 }
 .sa-safe-md :deep(a) {
   color: var(--color-primary-strong);

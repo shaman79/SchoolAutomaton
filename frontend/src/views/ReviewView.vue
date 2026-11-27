@@ -16,6 +16,7 @@ import SafeContent from '@/components/content/SafeContent.vue'
 import AnswerFeedback from '@/components/questions/AnswerFeedback.vue'
 import { ApiError, api } from '@/lib/api'
 import { formatAnswer } from '@/lib/answers'
+import { displayTitle } from '@/lib/format'
 import { useGenerationStore } from '@/stores/generation'
 import type { QuizReview } from '@/types/session'
 
@@ -57,7 +58,7 @@ onMounted(async () => {
 <template>
   <section v-if="review" class="sa-review">
     <header class="sa-review__header">
-      <h1 class="sa-review__title">{{ review.title }}</h1>
+      <h1 class="sa-review__title">{{ displayTitle(review.title) }}</h1>
       <p class="sa-review__score">
         <span class="sa-review__pct">{{ accuracyPct }}%</span>
         <span class="sa-review__count">{{ t('review.correct_of', { correct: review.correct_count, total: review.total }) }}</span>

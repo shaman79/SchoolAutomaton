@@ -11,6 +11,7 @@ Imports stay within the B2 module + the frozen spine (core/db/models/schemas) + 
 
 from __future__ import annotations
 
+import asyncio
 import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -62,6 +63,7 @@ from app.schemas.generation import (  # noqa: E402
     GenMcqPayload,
     GenObjective,
     GenQuiz,
+    KeyCheckOutput,
     GenSection,
     GenVisualSpec,
     GraderOutput,
@@ -199,6 +201,8 @@ def _make_mock_client():
             title = fmt["schema"].get("title")
             if title == "GraderOutput":
                 return _FakeText(_canned_grader())
+            if title == "KeyCheckOutput":  # the answer-key check: no verdicts -> nothing dropped
+                return _FakeText(KeyCheckOutput())
             raise AssertionError(f"unexpected structured-output call in mock: {title}")
         user = kwargs["messages"][0]["content"]
         if '"title":"GenQuiz"' in user:
@@ -491,6 +495,93 @@ async def test_generate_quiz_persists(db):
     assert section_ev["data"]["ordinal"] == 0
     assert section_ev["data"]["kind"] == "quiz"
     assert "title" in section_ev["data"]
+
+
+def _with_checker_verdicts(client, verdicts: list[dict]) -> None:
+    """The answer-key check (a second model) answers with these verdicts instead of none."""
+    inner = client.messages.create.side_effect
+
+    async def _create(**kwargs):
+        fmt = (kwargs.get("output_config") or {}).get("format")
+        if fmt is not None and fmt["schema"].get("title") == "KeyCheckOutput":
+            return _FakeText(KeyCheckOutput.model_validate({"verdicts": verdicts}))
+        return await inner(**kwargs)
+
+    client.messages.create = AsyncMock(side_effect=_create)
+
+
+@pytest.mark.asyncio
+async def test_a_question_the_answer_check_rejects_is_never_stored(db, monkeypatch):
+    """Quiz: the second model picks another option for question 2 → it is dropped before anything is
+    written; the check's call is billed (a usage row for its model). The quiz keeps its floor."""
+    from app.models import GenerationUsage
+
+    monkeypatch.setattr(quiz_generator, "MIN_QUIZ_QUESTIONS", 1)
+    client = _make_mock_client()
+    _with_checker_verdicts(client, [{"number": 1, "option_ids": ["a"]}, {"number": 2, "option_ids": ["b"]}])
+    lr = await _seed_request(db, Mode.TEST)
+    quiz = await quiz_generator.generate_quiz(db, lr, _intent(Mode.TEST), client=client)
+    await db.commit()
+    qqs = list(await db.scalars(select(QuizQuestion).where(QuizQuestion.quiz_id == quiz.id)))
+    assert len(qqs) == 1
+    models = list(await db.scalars(select(GenerationUsage.model).where(
+        GenerationUsage.request_id == lr.request_id)))
+    assert settings.key_check_model_id in models and settings.model_id in models
+
+
+@pytest.mark.asyncio
+async def test_lesson_part_questions_go_through_the_answer_check(db):
+    """Lesson: a practice question the check finds flawed is not part of the section."""
+    client = _make_mock_client()
+    _with_checker_verdicts(client, [{"number": 1, "flawed": True, "reason": "two defensible answers"}])
+    intent = _intent(Mode.STUDY)
+    section, usages = await lesson_generator._generate_section(
+        intent, LessonPlanStub(kind=SectionKind.PRACTICE, title="Practice"),
+        request_id="r-check", sem=asyncio.Semaphore(1), client=client,
+    )
+    assert section.items == []
+    assert [u.model for u in usages] == [settings.model_id, settings.key_check_model_id]
+
+
+@pytest.mark.asyncio
+async def test_concepts_get_human_names_and_old_placeholder_names_heal(db):
+    """A question's concept is stored under its human name ("Býk"), not its identifier; a concept
+    first stored with a placeholder (its identifier, or an "I can ..." sentence) takes the first real
+    name that comes along — but a real name is never overwritten."""
+    from app.llm.lesson_generator import _upsert_concept
+
+    slug_named = await _upsert_concept(db, "byk", name="byk", subject="language_arts", grade="G3-5")
+    sentence = await _upsert_concept(db, "zapis-zlomku", name="Umím zapsat zlomek z obrázku.",
+                                     subject="math", grade="G3-5")
+    real = await _upsert_concept(db, "polovina", name="Polovina", subject="math", grade="G3-5")
+    await db.commit()
+
+    assert (await _upsert_concept(db, "byk", name="Býk", subject="language_arts", grade="G3-5")).name == "Býk"
+    assert (await _upsert_concept(db, "zapis-zlomku", name="Zápis zlomku", subject="math",
+                                  grade="G3-5")).name == "Zápis zlomku"
+    assert (await _upsert_concept(db, "polovina", name="Půlka", subject="math", grade="G3-5")).name == "Polovina"
+    # A placeholder never replaces another placeholder (or a real name).
+    assert (await _upsert_concept(db, "polovina", name="polovina", subject="math", grade="G3-5")).name == "Polovina"
+    assert slug_named.id and sentence.id and real.id
+
+    client = _make_mock_client()
+    inner = client.messages.create.side_effect
+
+    async def _named(**kwargs):
+        out = await inner(**kwargs)
+        if '"title":"GenQuiz"' in kwargs["messages"][0]["content"]:
+            quiz = GenQuiz.model_validate_json(out.content[0].text)
+            named = [q.model_copy(update={"concept_slug": "fotosynteza", "concept_name": "  Fotosyntéza\n"})
+                     for q in quiz.questions]
+            return _FakeText(quiz.model_copy(update={"questions": named}))
+        return out
+
+    client.messages.create = AsyncMock(side_effect=_named)
+    lr = await _seed_request(db, Mode.TEST)
+    await quiz_generator.generate_quiz(db, lr, _intent(Mode.TEST), client=client)
+    await db.commit()
+    concept = await db.scalar(select(Concept).where(Concept.slug == "fotosynteza"))
+    assert concept.name == "Fotosyntéza"
 
 
 @pytest.mark.asyncio

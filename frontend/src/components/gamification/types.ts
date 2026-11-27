@@ -56,3 +56,13 @@ export interface ResultsSummary {
   streak: { current: number; longest: number; frozen?: boolean }
   mastery_changes: MasteryChange[]
 }
+
+/** Per-state presentation in the knowledge garden (glyph = the garden metaphor, tone = colour). The
+ *  words are `tree.state.<state>`. Shared by the garden and "What grew" after a quiz. */
+export const STATE_META: Record<NodeState, { glyph: string; tone: string }> = {
+  locked: { glyph: '🌱', tone: 'var(--color-ink-soft)' },
+  available: { glyph: '🌿', tone: 'var(--color-sky)' },
+  learning: { glyph: '🪴', tone: 'var(--color-primary)' },
+  mastered: { glyph: '🌸', tone: 'var(--color-mint)' },
+  needs_review: { glyph: '💧', tone: 'var(--color-sun)' },
+}

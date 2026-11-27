@@ -173,6 +173,8 @@ function submit() {
       :explanation="feedback.explanation"
       :misconception="feedback.misconception"
       :sound="sound"
+      :xp="feedback.xp_awarded"
+      :combo="feedback.combo_multiplier"
     />
   </div>
 </template>
