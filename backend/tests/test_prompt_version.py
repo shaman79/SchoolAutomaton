@@ -26,12 +26,20 @@ import pytest
 
 from app.core.constants import PROMPT_VERSION
 from app.llm import client as llm_client
-from app.llm import lesson_generator, prompts
+from app.llm import key_check, lesson_generator, prompts
 from app.llm.prompts import curriculum, rvp
 from app.llm.prompts.curriculum import base_language, curriculum_directive
 from app.sanitization import classifier
-from app.schemas.enums import LESSON_SKELETON, GradeBand, Mode, Subject, VisualKind
-from app.schemas.generation import GenQuiz, GenSection, GenVisualSpec, GraderOutput, LessonPlan
+from app.schemas.enums import LESSON_SKELETON, GradeBand, ItemType, Mode, Subject, VisualKind
+from app.schemas.generation import (
+    GenItem,
+    GenQuiz,
+    GenSection,
+    GenVisualSpec,
+    GraderOutput,
+    KeyCheckOutput,
+    LessonPlan,
+)
 from app.schemas.intent import StructuredIntent
 from app.visuals import claude_svg, replicate_raster
 
@@ -42,12 +50,35 @@ PROMPT_VERSIONS: dict[str, str] = {
     "2026.10.29": "b74529f20652d4f851bfae188fef99b06c4866306abf8775be97b2bd0f5be49e",
     # Czech RVP ZV outcomes (NPI open data) in the lesson/quiz user messages for cs-CZ, grades 1-9.
     "2026.11.20": "0ddc112db2607e45bd02dc895fda8076e239f07521662801d409b7211813b673",
+    # Concept names for learners, stricter true/false + explanation rules, topic headings without
+    # bracketed glosses, and the answer-key check's own prompt.
+    "2026.11.26": "1ea1aa93cbae694b3765e248e93cd6f5cb29c0b15161abd9353c438f59b3f065",
 }
 
 _VERSION_RE = re.compile(r"^\d{4}\.\d{2}\.\d{2}(\.\d+)?$")
 _SAMPLE_YEAR = {"K": 0, "G1-2": 2, "G3-5": 4, "G6-8": 7, "G9-12": 11}
 _OUTPUT_MODELS = (LessonPlan, GenSection, GenQuiz, GraderOutput, StructuredIntent,
-                  claude_svg.SvgGenerationOutput)
+                  claude_svg.SvgGenerationOutput, KeyCheckOutput)
+
+
+def _key_check_items() -> list:
+    """One question of every type the answer-key check sees, as it renders them (keys left out)."""
+    payloads = {
+        ItemType.MCQ: {"options": [{"id": "a", "text": "1/2", "is_correct": True},
+                                   {"id": "b", "text": "1/3", "is_correct": False}]},
+        ItemType.TRUE_FALSE: {"statement": "1/2 is more than 1/3.", "answer": True},
+        ItemType.NUMERIC: {"answer": 0.75, "tolerance": 0, "unit": "kg"},
+        ItemType.ORDER: {"tokens": [{"id": "t1", "text": "1/4"}, {"id": "t2", "text": "1/2"}],
+                         "correct_order": ["t1", "t2"]},
+        ItemType.MATCH: {"left": [{"id": "l1", "text": "half"}], "right": [{"id": "r1", "text": "1/2"}],
+                         "correct": [{"left_id": "l1", "right_id": "r1"}]},
+        ItemType.CLOZE: {"text_template": "One {{b1}} is 1/2.", "blanks": [{"id": "b1", "answer": "half",
+                         "choices": ["half", "third"]}]},
+        ItemType.SHORT_ANSWER: {"placeholder": "..."},
+    }
+    gens = [GenItem(item_type=t, concept_slug="halves", concept_name="Halves", bloom_tier=2,
+                    stem_markdown="Which is a half?", payload=p) for t, p in payloads.items()]
+    return [(i + 1, g, key_check.coerce_payload(g.item_type, g.payload)) for i, g in enumerate(gens)]
 
 
 def _intents() -> list[StructuredIntent]:
@@ -84,6 +115,9 @@ def _texts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
         ("json_mode", llm_client.JSON_MODE_INSTRUCTION),
         ("validation_retry", llm_client.VALIDATION_RETRY_INSTRUCTION),
         ("simplify", lesson_generator.SIMPLIFY_INSTRUCTION.format(measured=9.4, target=5.0)),
+        ("key_check_system", key_check.SYSTEM_PROMPT),
+        ("key_check_user", key_check.build_user(
+            _key_check_items(), subject="math", grade_band="G3-5", language="cs")),
     ]
     for i, intent in enumerate(_intents()):
         tag = f"{intent.education_locale}/{intent.grade_band.value}/{intent.school_year}"

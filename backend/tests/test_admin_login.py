@@ -5,6 +5,7 @@ escalating lockout."""
 from __future__ import annotations
 
 import asyncio
+import gc
 import threading
 import time
 
@@ -50,14 +51,21 @@ async def test_failed_logins_do_not_stall_the_event_loop(client, monkeypatch):
             await asyncio.sleep(0.01)
             lags.append(time.perf_counter() - t - 0.01)
 
-    tk = asyncio.create_task(ticker())
-    await asyncio.sleep(0.05)
-    lags.clear()
-    codes = await asyncio.gather(
-        *[client.post(LOGIN, json={"username": "admin", "password": f"g{i}"}) for i in range(20)]
-    )
-    stop = True
-    await tk
+    # A full garbage-collection pass of the whole loaded test session (~250 ms here) landing in this
+    # window is not what is measured: collect first, and keep the collector out of the window.
+    gc.collect()
+    gc.disable()
+    try:
+        tk = asyncio.create_task(ticker())
+        await asyncio.sleep(0.05)
+        lags.clear()
+        codes = await asyncio.gather(
+            *[client.post(LOGIN, json={"username": "admin", "password": f"g{i}"}) for i in range(20)]
+        )
+        stop = True
+        await tk
+    finally:
+        gc.enable()
     assert {r.status_code for r in codes} == {401}
     assert max(lags) < 0.1, f"event loop stalled {max(lags) * 1000:.0f} ms"
 

@@ -11,6 +11,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import SaIcon from '@/components/common/SaIcon.vue'
 import SafeContent from '@/components/content/SafeContent.vue'
 import { useReducedMotion } from '@/composables/useReducedMotion'
 import type { FeedbackBlock } from '@/types/session'
@@ -29,11 +30,21 @@ const props = withDefaults(
     misconception?: { description: string; refutation: string } | null
     /** Play a chime on correct (gated on profile sound pref by the caller). */
     sound?: boolean
+    /** XP this answer earned — shown here, next to the verdict, rather than as a pop-up that would
+     *  cover the question. 0 shows nothing ("+0" would read as a penalty). */
+    xp?: number
+    /** The combo multiplier applied to that XP (shown when above 1). */
+    combo?: number
   }>(),
-  { partial: 1, feedback: null, explanation: null, misconception: null, sound: false },
+  { partial: 1, feedback: null, explanation: null, misconception: null, sound: false, xp: 0, combo: 1 },
 )
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const comboText = computed(() =>
+  props.combo > 1
+    ? new Intl.NumberFormat(locale.value, { maximumFractionDigits: 1 }).format(props.combo)
+    : '',
+)
 const { reduced } = useReducedMotion()
 
 type State = 'correct' | 'partial' | 'incorrect'
@@ -127,6 +138,10 @@ watch(state, trigger)
     <div class="sa-feedback__head">
       <span class="sa-feedback__icon" aria-hidden="true">{{ icon }}</span>
       <span class="sa-feedback__headline" :class="{ 'sr-only': hasBody }">{{ statusLabel }}</span>
+      <span v-if="xp > 0" class="sa-feedback__xp">
+        <SaIcon name="star" :size="14" aria-hidden="true" />{{ t('feedback.xp', { n: xp }) }}
+        <span v-if="comboText" class="sa-feedback__combo">{{ t('feedback.combo', { mult: comboText }) }}</span>
+      </span>
     </div>
 
     <!-- The specific trap behind the chosen wrong answer comes first ("why THIS answer"), then the
@@ -156,6 +171,25 @@ watch(state, trigger)
   align-items: center;
   gap: 0.6rem;
   font-weight: 700;
+}
+/* The XP earned, at the end of the verdict row. */
+.sa-feedback__xp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  padding: 0.15rem 0.6rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--color-sun) 28%, var(--color-surface));
+  color: var(--color-ink);
+  font-size: 0.88rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.sa-feedback__combo {
+  font-weight: 600;
+  color: var(--color-ink-soft);
 }
 .sa-feedback__icon {
   display: inline-flex;

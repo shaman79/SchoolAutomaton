@@ -27,7 +27,7 @@ const i18n = createI18n({
   messages: {
     en: {
       common: { check: 'Check', correct: 'Correct!', not_yet: 'Not yet — keep going!' },
-      feedback: { partial: 'Partly there' },
+      feedback: { partial: 'Partly there', xp: '+{n} XP', combo: '· combo ×{mult}' },
       q: { mcq: { select_one: 'Select one', select_all: 'Select all that apply' } },
     },
   },
@@ -128,7 +128,16 @@ describe('McqQuestion', () => {
     expect(status.attributes('aria-live')).toBe('polite')
     // never color-only: an icon glyph accompanies the text
     expect(status.find('.sa-feedback__icon').exists()).toBe(true)
+    // The XP earned is part of the verdict (no pop-up over the question); no combo at ×1.
+    expect(status.find('.sa-feedback__xp').text()).toBe('+10 XP')
     // Once graded, the Check button is removed (replaced by the consumer's Next) — not just disabled.
     expect(w.find('.sa-q__check').exists()).toBe(false)
+  })
+
+  it('marks one answer with a round dot and several with square ticks', () => {
+    expect(factory(makeItem(false)).findAll('.sa-option__box--radio')).toHaveLength(
+      factory(makeItem(false)).findAll('.sa-option__box').length,
+    )
+    expect(factory(makeItem(true)).find('.sa-option__box--radio').exists()).toBe(false)
   })
 })

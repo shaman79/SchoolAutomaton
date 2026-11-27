@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Shows the learner THEIR resume/continuation code (anonymous, no account) so they can save it and
- * continue on any device. Surfaced on Home and in Settings. Copy-to-clipboard with a toast.
+ * continue on any device. Surfaced on Home (`line`: one quiet row — the code, Copy, Share) and in
+ * Settings (the full card, with the QR and why to save it). Copy-to-clipboard with a toast.
  * Renders nothing if there's no code yet (a profile is created lazily on first prompt).
  */
 import { computed, ref, watch } from 'vue'
@@ -12,7 +13,7 @@ import { toast } from './useToasts'
 import { qrDataUrl, shareOrCopy, writeClipboard } from '@/lib/share'
 import { useSessionStore } from '@/stores/session'
 
-withDefaults(defineProps<{ compact?: boolean }>(), { compact: false })
+withDefaults(defineProps<{ compact?: boolean; line?: boolean }>(), { compact: false, line: false })
 
 const { t } = useI18n()
 const session = useSessionStore()
@@ -66,7 +67,17 @@ async function shareLink() {
 </script>
 
 <template>
-  <section v-if="code" class="sa-code" :class="{ 'sa-code--compact': compact }" aria-labelledby="sa-code-title">
+  <section v-if="code && line" class="sa-code-line" aria-labelledby="sa-code-line-title">
+    <h2 id="sa-code-line-title" class="sa-code-line__title">
+      <span aria-hidden="true">🔑</span> {{ t('resume.your_code') }}
+    </h2>
+    <code class="sa-code-line__value">{{ code }}</code>
+    <span class="sa-code-line__actions">
+      <SaButton variant="subtle" size="sm" icon="check" @click="copy">{{ t('resume.copy') }}</SaButton>
+      <SaButton variant="subtle" size="sm" icon="share" @click="shareLink">{{ t('resume.share') }}</SaButton>
+    </span>
+  </section>
+  <section v-else-if="code" class="sa-code" :class="{ 'sa-code--compact': compact }" aria-labelledby="sa-code-title">
     <div class="sa-code__head">
       <span class="sa-code__key" aria-hidden="true">🔑</span>
       <h2 id="sa-code-title" class="sa-code__title">{{ t('resume.your_code') }}</h2>
@@ -98,6 +109,36 @@ async function shareLink() {
 </template>
 
 <style scoped>
+/* Home: one quiet row (wraps to two on a phone: the code, then its buttons). */
+.sa-code-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius-card);
+  background: var(--color-surface-2);
+}
+.sa-code-line__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-ink-soft);
+}
+.sa-code-line__value {
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', monospace;
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--color-ink);
+  user-select: all;
+}
+.sa-code-line__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-left: auto;
+}
 .sa-code {
   /* Query container: the row/stacked switch below keys on the CARD's width, not the viewport, so it
      lays out correctly inside a narrow settings panel as well as a wide content column. */

@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # 4.5 at a fraction of the cost. Each call's effort level is set where the call is made.
     model_id: str = Field(default="claude-opus-5-5", alias="SA_MODEL_ID")
     sanitizer_model_id: str = Field(default="claude-haiku-5-5", alias="SA_SANITIZER_MODEL_ID")
+    # Answer-key check (app/llm/key_check.py): this model answers every new closed question without
+    # seeing its key; a question it answers differently, or finds flawed, is dropped before any
+    # learner sees it. Empty turns the check off. Chosen by evals/key_check.py (2026-11-26): Opus 5.5
+    # at medium caught 10/10 planted defects with no false alarm and dropped only the 2 flawed
+    # questions of 143 stored ones; Haiku 5.5 and Sonnet 5.5 rejected correct Czech spelling items.
+    key_check_model_id: str = Field(default="claude-opus-5-5", alias="SA_KEY_CHECK_MODEL_ID")
     # Per-request timeout (seconds) for any single LLM call, so one call can't hang generation.
     llm_request_timeout_s: float = Field(default=120.0, alias="SA_LLM_TIMEOUT_S")
     # Wall-clock budget (seconds) for the whole image phase; past it the lesson is served without

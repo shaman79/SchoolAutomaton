@@ -98,7 +98,8 @@ function submit() {
           class="sa-option__input"
           @change="toggle(opt.id)"
         />
-        <span class="sa-option__box" aria-hidden="true" />
+        <!-- One answer: a round radio dot; several: a square with a tick (the shape says which). -->
+        <span class="sa-option__box" :class="{ 'sa-option__box--radio': !payload.multiple }" aria-hidden="true" />
         <SafeContent :markdown="opt.text" tag="span" class="sa-option__text" />
       </label>
     </fieldset>
@@ -115,6 +116,8 @@ function submit() {
       :explanation="feedback.explanation"
       :misconception="feedback.misconception"
       :sound="sound"
+      :xp="feedback.xp_awarded"
+      :combo="feedback.combo_multiplier"
     />
   </div>
 </template>
@@ -175,6 +178,19 @@ function submit() {
   color: var(--color-on-primary);
   font-size: 0.9rem;
   line-height: 1;
+}
+.sa-option__box--radio {
+  border-radius: 50%;
+}
+.sa-option--checked .sa-option__box--radio {
+  background: var(--color-surface);
+}
+.sa-option--checked .sa-option__box--radio::after {
+  content: '';
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--color-primary);
 }
 /* Visible focus on the (visually-hidden) input reflects onto the visual box. */
 .sa-option__input:focus-visible + .sa-option__box {

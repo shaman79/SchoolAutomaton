@@ -137,6 +137,33 @@ it('what is waiting comes first, in one list, each session once', async () => {
   expect(w.find('label[for="prompt"]').classes()).toContain('sr-only')
 })
 
+it("the learner's own unfinished lesson is a quiet row below the box, not the card on top", async () => {
+  const own = {
+    request_id: 'own-1', mode: 'study', status: 'ready', lesson_id: 4, quiz_id: null,
+    title: 'koloběh vody', subject: 'science', created_at: null,
+    progress: { position: 3, total: 12, completed: false, last_active_at: '2026-11-20T10:00:00Z' },
+  }
+  mocked.getContinue.mockResolvedValue(own)
+  const w = mountHome()
+  await vi.runAllTimersAsync()
+  await flushPromises()
+  expect(w.find('.sa-wait').exists()).toBe(false) // no tasks from a parent → no card on top
+  const row = w.find('.sa-cont')
+  expect(row.find('a').attributes('href')).toBe('/lesson/own-1')
+  expect(row.text()).toContain('Koloběh vody')
+  const html = w.html()
+  expect(html.indexOf('sa-prompt')).toBeLessThan(html.indexOf('sa-cont'))
+
+  // Hidden on this device → not offered again on the next visit (until they work on it).
+  await row.find('button').trigger('click')
+  w.unmount()
+  const again = mountHome()
+  await vi.runAllTimersAsync()
+  await flushPromises()
+  expect(again.find('.sa-cont').exists()).toBe(false)
+  localStorage.clear()
+})
+
 it('a device that follows children as a parent links to their overview', async () => {
   const { useParentStore } = await import('@/stores/parent')
   useParentStore().children = [

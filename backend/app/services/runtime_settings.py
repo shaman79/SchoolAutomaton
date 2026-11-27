@@ -55,6 +55,7 @@ class _Spec:
 SPECS: tuple[_Spec, ...] = (
     _Spec("model_id", "models", "choice", editable=True, choices=MAIN_MODELS),
     _Spec("sanitizer_model_id", "models", "choice", editable=True, choices=SANITIZER_MODELS),
+    _Spec("key_check_model_id", "models", "text"),
     _Spec("daily_budget_usd", "spending", "number", editable=True, min=0.0, max=BUDGET_MAX_USD),
     _Spec("rate_per_min", "limits", "integer"),
     _Spec("rate_per_day", "limits", "integer"),

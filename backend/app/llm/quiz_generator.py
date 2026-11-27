@@ -21,10 +21,11 @@ from ..models import Concept, Item, Misconception, Quiz, QuizQuestion
 from ..schemas.enums import LayoutSlot
 from ..schemas.generation import GenItem, GenQuiz, coerce_payload
 from ..schemas.intent import StructuredIntent
-from . import prompts
-from .client import generate_structured
+from . import key_check, prompts
+from .client import Usage, generate_structured, usage_row
 from .lesson_generator import (
     HotspotImages,
+    _concept_name,
     _ensure_misconception,
     _keep_usage_of_failed_call,
     _link_hotspot_image,
@@ -39,6 +40,9 @@ logger = logging.getLogger("schoolautomaton.generation")
 # fails the whole generation, so leave margin above the typical quiz size. Stays within the
 # non-streaming budget so the SDK doesn't reject it for an over-long estimate.
 _QUIZ_MAX_TOKENS = 18000
+
+# The answer-key check may drop questions, but never down to fewer than this (see key_check).
+MIN_QUIZ_QUESTIONS = 3
 
 
 async def _known_misconceptions(db: AsyncSession, concept_id: int | None) -> list[str]:
@@ -72,7 +76,8 @@ async def _persist_quiz_item(
     concept = concept_cache.get(slug)
     if concept is None:
         concept = await _upsert_concept(
-            db, slug, name=gen.concept_slug, subject=quiz.subject, grade=quiz.grade_band
+            db, slug, name=_concept_name(gen.concept_name, gen.concept_slug),
+            subject=quiz.subject, grade=quiz.grade_band,
         )
         concept_cache[slug] = concept
 
@@ -154,6 +159,26 @@ async def generate_quiz(
     except Exception:
         await _keep_usage_of_failed_call(db)  # billed all the same: count it toward the daily cap
         raise
+
+    # Every question answered once more, without its key, by a second model; the ones whose key (or
+    # wording) doesn't hold up are dropped. Also a provider call: no write before it. Its usage rows
+    # are only staged (committed with the first picture below, or with the quiz). The main call's
+    # usage row, staged above, is committed first: a millisecond write, then nothing is held.
+    await db.commit()
+    check_usage: list[Usage] = []
+    checked = await key_check.check_items(
+        list(gen_quiz.questions),
+        subject=intent.subject.value,
+        grade_band=intent.grade_band.value,
+        language=intent.language,
+        min_keep=MIN_QUIZ_QUESTIONS,
+        request_id=request_id,
+        client=client,
+        usage_sink=check_usage,
+    )
+    for usage in check_usage:
+        db.add(usage_row(usage, request_id=request_id))
+    gen_quiz = gen_quiz.model_copy(update={"questions": checked.kept})
 
     # Hotspot pictures are provider calls too: also before any write (see _prepare_hotspot_images).
     hotspots = await _prepare_hotspot_images(

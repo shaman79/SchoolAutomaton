@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * Compact, unobtrusive footer. Carries the AI-content disclosure (child-facing
- * transparency), a resume-code shortcut, the way in for parents, and a discreet admin link. Mobile-first:
- * stacks on phones, row on >=sm.
+ * Compact, unobtrusive footer. Carries the AI-content disclosure (child-facing transparency) and the
+ * way in for parents. (Entering a code lives on Home and in Settings; the admin sign-in is at
+ * /admin/login — not a link children see on every page.) Mobile-first: stacks on phones, row on >=sm.
  */
 import { useI18n } from 'vue-i18n'
 
@@ -20,14 +20,8 @@ const year = new Date().getFullYear()
     >
       <p>© {{ year }} {{ t('app.name') }} · {{ t('footer.ai_disclosure') }}</p>
       <nav class="flex flex-wrap items-center justify-center gap-x-2 sm:shrink-0 sm:flex-nowrap" :aria-label="t('footer.nav_label')">
-        <RouterLink to="/resume" class="sa-tap inline-flex items-center justify-center px-2 underline hover:text-[var(--color-primary)]">
-          {{ t('resume.title') }}
-        </RouterLink>
         <RouterLink to="/parent" class="sa-tap inline-flex items-center justify-center px-2 underline hover:text-[var(--color-primary)]">
           {{ t('footer.parents') }}
-        </RouterLink>
-        <RouterLink to="/admin/login" class="sa-tap inline-flex items-center justify-center px-2 underline hover:text-[var(--color-primary)]">
-          {{ t('footer.admin') }}
         </RouterLink>
       </nav>
     </div>

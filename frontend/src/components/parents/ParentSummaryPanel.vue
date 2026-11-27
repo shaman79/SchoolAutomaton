@@ -14,7 +14,7 @@ import { useI18n } from 'vue-i18n'
 
 import SaButton from '@/components/common/SaButton.vue'
 import SaIcon, { type IconName } from '@/components/common/SaIcon.vue'
-import { subjectLabel } from '@/lib/format'
+import { subjectLabel, topicLabel } from '@/lib/format'
 import type { ParentSummary, TopicProgress } from '@/types/session'
 
 const props = withDefaults(
@@ -34,7 +34,10 @@ const GROUPS: { status: TopicProgress['status']; icon: IconName }[] = [
 const groups = computed(() =>
   GROUPS.map((g) => ({
     ...g,
-    topics: props.summary.topics.filter((topic) => topic.status === g.status),
+    // Names as a parent reads them (an older identifier-like name shows as words).
+    topics: props.summary.topics
+      .filter((topic) => topic.status === g.status)
+      .map((topic) => ({ ...topic, title: topicLabel(topic.title) })),
   })).filter((g) => g.topics.length > 0),
 )
 

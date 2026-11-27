@@ -18,9 +18,9 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { KnowledgeTreeData, NodeState, TreeNode } from './types'
+import { STATE_META, type KnowledgeTreeData, type NodeState, type TreeNode } from './types'
 import EmptyState from '@/components/common/EmptyState.vue'
-import { subjectLabel } from '@/lib/format'
+import { subjectLabel, topicLabel } from '@/lib/format'
 
 const props = withDefaults(
   defineProps<{
@@ -35,7 +35,10 @@ const emit = defineEmits<{ select: [node: TreeNode] }>()
 
 const { t } = useI18n()
 
-const nodes = computed<TreeNode[]>(() => props.data?.nodes ?? [])
+// Topic names as a learner reads them (an older identifier-like name shows as words).
+const nodes = computed<TreeNode[]>(() =>
+  (props.data?.nodes ?? []).map((n) => ({ ...n, title: topicLabel(n.title) })),
+)
 const hasNodes = computed(() => nodes.value.length > 0)
 
 const byId = computed(() => {
@@ -76,14 +79,6 @@ const counts = computed(() => {
   return c
 })
 
-/** Per-state presentation (glyph + tone + localized label). Glyph is the garden metaphor. */
-const STATE_META: Record<NodeState, { glyph: string; tone: string }> = {
-  locked: { glyph: '🌱', tone: 'var(--color-ink-soft)' },
-  available: { glyph: '🌿', tone: 'var(--color-sky)' },
-  learning: { glyph: '🪴', tone: 'var(--color-primary)' },
-  mastered: { glyph: '🌸', tone: 'var(--color-mint)' },
-  needs_review: { glyph: '💧', tone: 'var(--color-sun)' },
-}
 
 const LEGEND_ORDER: NodeState[] = ['mastered', 'learning', 'needs_review', 'available', 'locked']
 const legendStates = computed(() => LEGEND_ORDER.filter((s) => counts.value[s] > 0))

@@ -119,10 +119,15 @@ follows. In faded_example remove steps gradually (later items leave more blank) 
 supplies more of the reasoning each time. Provide worked_solution_steps as an ordered list.
 
 ## Items, distractors & misconceptions
-- Each item carries: item_type, concept_slug, bloom_tier (1-6), difficulty (easy|medium|hard),
-  item_difficulty (an integer 1 to 5), stem_markdown, a typed payload, optional expected_answer and
-  accepted_variants (for short_answer/numeric), distractors, a hint_ladder (least to most revealing),
-  worked_solution_steps, and an explanation.
+- Each item carries: item_type, concept_slug, concept_name, bloom_tier (1-6), difficulty
+  (easy|medium|hard), item_difficulty (an integer 1 to 5), stem_markdown, a typed payload, optional
+  expected_answer and accepted_variants (for short_answer/numeric), distractors, a hint_ladder (least
+  to most revealing), worked_solution_steps, and an explanation.
+- concept_slug is a stable internal identifier; concept_name is what the learner and their parents
+  read for that concept in their progress overview: a short noun phrase (at most 60 characters) in
+  the requested language, spelled correctly with all its accents and capitals ("Býk", "Dělení v
+  oboru násobilky", "Equivalent fractions") - never the slug, a sentence, or a translation in
+  brackets. Every item and objective with the same concept_slug carries the same concept_name.
 - MCQ items have exactly one correct option unless explicitly told the question is multiple-select;
   provide plausible distractors. For every distractor, write a short `misconception` string naming
   the specific wrong idea it represents (or null if it is just a near-miss). These map to a
@@ -208,13 +213,24 @@ Assessment quality: every item should have exactly one defensible correct answer
 specified set for multiple-select), unambiguous wording, and distractors that are each wrong for a
 identifiable reason. Avoid trick questions, double negatives, and "all of the above". Keep stems
 free of clues that give away the answer.
+Everything an item states as fact - in the stem, statement, options, hints and explanation - must
+itself be true: check each claim (letter counts, spellings, sums, dates, which word is longer)
+before you write it. A false claim offered as a hint teaches the mistake. After writing an item,
+answer it yourself as a learner would and confirm that the key you set is the answer you reach.
+Every explanation justifies the keyed answer for THIS item: it says why the correct answer is
+correct and, where a learner could pick the opposite, what makes that wrong (for a false
+true_false statement: exactly which part is false and what is true instead). Restating a general
+rule without applying it to the item is not an explanation.
 
 ## Item-type reference (stable)
 mcq: a stem plus options; each option has an id and text; exactly one is_correct unless the request
 says multiple-select. Keep options parallel in length and grammar so length is not a clue. List
 options in no fixed pattern and never put the correct option first by habit.
-true_false: a single declarative statement and a boolean answer; avoid absolutes ("always",
-"never") unless they are the point of the item.
+true_false: a single declarative statement and a boolean answer. The statement is wholly true or
+wholly false - never half right, never two claims of which only one holds. The stem only asks the
+learner to judge it (for example "Is this statement true?"): it must not assert, explain, hint at
+or presuppose anything the statement claims, and must not offer a "tip" that decides it. Avoid
+absolutes ("always", "never") unless they are the point of the item.
 cloze: a text_template with one or more blanks. Mark EACH blank in the template with a {{blank_id}}
 placeholder — double curly braces around the blank's id, e.g. "I {{b1}} like to eat" — never write a
 gap as ___ or [blank]; only the {{id}} form renders an input box. Each blank has a matching id and an

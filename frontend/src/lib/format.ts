@@ -79,3 +79,46 @@ export function dayLabel(iso: string | null | undefined, now: Date = new Date())
   return i18n.global.d(when, 'day')
 }
 
+
+/** Content words of a title, for comparing two phrasings ("na", "po", "of" say nothing). */
+function contentWords(text: string): string[] {
+  return (text.toLowerCase().match(/\p{L}{3,}/gu) ?? []).filter(Boolean)
+}
+
+/**
+ * A lesson/quiz title (or topic name) for display. Lesson titles are the topic phrase the request was
+ * understood as, and older ones can read "zlomky na obrázcích (vysvětlení zlomků pomocí obrázků)":
+ *   - a note in brackets at the end that only restates the title — or glosses it, "X (Czech
+ *     spelling: words after X)" — is dropped; one that adds something ("Shakespeare (Romeo a
+ *     Julie)", "násobilka (6 a 7)") stays;
+ *   - the first letter is capitalized when the first word is an ordinary lowercase word ("pH",
+ *     "iPhone", a lone "x" are left alone).
+ */
+export function displayTitle(raw: string | null | undefined): string {
+  let s = (raw ?? '').trim().replace(/\s+/g, ' ')
+  const m = s.match(/^(.*\p{L}.*?)\s*\(([^()]+)\)$/u)
+  if (m) {
+    const [, main, note] = m
+    const mainWords = contentWords(main)
+    const noteStems = contentWords(note).map((w) => w.slice(0, 4))
+    const restated =
+      mainWords.length > 0 &&
+      mainWords.filter((w) => noteStems.includes(w.slice(0, 4))).length * 2 >= mainWords.length
+    const gloss = note.includes(':') && !/\d/.test(note)
+    if (restated || gloss) s = main.trim()
+  }
+  const first = s.split(' ')[0] ?? ''
+  if (/^\p{Ll}{2,}$/u.test(first.replace(/-/g, ''))) s = s.charAt(0).toUpperCase() + s.slice(1)
+  return s
+}
+
+/**
+ * A knowledge topic's name for display. Older topics may carry their internal identifier as the name
+ * ("deleni-v-oboru-nasobilky"): shown as words ("Deleni v oboru nasobilky") — the lost accents can't
+ * be restored, but it reads as a name, not a code.
+ */
+export function topicLabel(raw: string | null | undefined): string {
+  const s = (raw ?? '').trim()
+  const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s)
+  return displayTitle(slug ? s.replace(/-/g, ' ') : s)
+}

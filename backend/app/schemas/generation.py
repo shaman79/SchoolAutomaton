@@ -107,6 +107,9 @@ class GenDistractor(StrictModel):
 class GenItem(StrictModel):
     item_type: ItemType
     concept_slug: str
+    # The concept's name as a learner reads it ("býk", "Dělení v oboru násobilky") — shown in the
+    # knowledge garden, after a quiz and to parents. Empty from older outputs: the slug stands in.
+    concept_name: str = ""
     bloom_tier: BloomTier
     difficulty: Difficulty = Difficulty.MEDIUM
     item_difficulty: int = Field(default=3, description="1..5 adaptive difficulty")
@@ -220,6 +223,7 @@ class GenObjective(StrictModel):
     text: str                       # "I can ..." statement
     bloom_tier: BloomTier
     concept_slug: str
+    concept_name: str = ""          # the concept's short name (see GenItem.concept_name)
 
 
 class GenVisualSpec(StrictModel):
@@ -277,6 +281,35 @@ class GenQuiz(StrictModel):
     title: str
     language: str
     questions: list[GenItem]
+
+
+# --------------------------------------------------------------------------- answer-key check
+# A second model answers each new closed question WITHOUT its key (app/llm/key_check.py). Only the
+# field matching the item's type is filled; the server compares it with the stored key.
+class KeyCheckPair(StrictModel):
+    left_id: str
+    right_id: str
+
+
+class KeyCheckBlank(StrictModel):
+    id: str
+    answers: list[str] = Field(default_factory=list)  # every answer the checker would accept
+
+
+class KeyCheckVerdict(StrictModel):
+    number: int                                              # the item's number as listed
+    option_ids: list[str] = Field(default_factory=list)      # mcq
+    truth: bool | None = None                                # true_false
+    value: float | None = None                               # numeric
+    order: list[str] = Field(default_factory=list)           # order
+    pairs: list[KeyCheckPair] = Field(default_factory=list)  # match
+    blanks: list[KeyCheckBlank] = Field(default_factory=list)  # cloze
+    flawed: bool = False
+    reason: str = ""
+
+
+class KeyCheckOutput(StrictModel):
+    verdicts: list[KeyCheckVerdict] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------------------- LLM grading (free-text/numeric)

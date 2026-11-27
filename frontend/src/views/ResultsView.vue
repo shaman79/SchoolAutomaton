@@ -20,9 +20,10 @@ import NextGoals from '@/components/gamification/NextGoals.vue'
 import StreakFlame from '@/components/gamification/StreakFlame.vue'
 import { useCelebration } from '@/composables/useCelebration'
 import { api } from '@/lib/api'
+import { topicLabel } from '@/lib/format'
 import { useSessionStore } from '@/stores/session'
 import { useTestStore } from '@/stores/test'
-import type { ResultsSummary } from '@/components/gamification/types'
+import { STATE_META, type ResultsSummary } from '@/components/gamification/types'
 import type { LearningSessionSummary } from '@/types/session'
 
 const props = defineProps<{ sessionId: string }>()
@@ -130,16 +131,17 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- What grew (mastery) -->
+    <!-- What grew: each topic answered right, and where it now stands in the garden — in the garden's
+         own words ("Learning", "Mastered"), not a percentage (a first right answer is "+84 %" for
+         every topic, which says nothing). -->
     <div v-if="masteryGains.length" class="sa-card sa-results__growth">
       <h2 class="sa-results__h2">{{ t('results.growth') }}</h2>
       <ul class="sa-results__growth-list">
         <li v-for="m in masteryGains" :key="m.concept_id" class="sa-results__growth-item">
-          <span class="sa-results__growth-name">{{ m.name }}</span>
-          <!-- the GAIN this attempt (the section is "What grew"), not just the absolute level -->
-          <span class="sa-results__growth-delta">+{{ Math.max(0, Math.round((m.after - m.before) * 100)) }}%</span>
-          <span class="sa-results__growth-bar" aria-hidden="true">
-            <span class="sa-results__growth-fill" :style="{ width: `${Math.round(m.after * 100)}%` }" />
+          <span class="sa-results__growth-name">{{ topicLabel(m.name) }}</span>
+          <span class="sa-results__growth-state" :data-state="m.state">
+            <span aria-hidden="true">{{ STATE_META[m.state]?.glyph }}</span>
+            {{ t(`tree.state.${m.state}`) }}
           </span>
         </li>
       </ul>
@@ -323,14 +325,17 @@ onMounted(async () => {
   padding: 0;
 }
 .sa-results__growth-item {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 0.3rem 0.6rem;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.sa-results__growth-list > li + li {
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--color-line);
 }
 .sa-results__growth-name {
   font-weight: 600;
-  grid-column: 1 / 2;
   min-width: 0;
   /* up to two lines, not one: on a phone a one-line title was cut down to its first word or two */
   display: -webkit-box;
@@ -340,24 +345,20 @@ onMounted(async () => {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-.sa-results__growth-delta {
-  grid-column: 2 / 3;
-  font-weight: 800;
-  color: color-mix(in srgb, var(--color-mint) 80%, black);
-  font-variant-numeric: tabular-nums;
-}
-.sa-results__growth-bar {
-  grid-column: 1 / 3;
-  height: 0.5rem;
+.sa-results__growth-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: none;
+  padding: 0.15rem 0.6rem;
   border-radius: var(--radius-pill);
   background: var(--color-surface-2);
-  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
-.sa-results__growth-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-pill);
-  background: var(--color-mint, var(--color-primary));
+.sa-results__growth-state[data-state='mastered'] {
+  background: color-mix(in srgb, var(--color-mint) 18%, var(--color-surface));
 }
 .sa-results__actions {
   display: flex;

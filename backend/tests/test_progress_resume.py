@@ -446,6 +446,50 @@ async def test_continue_skips_finished_sessions_even_if_more_recent(client):
 
 
 @pytest.mark.asyncio
+async def test_continue_offers_only_what_was_touched_lately(client):
+    """A lesson left half-read weeks ago is no longer "continue where you left off" (it stays in the
+    learner's list with its position); working on it again brings it back."""
+    from datetime import UTC, datetime, timedelta
+
+    from app.models import LessonProgress, QuizAttempt
+    from app.services.progress_service import CONTINUE_WINDOW
+
+    headers, pid = await _new_profile(client)
+    lesson_id, _ = await _seed_lesson("cont-stale", pid, ready=4, total=4)
+    quiz_id, _ = await _seed_quiz("cont-stale-quiz", pid)
+    await client.put(
+        f"{API}/lessons/{lesson_id}/progress", headers=headers, json={"revealed_up_to": 1}
+    )
+    await client.post(f"{API}/quizzes/{quiz_id}/attempts", headers=headers, json={})
+
+    async def age(days: float) -> None:
+        then = datetime.now(UTC) - timedelta(days=days)
+        async with SessionLocal() as db:
+            row = await db.scalar(select(LessonProgress).where(LessonProgress.profile_id == pid))
+            row.last_active_at = then
+            attempt = await db.scalar(select(QuizAttempt).where(QuizAttempt.profile_id == pid))
+            attempt.last_active_at = then - timedelta(hours=1)
+            await db.commit()
+
+    async def pick():
+        return (await client.get(f"{API}/profiles/me/continue", headers=headers)).json()
+
+    await age(CONTINUE_WINDOW.days - 1)
+    assert (await pick())["request_id"] == "cont-stale"  # still within the window
+
+    await age(CONTINUE_WINDOW.days + 1)
+    assert await pick() is None  # both went quiet
+    rows = (await client.get(f"{API}/profiles/me/requests", headers=headers)).json()
+    stale = next(r for r in rows if r["request_id"] == "cont-stale")
+    assert stale["progress"]["position"] == 2  # the list keeps the position
+
+    await client.put(
+        f"{API}/lessons/{lesson_id}/progress", headers=headers, json={"revealed_up_to": 1}
+    )
+    assert (await pick())["request_id"] == "cont-stale"  # opened again: back on Home
+
+
+@pytest.mark.asyncio
 async def test_existing_database_gains_the_resume_columns():
     """Upgrading in place: an older quiz_attempts table (no position columns) is migrated additively,
     so learners keep their history."""

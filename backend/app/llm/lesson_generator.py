@@ -53,7 +53,7 @@ from ..schemas.generation import (
     coerce_payload,
 )
 from ..schemas.intent import StructuredIntent
-from . import prompts
+from . import key_check, prompts
 from .client import generate_structured, usage_row
 
 logger = logging.getLogger("schoolautomaton.generation")
@@ -124,20 +124,50 @@ async def _keep_usage_of_failed_call(db: AsyncSession) -> None:
         logger.warning("Could not record the usage of a failed generation call", exc_info=True)
 
 
+# A generated concept name is a short noun phrase; anything longer is not a name.
+_CONCEPT_NAME_MAX = 80
+
+
+def _concept_name(name: str | None, slug: str) -> str:
+    """The name to store for a concept: the generated human name, tidied (one line, bounded), else
+    the slug as a last resort (older outputs carry none)."""
+    clean = " ".join((name or "").split())
+    return clean[:_CONCEPT_NAME_MAX] if clean else slug
+
+
+def _is_placeholder_name(name: str, slug: str) -> bool:
+    """A stored concept name that is not really a name: the slug itself ("deleni-v-oboru-nasobilky",
+    "byk" — the identifier stood in when no name came with it) or a whole sentence (the "I can ..."
+    objective the concept was first met in)."""
+    name = (name or "").strip()
+    if not name or name == slug:
+        return True
+    if name.isascii() and " " not in name and _slugify(name) == name:
+        return True
+    return name.endswith((".", "!", "?"))
+
+
 async def _upsert_concept(db: AsyncSession, slug: str, *, name: str, subject: str, grade: str) -> Concept:
-    """INSERT OR IGNORE a Concept by slug, then return the row (single-writer SQLite safe)."""
+    """INSERT OR IGNORE a Concept by slug, then return the row (single-writer SQLite safe).
+
+    Concepts are shared by slug, so the first content to meet one names it. A placeholder name (the
+    slug, or a sentence) is replaced by the first real one that comes along — older topics heal as
+    new content about them is generated."""
     slug = _slugify(slug)
+    name = name[:160] or slug
     stmt = (
         sqlite_insert(Concept)
-        .values(slug=slug, name=name[:160] or slug, subject=subject[:40], grade_introduced=grade)
+        .values(slug=slug, name=name, subject=subject[:40], grade_introduced=grade)
         .on_conflict_do_nothing(index_elements=["slug"])
     )
     await db.execute(stmt)
     concept = await db.scalar(select(Concept).where(Concept.slug == slug))
     if concept is None:  # pragma: no cover - only if a concurrent delete raced
-        concept = Concept(slug=slug, name=name[:160] or slug, subject=subject[:40], grade_introduced=grade)
+        concept = Concept(slug=slug, name=name, subject=subject[:40], grade_introduced=grade)
         db.add(concept)
         await db.flush()
+    elif _is_placeholder_name(concept.name, slug) and not _is_placeholder_name(name, slug):
+        concept.name = name
     return concept
 
 
@@ -269,7 +299,8 @@ async def _persist_item(
     concept = concept_cache.get(_slugify(gen.concept_slug))
     if concept is None:
         concept = await _upsert_concept(
-            db, gen.concept_slug, name=gen.concept_slug, subject=lesson.subject, grade=lesson.grade_band
+            db, gen.concept_slug, name=_concept_name(gen.concept_name, gen.concept_slug),
+            subject=lesson.subject, grade=lesson.grade_band,
         )
         concept_cache[concept.slug] = concept
 
@@ -368,6 +399,19 @@ async def _generate_section(
                 + SIMPLIFY_INSTRUCTION.format(measured=measured, target=target)
             )
     assert section is not None
+    if section.items:
+        # Each question answered once more, without its key, by a second model (outside the
+        # semaphore, which only bounds the main model's calls); doubtful ones are dropped.
+        checked = await key_check.check_items(
+            list(section.items),
+            subject=intent.subject.value,
+            grade_band=intent.grade_band.value,
+            language=intent.language,
+            request_id=request_id,
+            client=client,
+            usage_sink=usages,
+        )
+        section = section.model_copy(update={"items": checked.kept})
     return section, usages
 
 
@@ -643,7 +687,8 @@ async def generate_lesson(
     # once — a duplicate (lesson, concept, 'taught') row violates the UNIQUE constraint on autoflush.
     taught: set[int] = set()
     for obj in plan.objectives:
-        concept = await get_concept(obj.concept_slug, obj.text)
+        # The concept's own short name; the objective sentence only when an older plan has none.
+        concept = await get_concept(obj.concept_slug, _concept_name(obj.concept_name, "") or obj.text)
         objectives_json.append(
             {"text": obj.text, "bloom_tier": int(obj.bloom_tier), "concept_id": concept.id}
         )
